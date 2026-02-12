@@ -127,11 +127,11 @@ function tick(dt) {
     gameState.resources.lifetimeClicks += production * prodMult * dt;
     gameState.resources.knowledge += knowledgeProd * dt;
 
-    // Expedition Progress
-    gameState.activeExpeditions.forEach(exp => {
+    // Expedition Progress (Loop over copy to avoid modification issues during iteration)
+    [...gameState.activeExpeditions].forEach((exp, index) => {
         exp.progress += dt;
         if (exp.progress >= exp.duration) {
-            completeExpedition(exp);
+            completeExpedition(exp); // Remove by object ref or handle index carefully
         }
     });
 
@@ -416,8 +416,129 @@ function updateUI() {
     // Update Quests
     renderQuests();
 
+    // Update Inventory
+    renderInventory();
+
+    // Update Expeditions
+    renderExpeditions();
+
     // Update Research availability
     renderResearchTree();
+}
+
+function renderInventory() {
+    const container = document.getElementById("inventory-list");
+    if (!container) return;
+
+    container.innerHTML = "";
+    if (gameState.inventory.length === 0) {
+        container.innerHTML = "<p>No relics yet.</p>";
+        return;
+    }
+
+    gameState.inventory.forEach(relic => {
+        const div = document.createElement("div");
+        div.className = `relic-card rarity-${relic.rarity.toLowerCase()}`;
+        div.title = relic.description;
+        div.innerHTML = `<strong>${relic.name}</strong><br><small>${relic.rarity}</small>`;
+        container.appendChild(div);
+    });
+}
+
+function renderExpeditions() {
+    // 1. Available List
+    const container = document.getElementById("expedition-list");
+    if (container) {
+        // Simple optimization: redraw only if count changes? No, state might change.
+        container.innerHTML = "";
+        // Show first 5 or filtered by criteria
+        const available = allExpeditions.slice(0, 5); // Just show 5 for now
+
+        available.forEach(exp => {
+            const div = document.createElement("div");
+            div.className = "expedition-card";
+            div.innerHTML = `
+                <strong>${exp.name}</strong> (${exp.difficulty})<br>
+                Duration: ${exp.duration}s<br>
+                Cost: ${exp.cost.food} Food (Placeholder)<br>
+                <button onclick="startExpedition('${exp.id}')">Start</button>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    // 2. Active List
+    const activeContainer = document.getElementById("active-expedition-list");
+    if (activeContainer) {
+        activeContainer.innerHTML = "";
+        if (gameState.activeExpeditions.length === 0) {
+            activeContainer.innerHTML = "<p>No active expeditions.</p>";
+        } else {
+            gameState.activeExpeditions.forEach(exp => {
+                const div = document.createElement("div");
+                div.className = "expedition-card";
+                const pct = Math.min(100, (exp.progress / exp.duration) * 100);
+                div.innerHTML = `
+                    <strong>${exp.name}</strong><br>
+                    Time: ${Math.floor(exp.progress)} / ${exp.duration}s
+                    <div class="expedition-progress-bg">
+                        <div class="expedition-progress-fill" style="width: ${pct}%"></div>
+                    </div>
+                `;
+                activeContainer.appendChild(div);
+            });
+        }
+    }
+}
+
+window.startExpedition = function(expId) {
+    // Limit active
+    if (gameState.activeExpeditions.length >= 3) {
+        alert("Max 3 active expeditions!");
+        return;
+    }
+
+    const template = allExpeditions.find(e => e.id === expId);
+    if (!template) return;
+
+    // Check cost (ignoring food for now as we don't have food resource implemented yet, assume clicks or free)
+    // Let's add a placeholder cost check
+    // if (gameState.resources.food < template.cost.food) ...
+
+    // Clone
+    const instance = {
+        ...template,
+        progress: 0,
+        startTime: Date.now()
+    };
+
+    gameState.activeExpeditions.push(instance);
+    updateUI(); // Immediate feedback
+};
+
+function completeExpedition(exp) {
+    // Find index again to be safe
+    const index = gameState.activeExpeditions.indexOf(exp);
+    if (index > -1) {
+        gameState.activeExpeditions.splice(index, 1);
+    }
+
+    // Rewards
+    let log = `Expedition '${exp.name}' complete! `;
+    if (exp.rewards.relics > 0) {
+        // Generate a random relic
+        const relic = allRelics[Math.floor(Math.random() * allRelics.length)];
+        gameState.inventory.push(relic);
+        log += `Found relic: ${relic.name}. `;
+    }
+    if (exp.rewards.resources > 0) {
+        gameState.resources.money += exp.rewards.resources; // Money or knowledge
+        log += `Gained ${exp.rewards.resources} Gold.`;
+    }
+
+    console.log(log);
+    alert(log); // Simple notification
+    updateUI();
 }
 
 function renderQuests() {
