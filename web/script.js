@@ -1,4 +1,3 @@
-console.log("Script loaded");
 // script.js
 import { generateRelics, generateResearch, generateIdeas, generateExpeditions, generateRecipes } from './content-gen.js';
 
@@ -32,13 +31,15 @@ let gameState = {
 
     settings: {
         autoSave: true
-    }
+    },
+
+    lastSaveTime: Date.now()
 };
 
 // --- Era Config ---
 const ERA_DATA = [
     { name: "Stone Age", threshold: 0, className: "era-stone" },
-    { name: "Bronze Age", threshold: 1000, className: "era-bronze" }, // Placeholder values
+    { name: "Bronze Age", threshold: 1000, className: "era-bronze" },
     { name: "Iron Age", threshold: 5000, className: "era-iron" },
     { name: "Middle Ages", threshold: 20000, className: "era-middle" },
     { name: "Renaissance", threshold: 50000, className: "era-renaissance" },
@@ -74,7 +75,7 @@ async function init() {
     // Load Save if exists
     loadGame();
 
-    // Generate quests if needed (daily check simulated)
+    // Generate quests if needed
     if (gameState.quests.length === 0) {
         generateDailyQuests();
     }
@@ -97,10 +98,10 @@ function startGameLoop() {
         tick(dt);
         updateUI();
 
-        if (gameState.settings.autoSave && Math.random() < 0.01) { // roughly every 10s if 100ms interval? No, 10ms interval -> 100 ticks/s -> 1% chance -> 1s average. Let's rely on explicit save timer.
+        if (gameState.settings.autoSave && Math.random() < 0.01) {
              saveGame();
         }
-    }, 100); // 10 ticks per second
+    }, 100);
 
     // Autosave every 30s
     setInterval(saveGame, 30000);
@@ -119,35 +120,29 @@ function tick(dt) {
     // Knowledge
     let knowledgeProd = gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
 
-    // Apply Multipliers (from Relics, Techs)
+    // Apply Multipliers
     let prodMult = getGlobalMultiplier("production");
-    let clickMult = getGlobalMultiplier("click");
 
     gameState.resources.clicks += production * prodMult * dt;
     gameState.resources.lifetimeClicks += production * prodMult * dt;
     gameState.resources.knowledge += knowledgeProd * dt;
 
-    // Expedition Progress (Loop over copy to avoid modification issues during iteration)
+    // Expedition Progress (Loop over copy)
     [...gameState.activeExpeditions].forEach((exp, index) => {
         exp.progress += dt;
         if (exp.progress >= exp.duration) {
-            completeExpedition(exp); // Remove by object ref or handle index carefully
+            completeExpedition(exp);
         }
     });
 
     // Research Progress
     if (gameState.activeResearch.length > 0) {
-        // Distribute knowledge? Or simply time-based?
-        // Let's say research costs knowledge upfront, but takes time to 'unlock'.
-        // For now, let's say instant unlock if affordable.
+        // ...
     }
 }
 
 function generateDailyQuests() {
     gameState.quests = [];
-    // 3 Quests: Clicks, Purchases, Era (or simply clicks)
-
-    // Quest 1: Clicks
     const clickTarget = 500 + Math.floor(gameState.resources.lifetimeClicks / 100);
     gameState.quests.push({
         id: "q_clicks",
@@ -160,7 +155,6 @@ function generateDailyQuests() {
         claimed: false
     });
 
-    // Quest 2: Buy Buildings
     gameState.quests.push({
         id: "q_buy",
         title: "Buy 5 Buildings",
@@ -172,7 +166,6 @@ function generateDailyQuests() {
         claimed: false
     });
 
-    // Quest 3: Advance Era (if possible) or just generic 'Collect 10 Relic Shards'
     gameState.quests.push({
         id: "q_shards",
         title: "Find 3 Relic Shards",
@@ -183,8 +176,6 @@ function generateDailyQuests() {
         completed: false,
         claimed: false
     });
-
-    console.log("Daily Quests Generated:", gameState.quests);
 }
 
 function checkQuestProgress(type, amount = 1) {
@@ -194,7 +185,6 @@ function checkQuestProgress(type, amount = 1) {
             if (q.progress >= q.target) {
                 q.progress = q.target;
                 q.completed = true;
-                // Notification?
                 console.log(`Quest Completed: ${q.title}`);
             }
         }
@@ -205,7 +195,6 @@ window.claimQuest = function(questId) {
     const q = gameState.quests.find(q => q.id === questId);
     if (q && q.completed && !q.claimed) {
         q.claimed = true;
-        // Award
         if (q.reward.clicks) gameState.resources.clicks += q.reward.clicks;
         if (q.reward.knowledge) gameState.resources.knowledge += q.reward.knowledge;
         if (q.reward.se) gameState.resources.symbolsOfEra += q.reward.se;
@@ -218,29 +207,62 @@ function getGlobalMultiplier(type) {
     let mult = 1.0;
     // Relics
     gameState.inventory.forEach(relic => {
-        if (relic.effect.type === `${type}_boost` || relic.effect.type === "production_multiplier") { // Simple match
+        if (relic.effect.type === `${type}_boost` || (type === "production" && relic.effect.type === "production_multiplier")) {
              mult += (relic.effect.value / 100);
+        }
+        // Specific Cost Reduction
+        if (type === "cost" && relic.effect.type === "cost_reduction") {
+            mult -= (relic.effect.value / 100);
         }
     });
     // Techs
     gameState.researched.forEach(techId => {
         const tech = allResearch.find(t => t.id === techId);
-        if (tech && tech.effect.type === "production_multiplier") {
+        if (tech && tech.effect.type === "production_multiplier" && type === "production") {
             mult *= tech.effect.value;
         }
     });
+
+    // Cap cost reduction
+    if (type === "cost" && mult < 0.1) mult = 0.1;
+
     return mult;
 }
 
-window.manualClick = function() {
-    let clickValue = 1 + (gameState.inventory.length * 0.1); // Base + relic bonus
+function getCritStats() {
+    let chance = 0.01; // 1% base
+    let dmg = 2.0; // 2x base
+
+    gameState.inventory.forEach(relic => {
+        if (relic.effect.type === "crit_chance") chance += (relic.effect.value / 100);
+        if (relic.effect.type === "crit_damage") dmg += (relic.effect.value / 100);
+    });
+    return { chance, dmg };
+}
+
+window.manualClick = function(event) {
+    let clickValue = 1 + (gameState.inventory.length * 0.1);
     clickValue *= getGlobalMultiplier("click");
+
+    // Crit Logic
+    const crit = getCritStats();
+    let isCrit = false;
+    if (Math.random() < crit.chance) {
+        clickValue *= crit.dmg;
+        isCrit = true;
+    }
+
+    clickValue = Math.floor(clickValue);
     gameState.resources.clicks += clickValue;
     gameState.resources.lifetimeClicks += clickValue;
 
+    // Spawn Particle
+    if (event) {
+        spawnClickParticle(event.clientX, event.clientY, clickValue, isCrit);
+    }
+
     checkQuestProgress("clicks", 1);
 
-    // Chance to find relic shard?
     if (Math.random() < 0.05) {
         gameState.resources.relicShards++;
         checkQuestProgress("shards", 1);
@@ -248,22 +270,42 @@ window.manualClick = function() {
     updateUI();
 };
 
+function spawnClickParticle(x, y, amount, isCrit) {
+    const p = document.createElement("div");
+    p.innerText = `+${amount}`;
+    p.style.position = "absolute";
+    p.style.left = `${x}px`;
+    p.style.top = `${y}px`;
+    p.style.color = isCrit ? "#e74c3c" : "#f1c40f";
+    p.style.fontSize = isCrit ? "20px" : "14px";
+    p.style.fontWeight = "bold";
+    p.style.pointerEvents = "none";
+    p.style.animation = "floatUp 1s ease-out forwards";
+    document.body.appendChild(p);
+
+    setTimeout(() => {
+        document.body.removeChild(p);
+    }, 1000);
+}
+
 window.buyBuilding = function(name) {
     const b = gameState.buildings[name];
-    if (gameState.resources.clicks >= b.cost) {
-        gameState.resources.clicks -= b.cost;
+
+    // Apply Cost Reduction
+    let costMult = getGlobalMultiplier("cost");
+    let baseCost = 0;
+    if (name === "AutoClicker") baseCost = 10;
+    else if (name === "Farm") baseCost = 50;
+    else if (name === "Mine") baseCost = 200;
+    else if (name === "Lab") baseCost = 1000;
+
+    let nominalCost = Math.floor(baseCost * Math.pow(1.25, b.count));
+    let finalCost = Math.floor(nominalCost * costMult);
+
+    if (gameState.resources.clicks >= finalCost) {
+        gameState.resources.clicks -= finalCost;
         b.count++;
-
-        // Correct Exponential Growth: BaseCost * 1.25^Level
-        // To implement this, we need original base cost.
-        // We can infer base cost if we assume standard starting values or store them.
-        // Let's store baseCost in init or buildings structure.
-        let baseCost = 0;
-        if (name === "AutoClicker") baseCost = 10;
-        else if (name === "Farm") baseCost = 50;
-        else if (name === "Mine") baseCost = 200;
-        else if (name === "Lab") baseCost = 1000;
-
+        // Recalc for UI (nominal)
         b.cost = Math.floor(baseCost * Math.pow(1.25, b.count));
 
         checkQuestProgress("purchases", 1);
@@ -275,11 +317,9 @@ window.buyResearch = function(techId) {
     const tech = allResearch.find(t => t.id === techId);
     if (!tech) return;
 
-    // Check cost (assume clicks for now, or knowledge)
-    // Let's use clicks for early game, knowledge for later
-    const cost = tech.cost;
+    let costMult = getGlobalMultiplier("cost");
+    const cost = Math.floor(tech.cost * costMult);
 
-    // Check requirements
     const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
 
     if (reqMet && !gameState.researched.includes(techId) && gameState.resources.clicks >= cost) {
@@ -290,7 +330,8 @@ window.buyResearch = function(techId) {
 };
 
 // --- Persistence ---
-function saveGame() {
+window.saveGame = function() {
+    gameState.lastSaveTime = Date.now();
     localStorage.setItem("hc_web_save", JSON.stringify(gameState));
     console.log("Game Saved");
 }
@@ -300,18 +341,40 @@ function loadGame() {
     if (save) {
         try {
             const savedState = JSON.parse(save);
-            // Merge logic needed for version updates, simple assign for now
             Object.assign(gameState, savedState);
-             // Restore inventory objects (if they were just IDs, re-link them. But here we save full objects for simplicity)
+
+            // Offline Progress
+            if (gameState.lastSaveTime) {
+                const now = Date.now();
+                const diff = (now - gameState.lastSaveTime) / 1000;
+                if (diff > 60) {
+                    calculateOfflineProgress(diff);
+                }
+            }
         } catch (e) {
             console.error("Failed to load save", e);
         }
     }
 }
 
+function calculateOfflineProgress(seconds) {
+    let production = 0;
+    production += gameState.buildings["AutoClicker"].count * gameState.buildings["AutoClicker"].production;
+    production += gameState.buildings["Farm"].count * gameState.buildings["Farm"].production;
+    production += gameState.buildings["Mine"].count * gameState.buildings["Mine"].production;
+
+    let prodMult = getGlobalMultiplier("production");
+    const clicksGained = Math.floor(production * prodMult * seconds * 0.5);
+
+    if (clicksGained > 0) {
+        gameState.resources.clicks += clicksGained;
+        gameState.resources.lifetimeClicks += clicksGained;
+        alert(`Welcome back! You were gone for ${Math.floor(seconds)} seconds.\nOffline Production: +${clicksGained} Clicks (50% efficiency).`);
+    }
+}
+
 // --- UI Updates ---
 function initUI() {
-    // Populate Research Tree UI (Initial)
     renderResearchTree();
 }
 
@@ -328,18 +391,37 @@ function checkEraProgress() {
 function advanceEra(era) {
     gameState.era = era.name;
     console.log(`Advanced to ${era.name}!`);
-    // Visual update happens in updateUI
-    // Potentially unlock things here
 }
 
 function calculatePrestigeGain() {
-    // Formula: log10(1 + lifetimeClicks) similar to Swift app log10(1 + clicks)
-    // or just sqrt(lifetime / 1M) as per plan.
-    // Swift app used: let se = Int(log10(1.0 + Double(max(clicks, 1))))
-    // Let's match that loosely but maybe scale it.
     if (gameState.resources.lifetimeClicks < 100) return 0;
     return Math.floor(Math.log10(1 + gameState.resources.lifetimeClicks));
 }
+
+window.exportSave = function() {
+    const json = JSON.stringify(gameState);
+    const b64 = btoa(json);
+    prompt("Copy your save code:", b64);
+};
+
+window.importSave = function() {
+    const b64 = prompt("Paste your save code:");
+    if (!b64) return;
+    try {
+        const json = atob(b64);
+        const data = JSON.parse(json);
+        // Basic validation
+        if (data.resources && data.buildings) {
+            Object.assign(gameState, data);
+            saveGame();
+            location.reload();
+        } else {
+            alert("Invalid save file.");
+        }
+    } catch (e) {
+        alert("Error importing save: " + e.message);
+    }
+};
 
 window.performPrestige = function() {
     const gain = calculatePrestigeGain();
@@ -350,34 +432,25 @@ window.performPrestige = function() {
 
     if (!confirm(`Reset game to gain ${gain} Symbols of Era?`)) return;
 
-    // Keep
     const symbols = gameState.resources.symbolsOfEra + gain;
-    const inventory = gameState.inventory; // Relics persist
+    const inventory = gameState.inventory;
     const shards = gameState.resources.relicShards;
-    const lifetime = gameState.resources.lifetimeClicks; // Keep lifetime stats? Or reset for run?
-    // Usually lifetime accumulates.
+    const lifetime = gameState.resources.lifetimeClicks;
 
-    // Reset
     gameState.resources.clicks = 0;
     gameState.resources.money = 0;
     gameState.resources.knowledge = 0;
     gameState.resources.symbolsOfEra = symbols;
     gameState.resources.relicShards = shards;
-    gameState.resources.lifetimeClicks = lifetime; // Persist total
+    gameState.resources.lifetimeClicks = lifetime;
 
     gameState.activeResearch = [];
     gameState.researched = [];
     gameState.activeExpeditions = [];
 
-    // Reset buildings
     for (let key in gameState.buildings) {
         gameState.buildings[key].count = 0;
-        // Reset cost logic?
-        // Initial costs:
-        if (key === "AutoClicker") gameState.buildings[key].cost = 10;
-        if (key === "Farm") gameState.buildings[key].cost = 50;
-        if (key === "Mine") gameState.buildings[key].cost = 200;
-        if (key === "Lab") gameState.buildings[key].cost = 1000;
+        // Reset costs is handled by recalc in loop/buy
     }
 
     gameState.era = "Stone Age";
@@ -388,7 +461,6 @@ window.performPrestige = function() {
 };
 
 function updateUI() {
-    // Apply Era Theme
     const eraInfo = ERA_DATA.find(e => e.name === gameState.era) || ERA_DATA[0];
     document.body.className = eraInfo.className;
 
@@ -397,32 +469,37 @@ function updateUI() {
     document.getElementById("res-shards").innerText = gameState.resources.relicShards;
     document.getElementById("res-se").innerText = gameState.resources.symbolsOfEra;
 
-    // Show prestige info
     const prestigeBtn = document.getElementById("btn-prestige");
     if (prestigeBtn) {
         const gain = calculatePrestigeGain();
         prestigeBtn.innerText = `Prestige (+${gain} SE)`;
     }
 
-    // Update Building buttons
     for (let name in gameState.buildings) {
         const btn = document.getElementById(`btn-${name}`);
         if (btn) {
-            btn.innerText = `Buy ${name} (${gameState.buildings[name].cost}) - Owned: ${gameState.buildings[name].count}`;
-            btn.disabled = gameState.resources.clicks < gameState.buildings[name].cost;
+            // Need to recalc cost for display as state only has current cost?
+            // Actually we are not storing cost in state properly, we recalc it.
+            // Let's recalc for display.
+            let baseCost = 0;
+            if (name === "AutoClicker") baseCost = 10;
+            else if (name === "Farm") baseCost = 50;
+            else if (name === "Mine") baseCost = 200;
+            else if (name === "Lab") baseCost = 1000;
+            const cost = Math.floor(baseCost * Math.pow(1.25, gameState.buildings[name].count));
+
+            // Apply discount for display
+            let costMult = getGlobalMultiplier("cost");
+            const finalCost = Math.floor(cost * costMult);
+
+            btn.innerText = `Buy ${name} (${finalCost}) - Owned: ${gameState.buildings[name].count}`;
+            btn.disabled = gameState.resources.clicks < finalCost;
         }
     }
 
-    // Update Quests
     renderQuests();
-
-    // Update Inventory
     renderInventory();
-
-    // Update Expeditions
     renderExpeditions();
-
-    // Update Research availability
     renderResearchTree();
 }
 
@@ -446,13 +523,10 @@ function renderInventory() {
 }
 
 function renderExpeditions() {
-    // 1. Available List
     const container = document.getElementById("expedition-list");
     if (container) {
-        // Simple optimization: redraw only if count changes? No, state might change.
         container.innerHTML = "";
-        // Show first 5 or filtered by criteria
-        const available = allExpeditions.slice(0, 5); // Just show 5 for now
+        const available = allExpeditions.slice(0, 5);
 
         available.forEach(exp => {
             const div = document.createElement("div");
@@ -467,7 +541,6 @@ function renderExpeditions() {
         });
     }
 
-    // 2. Active List
     const activeContainer = document.getElementById("active-expedition-list");
     if (activeContainer) {
         activeContainer.innerHTML = "";
@@ -492,7 +565,6 @@ function renderExpeditions() {
 }
 
 window.startExpedition = function(expId) {
-    // Limit active
     if (gameState.activeExpeditions.length >= 3) {
         alert("Max 3 active expeditions!");
         return;
@@ -501,11 +573,6 @@ window.startExpedition = function(expId) {
     const template = allExpeditions.find(e => e.id === expId);
     if (!template) return;
 
-    // Check cost (ignoring food for now as we don't have food resource implemented yet, assume clicks or free)
-    // Let's add a placeholder cost check
-    // if (gameState.resources.food < template.cost.food) ...
-
-    // Clone
     const instance = {
         ...template,
         progress: 0,
@@ -513,31 +580,28 @@ window.startExpedition = function(expId) {
     };
 
     gameState.activeExpeditions.push(instance);
-    updateUI(); // Immediate feedback
+    updateUI();
 };
 
 function completeExpedition(exp) {
-    // Find index again to be safe
     const index = gameState.activeExpeditions.indexOf(exp);
     if (index > -1) {
         gameState.activeExpeditions.splice(index, 1);
     }
 
-    // Rewards
     let log = `Expedition '${exp.name}' complete! `;
     if (exp.rewards.relics > 0) {
-        // Generate a random relic
         const relic = allRelics[Math.floor(Math.random() * allRelics.length)];
         gameState.inventory.push(relic);
         log += `Found relic: ${relic.name}. `;
     }
     if (exp.rewards.resources > 0) {
-        gameState.resources.money += exp.rewards.resources; // Money or knowledge
+        gameState.resources.money += exp.rewards.resources;
         log += `Gained ${exp.rewards.resources} Gold.`;
     }
 
     console.log(log);
-    alert(log); // Simple notification
+    alert(log);
     updateUI();
 }
 
@@ -545,8 +609,6 @@ function renderQuests() {
     const container = document.getElementById("quest-list");
     if (!container) return;
 
-    // Inefficient to clear every tick, but simple for now.
-    // Ideally update existing DOM.
     container.innerHTML = "";
 
     if (gameState.quests.length === 0) {
@@ -603,11 +665,6 @@ function renderResearchTree() {
     const container = document.getElementById("research-container");
     if (!container) return;
 
-    // Create nodes if not exist (idempotent check needed or just clear)
-    // For simplicity, we clear and redraw but this resets scroll/state.
-    // Better: update classes. But let's stick to redraw for now.
-
-    // Keep SVG
     let svg = document.getElementById("tech-tree-svg");
     if (!svg) {
         svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -618,14 +675,10 @@ function renderResearchTree() {
         svg.style.pointerEvents = "none";
         container.appendChild(svg);
     }
-    svg.innerHTML = ""; // Clear lines
+    svg.innerHTML = "";
 
-    // Layout Logic (Simple Columns based on Era)
     const columns = {};
     allResearch.forEach(t => {
-        // Find era index
-        const eraIdx = ERA_DATA.findIndex(e => t.era === e.name); // Relies on tech.era matching
-        // Actually content-gen uses strings "Stone Age" etc.
         const eraName = t.era || "Stone Age";
         if (!columns[eraName]) columns[eraName] = [];
         columns[eraName].push(t);
@@ -634,26 +687,24 @@ function renderResearchTree() {
     const ERA_WIDTH = 250;
     const NODE_HEIGHT = 80;
 
-    // Remove old nodes (keep svg)
     Array.from(container.children).forEach(child => {
         if (child.id !== "tech-tree-svg") container.removeChild(child);
     });
 
-    const positions = {}; // map techId -> {x, y}
+    const positions = {};
 
     let colIdx = 0;
     for (const era of ERA_DATA) {
         const techs = columns[era.name] || [];
         techs.forEach((tech, rowIdx) => {
             const x = 50 + colIdx * ERA_WIDTH;
-            const y = 50 + rowIdx * (NODE_HEIGHT + 20); // + margin
+            const y = 50 + rowIdx * (NODE_HEIGHT + 20);
             positions[tech.id] = {x, y};
 
             const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
             const isDone = gameState.researched.includes(tech.id);
-            // Show if it's done, or if requirements are met, or if it's a direct child of a done/available tech (simple logic: reqs met -> available)
             const isAvailable = reqMet;
-            const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r)); // Peek next
+            const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r));
 
             if (isVisible) {
                 const div = document.createElement("div");
@@ -668,11 +719,9 @@ function renderResearchTree() {
         colIdx++;
     }
 
-    // Draw Lines
     allResearch.forEach(tech => {
         if (!positions[tech.id]) return;
 
-        // Check visibility of this node to decide if we draw lines TO it
         const reqMet = tech.requirements.every(r => gameState.researched.includes(r));
         const isDone = gameState.researched.includes(tech.id);
         const isVisible = isDone || reqMet || tech.requirements.some(r => gameState.researched.includes(r));
@@ -684,9 +733,9 @@ function renderResearchTree() {
                     const end = positions[tech.id];
 
                     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    line.setAttribute("x1", start.x + 150); // right side of node
-                    line.setAttribute("y1", start.y + 30); // center
-                    line.setAttribute("x2", end.x); // left side of node
+                    line.setAttribute("x1", start.x + 150);
+                    line.setAttribute("y1", start.y + 30);
+                    line.setAttribute("x2", end.x);
                     line.setAttribute("y2", end.y + 30);
                     line.setAttribute("class", "tech-line");
                     if (isDone) line.classList.add("active");
