@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History Clicker Web</title>
+    <link rel="stylesheet" href="style.css">
+    <script type="module" src="script.js"></script>
+    <script type="module" src="devpanel.js"></script>
+</head>
+<body>
+    <div id="game-container">
+        <!-- Sidebar: Resources & Stats -->
+        <div id="sidebar">
+            <h2>Resources</h2>
+            <div class="resource">
+                <span>Clicks:</span>
+                <span id="res-clicks">0</span>
+            </div>
+            <div class="resource">
+                <span>Knowledge:</span>
+                <span id="res-knowledge">0</span>
+            </div>
+            <div class="resource">
+                <span>Relic Shards:</span>
+                <span id="res-shards">0</span>
+            </div>
+            <div class="resource">
+                <span>Symbols of Era:</span>
+                <span id="res-se">0</span>
+            </div>
+
+            <hr>
+
+            <h3>Inventory</h3>
+            <div id="inventory-list">
+                <!-- Items go here -->
+                <p>No relics yet.</p>
+            </div>
+        </div>
+
+        <!-- Main Area: Action & Buildings -->
+        <div id="main-area">
+            <h1>History Clicker</h1>
+
+            <button id="click-btn" onclick="manualClick()">
+                CLICK!
+            </button>
+
+            <div id="buildings-container">
+                <h3>Buildings</h3>
+                <button id="btn-AutoClicker" onclick="buyBuilding('AutoClicker')">Buy AutoClicker (10)</button>
+                <button id="btn-Farm" onclick="buyBuilding('Farm')">Buy Farm (50)</button>
+                <button id="btn-Mine" onclick="buyBuilding('Mine')">Buy Mine (200)</button>
+                <button id="btn-Lab" onclick="buyBuilding('Lab')">Buy Lab (1000)</button>
+            </div>
+
+            <div id="tabs">
+                <button class="tab-btn active" onclick="showTab('research')">Research</button>
+                <button class="tab-btn" onclick="showTab('expeditions')">Expeditions</button>
+                <button class="tab-btn" onclick="showTab('crafting')">Crafting</button>
+            </div>
+
+            <div id="tab-content">
+                <div id="research-view" class="tab-view active">
+                    <h3>Technology Tree</h3>
+                    <div id="research-container" class="tree-container">
+                        <svg id="tech-tree-svg" style="width: 100%; height: 600px; position: absolute; pointer-events: none;"></svg>
+                        <!-- Tech Nodes -->
+                    </div>
+                </div>
+
+                <div id="expeditions-view" class="tab-view" style="display:none;">
+                    <h3>Available Expeditions</h3>
+                    <div id="expedition-list">
+                        <!-- Expeditions -->
+                        <p>Unlock more techs to reveal expeditions.</p>
+                    </div>
+                </div>
+
+                <div id="crafting-view" class="tab-view" style="display:none;">
+                    <h3>Crafting Bench</h3>
+                    <div id="recipe-list">
+                        <!-- Recipes -->
+                        <p>No recipes known.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Info / Logs -->
+        <div id="right-panel">
+            <h3>Log</h3>
+            <div id="game-log">
+                <p>Welcome to History Clicker Web!</p>
+            </div>
+
+            <hr>
+
+            <h3>Dev Tools</h3>
+            <button onclick="dev_addClicks()">+1000 Clicks</button>
+            <button onclick="dev_reset()">Reset Save</button>
+
+            <hr>
+
+            <h3>Prestige</h3>
+            <button id="btn-prestige" onclick="performPrestige()">Prestige (+0 SE)</button>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-view').forEach(el => el.style.display = 'none');
+            document.getElementById(`${tabName}-view`).style.display = 'block';
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            // Find button logic needed here if class toggle desired
+        }
+    </script>
+</body>
+</html>
