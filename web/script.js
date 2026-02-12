@@ -1,3 +1,4 @@
+console.log("Script loaded");
 // script.js
 import { generateRelics, generateResearch, generateIdeas, generateExpeditions, generateRecipes } from './content-gen.js';
 
@@ -5,6 +6,7 @@ import { generateRelics, generateResearch, generateIdeas, generateExpeditions, g
 let gameState = {
     resources: {
         clicks: 0,
+        lifetimeClicks: 0,
         money: 0,
         knowledge: 0,
         symbolsOfEra: 0,
@@ -31,6 +33,19 @@ let gameState = {
         autoSave: true
     }
 };
+
+// --- Era Config ---
+const ERA_DATA = [
+    { name: "Stone Age", threshold: 0, className: "era-stone" },
+    { name: "Bronze Age", threshold: 1000, className: "era-bronze" }, // Placeholder values
+    { name: "Iron Age", threshold: 5000, className: "era-iron" },
+    { name: "Middle Ages", threshold: 20000, className: "era-middle" },
+    { name: "Renaissance", threshold: 50000, className: "era-renaissance" },
+    { name: "Industrial Age", threshold: 150000, className: "era-industrial" },
+    { name: "Modern Age", threshold: 500000, className: "era-modern" },
+    { name: "Information Age", threshold: 1000000, className: "era-info" },
+    { name: "Future Age", threshold: 5000000, className: "era-future" }
+];
 
 // --- Content ---
 let allRelics = [];
@@ -86,6 +101,9 @@ function startGameLoop() {
 }
 
 function tick(dt) {
+    // Era Progress
+    checkEraProgress();
+
     // Production
     let production = 0;
     production += gameState.buildings["AutoClicker"].count * gameState.buildings["AutoClicker"].production;
@@ -100,6 +118,7 @@ function tick(dt) {
     let clickMult = getGlobalMultiplier("click");
 
     gameState.resources.clicks += production * prodMult * dt;
+    gameState.resources.lifetimeClicks += production * prodMult * dt;
     gameState.resources.knowledge += knowledgeProd * dt;
 
     // Expedition Progress
@@ -141,6 +160,7 @@ window.manualClick = function() {
     let clickValue = 1 + (gameState.inventory.length * 0.1); // Base + relic bonus
     clickValue *= getGlobalMultiplier("click");
     gameState.resources.clicks += clickValue;
+    gameState.resources.lifetimeClicks += clickValue;
 
     // Chance to find relic shard?
     if (Math.random() < 0.05) {
@@ -203,10 +223,94 @@ function initUI() {
     renderResearchTree();
 }
 
+function checkEraProgress() {
+    let currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
+    if (currentEraIdx < ERA_DATA.length - 1) {
+        const nextEra = ERA_DATA[currentEraIdx + 1];
+        if (gameState.resources.clicks >= nextEra.threshold) {
+            advanceEra(nextEra);
+        }
+    }
+}
+
+function advanceEra(era) {
+    gameState.era = era.name;
+    console.log(`Advanced to ${era.name}!`);
+    // Visual update happens in updateUI
+    // Potentially unlock things here
+}
+
+function calculatePrestigeGain() {
+    // Formula: log10(1 + lifetimeClicks) similar to Swift app log10(1 + clicks)
+    // or just sqrt(lifetime / 1M) as per plan.
+    // Swift app used: let se = Int(log10(1.0 + Double(max(clicks, 1))))
+    // Let's match that loosely but maybe scale it.
+    if (gameState.resources.lifetimeClicks < 100) return 0;
+    return Math.floor(Math.log10(1 + gameState.resources.lifetimeClicks));
+}
+
+window.performPrestige = function() {
+    const gain = calculatePrestigeGain();
+    if (gain <= 0) {
+        alert("Not enough progress to prestige!");
+        return;
+    }
+
+    if (!confirm(`Reset game to gain ${gain} Symbols of Era?`)) return;
+
+    // Keep
+    const symbols = gameState.resources.symbolsOfEra + gain;
+    const inventory = gameState.inventory; // Relics persist
+    const shards = gameState.resources.relicShards;
+    const lifetime = gameState.resources.lifetimeClicks; // Keep lifetime stats? Or reset for run?
+    // Usually lifetime accumulates.
+
+    // Reset
+    gameState.resources.clicks = 0;
+    gameState.resources.money = 0;
+    gameState.resources.knowledge = 0;
+    gameState.resources.symbolsOfEra = symbols;
+    gameState.resources.relicShards = shards;
+    gameState.resources.lifetimeClicks = lifetime; // Persist total
+
+    gameState.activeResearch = [];
+    gameState.researched = [];
+    gameState.activeExpeditions = [];
+
+    // Reset buildings
+    for (let key in gameState.buildings) {
+        gameState.buildings[key].count = 0;
+        // Reset cost logic?
+        // Initial costs:
+        if (key === "AutoClicker") gameState.buildings[key].cost = 10;
+        if (key === "Farm") gameState.buildings[key].cost = 50;
+        if (key === "Mine") gameState.buildings[key].cost = 200;
+        if (key === "Lab") gameState.buildings[key].cost = 1000;
+    }
+
+    gameState.era = "Stone Age";
+
+    saveGame();
+    updateUI();
+    console.log("Prestige performed!");
+};
+
 function updateUI() {
+    // Apply Era Theme
+    const eraInfo = ERA_DATA.find(e => e.name === gameState.era) || ERA_DATA[0];
+    document.body.className = eraInfo.className;
+
     document.getElementById("res-clicks").innerText = Math.floor(gameState.resources.clicks);
     document.getElementById("res-knowledge").innerText = Math.floor(gameState.resources.knowledge);
     document.getElementById("res-shards").innerText = gameState.resources.relicShards;
+    document.getElementById("res-se").innerText = gameState.resources.symbolsOfEra;
+
+    // Show prestige info
+    const prestigeBtn = document.getElementById("btn-prestige");
+    if (prestigeBtn) {
+        const gain = calculatePrestigeGain();
+        prestigeBtn.innerText = `Prestige (+${gain} SE)`;
+    }
 
     // Update Building buttons
     for (let name in gameState.buildings) {
@@ -225,20 +329,96 @@ function renderResearchTree() {
     const container = document.getElementById("research-container");
     if (!container) return;
 
-    // Simple list for now
-    container.innerHTML = "";
-    allResearch.forEach(tech => {
-        // Show if requirements met or already researched
-        const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
-        const isDone = gameState.researched.includes(tech.id);
+    // Create nodes if not exist (idempotent check needed or just clear)
+    // For simplicity, we clear and redraw but this resets scroll/state.
+    // Better: update classes. But let's stick to redraw for now.
 
-        if (reqMet || isDone) { // Or visible but locked
-             const div = document.createElement("div");
-             div.className = `tech-node ${isDone ? 'researched' : ''}`;
-             div.innerText = `${tech.name} (${tech.cost})`;
-             div.onclick = () => window.buyResearch(tech.id);
-             if (isDone) div.style.backgroundColor = "#4caf50";
-             container.appendChild(div);
+    // Keep SVG
+    let svg = document.getElementById("tech-tree-svg");
+    if (!svg) {
+        svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.id = "tech-tree-svg";
+        svg.style.width = "100%";
+        svg.style.height = "100%";
+        svg.style.position = "absolute";
+        svg.style.pointerEvents = "none";
+        container.appendChild(svg);
+    }
+    svg.innerHTML = ""; // Clear lines
+
+    // Layout Logic (Simple Columns based on Era)
+    const columns = {};
+    allResearch.forEach(t => {
+        // Find era index
+        const eraIdx = ERA_DATA.findIndex(e => t.era === e.name); // Relies on tech.era matching
+        // Actually content-gen uses strings "Stone Age" etc.
+        const eraName = t.era || "Stone Age";
+        if (!columns[eraName]) columns[eraName] = [];
+        columns[eraName].push(t);
+    });
+
+    const ERA_WIDTH = 250;
+    const NODE_HEIGHT = 80;
+
+    // Remove old nodes (keep svg)
+    Array.from(container.children).forEach(child => {
+        if (child.id !== "tech-tree-svg") container.removeChild(child);
+    });
+
+    const positions = {}; // map techId -> {x, y}
+
+    let colIdx = 0;
+    for (const era of ERA_DATA) {
+        const techs = columns[era.name] || [];
+        techs.forEach((tech, rowIdx) => {
+            const x = 50 + colIdx * ERA_WIDTH;
+            const y = 50 + rowIdx * (NODE_HEIGHT + 20); // + margin
+            positions[tech.id] = {x, y};
+
+            const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
+            const isDone = gameState.researched.includes(tech.id);
+            // Show if it's done, or if requirements are met, or if it's a direct child of a done/available tech (simple logic: reqs met -> available)
+            const isAvailable = reqMet;
+            const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r)); // Peek next
+
+            if (isVisible) {
+                const div = document.createElement("div");
+                div.className = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
+                div.innerText = `${tech.name}\n(${tech.cost})`;
+                div.style.left = `${x}px`;
+                div.style.top = `${y}px`;
+                div.onclick = () => window.buyResearch(tech.id);
+                container.appendChild(div);
+            }
+        });
+        colIdx++;
+    }
+
+    // Draw Lines
+    allResearch.forEach(tech => {
+        if (!positions[tech.id]) return;
+
+        // Check visibility of this node to decide if we draw lines TO it
+        const reqMet = tech.requirements.every(r => gameState.researched.includes(r));
+        const isDone = gameState.researched.includes(tech.id);
+        const isVisible = isDone || reqMet || tech.requirements.some(r => gameState.researched.includes(r));
+
+        if (isVisible) {
+            tech.requirements.forEach(reqId => {
+                if (positions[reqId]) {
+                    const start = positions[reqId];
+                    const end = positions[tech.id];
+
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", start.x + 150); // right side of node
+                    line.setAttribute("y1", start.y + 30); // center
+                    line.setAttribute("x2", end.x); // left side of node
+                    line.setAttribute("y2", end.y + 30);
+                    line.setAttribute("class", "tech-line");
+                    if (isDone) line.classList.add("active");
+                    svg.appendChild(line);
+                }
+            });
         }
     });
 }
