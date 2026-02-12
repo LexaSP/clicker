@@ -18,6 +18,7 @@ let gameState = {
     ideas: [], // Unlocked ideas
     expeditions: [], // Available
     activeExpeditions: [],
+    quests: [], // Daily quests
 
     // Upgrades / Buildings
     buildings: {
@@ -72,6 +73,11 @@ async function init() {
 
     // Load Save if exists
     loadGame();
+
+    // Generate quests if needed (daily check simulated)
+    if (gameState.quests.length === 0) {
+        generateDailyQuests();
+    }
 
     // Start Loop
     startGameLoop();
@@ -137,6 +143,76 @@ function tick(dt) {
     }
 }
 
+function generateDailyQuests() {
+    gameState.quests = [];
+    // 3 Quests: Clicks, Purchases, Era (or simply clicks)
+
+    // Quest 1: Clicks
+    const clickTarget = 500 + Math.floor(gameState.resources.lifetimeClicks / 100);
+    gameState.quests.push({
+        id: "q_clicks",
+        title: `Perform ${clickTarget} Manual Clicks`,
+        type: "clicks",
+        target: clickTarget,
+        progress: 0,
+        reward: { clicks: Math.floor(clickTarget * 0.5), se: 1 },
+        completed: false,
+        claimed: false
+    });
+
+    // Quest 2: Buy Buildings
+    gameState.quests.push({
+        id: "q_buy",
+        title: "Buy 5 Buildings",
+        type: "purchases",
+        target: 5,
+        progress: 0,
+        reward: { clicks: 500, se: 1 },
+        completed: false,
+        claimed: false
+    });
+
+    // Quest 3: Advance Era (if possible) or just generic 'Collect 10 Relic Shards'
+    gameState.quests.push({
+        id: "q_shards",
+        title: "Find 3 Relic Shards",
+        type: "shards",
+        target: 3,
+        progress: 0,
+        reward: { knowledge: 1000, se: 2 },
+        completed: false,
+        claimed: false
+    });
+
+    console.log("Daily Quests Generated:", gameState.quests);
+}
+
+function checkQuestProgress(type, amount = 1) {
+    gameState.quests.forEach(q => {
+        if (!q.completed && q.type === type) {
+            q.progress += amount;
+            if (q.progress >= q.target) {
+                q.progress = q.target;
+                q.completed = true;
+                // Notification?
+                console.log(`Quest Completed: ${q.title}`);
+            }
+        }
+    });
+}
+
+window.claimQuest = function(questId) {
+    const q = gameState.quests.find(q => q.id === questId);
+    if (q && q.completed && !q.claimed) {
+        q.claimed = true;
+        // Award
+        if (q.reward.clicks) gameState.resources.clicks += q.reward.clicks;
+        if (q.reward.knowledge) gameState.resources.knowledge += q.reward.knowledge;
+        if (q.reward.se) gameState.resources.symbolsOfEra += q.reward.se;
+        updateUI();
+    }
+};
+
 // --- Mechanics ---
 function getGlobalMultiplier(type) {
     let mult = 1.0;
@@ -162,9 +238,12 @@ window.manualClick = function() {
     gameState.resources.clicks += clickValue;
     gameState.resources.lifetimeClicks += clickValue;
 
+    checkQuestProgress("clicks", 1);
+
     // Chance to find relic shard?
     if (Math.random() < 0.05) {
         gameState.resources.relicShards++;
+        checkQuestProgress("shards", 1);
     }
     updateUI();
 };
@@ -174,7 +253,20 @@ window.buyBuilding = function(name) {
     if (gameState.resources.clicks >= b.cost) {
         gameState.resources.clicks -= b.cost;
         b.count++;
-        b.cost = Math.floor(b.cost * 1.15);
+
+        // Correct Exponential Growth: BaseCost * 1.25^Level
+        // To implement this, we need original base cost.
+        // We can infer base cost if we assume standard starting values or store them.
+        // Let's store baseCost in init or buildings structure.
+        let baseCost = 0;
+        if (name === "AutoClicker") baseCost = 10;
+        else if (name === "Farm") baseCost = 50;
+        else if (name === "Mine") baseCost = 200;
+        else if (name === "Lab") baseCost = 1000;
+
+        b.cost = Math.floor(baseCost * Math.pow(1.25, b.count));
+
+        checkQuestProgress("purchases", 1);
         updateUI();
     }
 };
@@ -321,8 +413,69 @@ function updateUI() {
         }
     }
 
+    // Update Quests
+    renderQuests();
+
     // Update Research availability
     renderResearchTree();
+}
+
+function renderQuests() {
+    const container = document.getElementById("quest-list");
+    if (!container) return;
+
+    // Inefficient to clear every tick, but simple for now.
+    // Ideally update existing DOM.
+    container.innerHTML = "";
+
+    if (gameState.quests.length === 0) {
+        container.innerHTML = "<p>No active quests.</p>";
+        return;
+    }
+
+    gameState.quests.forEach(q => {
+        const div = document.createElement("div");
+        div.className = `quest-card ${q.completed ? 'completed' : ''} ${q.claimed ? 'claimed' : ''}`;
+
+        const title = document.createElement("div");
+        title.className = "quest-title";
+        title.innerText = q.title;
+        div.appendChild(title);
+
+        const progContainer = document.createElement("div");
+        progContainer.className = "quest-progress";
+        const bar = document.createElement("div");
+        bar.className = "quest-bar";
+        const pct = Math.min(100, Math.floor((q.progress / q.target) * 100));
+        bar.style.width = `${pct}%`;
+        progContainer.appendChild(bar);
+        div.appendChild(progContainer);
+
+        const status = document.createElement("div");
+        status.style.fontSize = "10px";
+        status.style.textAlign = "right";
+        status.innerText = `${q.progress} / ${q.target}`;
+        div.appendChild(status);
+
+        if (q.completed && !q.claimed) {
+            const btn = document.createElement("button");
+            btn.className = "quest-reward-btn";
+            let rewardText = "";
+            if (q.reward.clicks) rewardText += `+${q.reward.clicks} Clicks `;
+            if (q.reward.se) rewardText += `+${q.reward.se} SE`;
+            btn.innerText = `Claim: ${rewardText}`;
+            btn.onclick = () => window.claimQuest(q.id);
+            div.appendChild(btn);
+        } else if (q.claimed) {
+            const lbl = document.createElement("div");
+            lbl.innerText = "Claimed";
+            lbl.style.textAlign = "center";
+            lbl.style.fontStyle = "italic";
+            div.appendChild(lbl);
+        }
+
+        container.appendChild(div);
+    });
 }
 
 function renderResearchTree() {
