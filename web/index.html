@@ -143,12 +143,48 @@
         </div>
     </div>
 
+    <!-- Mobile Navigation Bar -->
+    <div id="mobile-nav">
+        <button onclick="showMobileSection('sidebar')">Resources</button>
+        <button onclick="showMobileSection('main-area')">Game</button>
+        <button onclick="showMobileSection('right-panel')">Menu</button>
+    </div>
+
     <script>
         function showTab(tabName) {
             document.querySelectorAll('.tab-view').forEach(el => el.style.display = 'none');
             document.getElementById(`${tabName}-view`).style.display = 'block';
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-            // Find button logic needed here if class toggle desired
+
+            // Remove active class from all tab buttons in the main area
+            const tabs = document.getElementById('tabs');
+            if (tabs) {
+                Array.from(tabs.children).forEach(btn => {
+                    if (btn.innerText.toLowerCase().includes(tabName)) { // heuristic
+                         btn.classList.add('active');
+                    } else {
+                         btn.classList.remove('active');
+                    }
+                });
+            }
+        }
+
+        function showMobileSection(sectionId) {
+            if (window.innerWidth > 768) return; // Only for mobile
+
+            const sections = ['sidebar', 'main-area', 'right-panel'];
+            sections.forEach(id => {
+                document.getElementById(id).style.display = (id === sectionId) ? 'flex' : 'none';
+                // Note: sidebar/right-panel display might be block, main-area is flex.
+                if (id === sectionId) {
+                     if (id === 'main-area') document.getElementById(id).style.display = 'flex';
+                     else document.getElementById(id).style.display = 'block';
+                }
+            });
+        }
+
+        // Init mobile view
+        if (window.innerWidth <= 768) {
+            showMobileSection('main-area');
         }
     </script>
 </body>
