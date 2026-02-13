@@ -58,7 +58,7 @@ export function generateRelics() {
 // We can simulate a tech tree with eras
 const eras = ["Stone Age", "Bronze Age", "Iron Age", "Middle Ages", "Renaissance", "Industrial Age", "Modern Age", "Information Age", "Future Age", "Singularity"];
 
-export function generateResearch() {
+export function generateResearch() { console.log("Generating Research...");
     const research = [];
     let idCounter = 1;
 
@@ -78,11 +78,15 @@ export function generateResearch() {
 
             const cost = Math.floor(100 * Math.pow(1.5, (eraIndex * 12 + i)));
 
+            // Assign type randomly or by pattern
+            const type = (i % 3 === 0) ? "culture" : "knowledge";
+
             research.push({
                 id: techId,
                 name: name,
                 era: era,
                 cost: cost,
+                costType: type, // New field
                 requirements: requirements,
                 effect: { type: "production_multiplier", value: 1.2 } // 20% boost per tech
             });
@@ -130,14 +134,43 @@ export function generateExpeditions() {
     let idCounter = 1;
 
     locations.forEach(loc => {
-        diffs.forEach(diff => {
+        // Generate variations: Short, Medium, Long, Epic
+        const types = [
+            { name: "Short", duration: 1800, mult: 1.0 }, // 30 mins
+            { name: "Medium", duration: 14400, mult: 0.8 }, // 4 hours, 80% efficiency
+            { name: "Long", duration: 43200, mult: 0.6 }, // 12 hours, 60% efficiency
+            { name: "Epic", duration: 86400, mult: 0.5 } // 24 hours, 50% efficiency
+        ];
+
+        types.forEach(type => {
+            let resourceType = "food";
+            if (loc === "Forest") resourceType = "wood";
+            if (loc === "Mountain" || loc === "Cave") resourceType = "stone";
+            if (loc === "Desert") resourceType = "relicShards";
+
+            // Risk: 15% to 90%
+            const risk = randomInt(15, 90);
+
+            // Base reward scaled by duration * efficiency * risk bonus
+            // Risk Bonus: 1 + (risk / 100) * 2. Max 90% risk -> ~2.8x reward.
+            const riskBonus = 1 + (risk / 100) * 2;
+            const baseAmount = 100; // Base loot per 30 mins (scaled)
+            const durationRatio = type.duration / 1800; // 1, 8, 24, 48 intervals
+
+            const lootAmount = Math.floor(baseAmount * durationRatio * type.mult * riskBonus);
+
             expeditions.push({
                 id: `exp_${idCounter++}`,
-                name: `${diff} Expedition to ${loc}`,
-                duration: randomInt(10, 300), // seconds
-                difficulty: diff,
-                cost: { food: randomInt(100, 5000) },
-                rewards: { relics: randomInt(0, 1), resources: randomInt(1000, 100000) }
+                name: `${type.name} Expedition to ${loc}`,
+                duration: type.duration,
+                difficulty: `${risk}% Risk`,
+                risk: risk,
+                cost: { food: Math.floor(50 * durationRatio) },
+                rewards: {
+                    relics: (risk > 50 && Math.random() < 0.5) ? 1 : 0,
+                    money: Math.floor(500 * durationRatio * type.mult),
+                    loot: { type: resourceType, amount: lootAmount }
+                }
             });
         });
     });

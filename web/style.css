@@ -1,50 +1,308 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
+    transition: background-color 1s ease;
+}
 
+/* --- Layout --- */
+#game-container {
+    display: flex;
+    height: 100vh;
+}
+
+#sidebar {
+    width: 250px;
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 20px;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    overflow-y: auto;
+}
+
+#main-area {
+    flex: 1;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow-y: hidden; /* For inner scrolling */
+}
+
+#right-panel {
+    width: 300px;
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 20px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    overflow-y: auto;
+}
+
+/* --- Eras --- */
+.era-stone { background-color: #5d4037; } /* Brown */
+.era-bronze { background-color: #d35400; } /* Orange */
+.era-iron { background-color: #7f8c8d; } /* Grey */
+.era-middle { background-color: #2c3e50; } /* Dark Blue */
+.era-renaissance { background-color: #8e44ad; } /* Purple */
+.era-industrial { background-color: #34495e; } /* Slate */
+.era-modern { background-color: #2980b9; } /* Blue */
+.era-info { background-color: #16a085; } /* Teal */
+.era-future { background-color: #000000; background-image: radial-gradient(#1a1a1a 15%, transparent 16%), radial-gradient(#1a1a1a 15%, transparent 16%); background-size: 60px 60px; background-position: 0 0, 30px 30px; }
+
+/* --- Components --- */
+h1, h2, h3, h4 { margin-top: 0; }
+hr { border: 0; border-top: 1px solid rgba(255, 255, 255, 0.2); margin: 15px 0; }
+button {
+    background-color: #e67e22;
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 14px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+}
+button:hover { background-color: #d35400; }
+button:disabled { background-color: #7f8c8d; cursor: not-allowed; }
+
+.resource {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    font-size: 14px;
+}
+
+/* --- Click Button --- */
+#click-btn {
+    font-size: 24px;
+    padding: 20px 40px;
+    background-color: #2ecc71;
+    width: 100%;
+    margin-bottom: 20px;
+    box-shadow: 0 5px #27ae60;
+}
+#click-btn:active {
+    box-shadow: 0 2px #27ae60;
+    transform: translateY(3px);
+}
+
+/* --- Tabs --- */
+#tabs {
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.tab-btn {
+    background-color: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    margin: 0;
+    padding: 10px 20px;
+}
+.tab-btn.active {
+    border-bottom: 3px solid #3498db;
+    color: #3498db;
+}
+.tab-view {
+    flex: 1;
+    overflow-y: auto;
+    position: relative;
+}
+
+/* --- Cards (Relic, Quest, Recipe) --- */
+.relic-card, .quest-card, .recipe-card, .expedition-card {
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+/* Rarities */
+.rarity-common { border-left: 4px solid #bdc3c7; }
+.rarity-uncommon { border-left: 4px solid #2ecc71; }
+.rarity-rare { border-left: 4px solid #3498db; }
+.rarity-epic { border-left: 4px solid #9b59b6; }
+.rarity-legendary { border-left: 4px solid #f1c40f; }
+
+/* Quests */
+.quest-bar {
+    height: 6px;
+    background-color: #2ecc71;
+    border-radius: 3px;
+    margin-top: 5px;
+}
+.quest-progress {
+    background-color: #444;
+    border-radius: 3px;
+    height: 6px;
+    width: 100%;
+    margin-top: 5px;
+}
+.quest-card.completed { border-color: #2ecc71; }
+.quest-card.claimed { opacity: 0.5; }
+.quest-reward-btn {
+    background-color: #27ae60;
+    padding: 4px 8px;
+    font-size: 11px;
+    margin-top: 5px;
+    width: 100%;
+}
+
+/* Tech Tree */
 .tree-container {
     position: relative;
     width: 100%;
-    height: 600px; /* Or variable height */
+    height: 100%;
     overflow: auto;
-    border: 1px solid #555;
     background-color: rgba(0,0,0,0.2);
+    border: 1px solid #444;
 }
-
 .tech-node {
-    position: absolute; /* Needed for manual positioning */
-    width: 150px;
+    position: absolute;
+    width: 140px;
     height: 60px;
     background-color: #34495e;
-    color: #ecf0f1;
+    border: 2px solid #7f8c8d;
     border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    font-size: 12px;
+    font-size: 11px;
     cursor: pointer;
-    border: 2px solid #2c3e50;
-    z-index: 2;
+    z-index: 10;
+    transition: transform 0.2s, box-shadow 0.2s;
+    user-select: none;
+    padding: 5px;
 }
-
-.tech-node.researched {
-    background-color: #27ae60;
-    border-color: #2ecc71;
-}
-
-.tech-node.locked {
-    background-color: #7f8c8d;
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-#tech-tree-svg {
-    z-index: 1;
-}
+.tech-node.available { border-color: #f39c12; background-color: #2c3e50; }
+.tech-node.researched { border-color: #2ecc71; background-color: #27ae60; color: white; }
+.tech-node.locked { opacity: 0.5; pointer-events: none; }
+.tech-node:hover { transform: scale(1.05); z-index: 11; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
 
 .tech-line {
     stroke: #7f8c8d;
     stroke-width: 2;
 }
-
 .tech-line.active {
     stroke: #2ecc71;
+    stroke-width: 3;
+}
+
+/* --- Active Mission Card (Mobile Friendly) --- */
+.active-mission {
+    background-color: #2980b9;
+    padding: 15px;
+    border: 2px solid #3498db;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    margin-bottom: 15px;
+    position: relative;
+}
+.active-mission:active { transform: scale(0.98); }
+.expedition-progress-bg {
+    background-color: #1a252f;
+    border-radius: 4px;
+    margin-top: 5px;
+    overflow: hidden;
+}
+.expedition-progress-fill {
+    height: 100%;
+    background-color: #f1c40f;
+    transition: width 0.1s linear;
+}
+
+.expedition-card button {
+    background-color: #27ae60;
+    padding: 8px;
+    width: 100%;
+    margin-top: 5px;
+}
+
+/* --- Mobile --- */
+#mobile-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background-color: #2c3e50;
+    border-top: 1px solid #7f8c8d;
+    justify-content: space-around;
+    padding: 10px 0;
+    z-index: 1000;
+}
+#mobile-nav button {
+    flex: 1;
+    margin: 0 5px;
+    font-size: 12px;
+    background-color: #34495e;
+}
+#mobile-nav button:active {
+    background-color: #2980b9;
+}
+
+@media (max-width: 768px) {
+    #game-container {
+        flex-direction: column;
+        height: calc(100vh - 60px); /* Leave space for nav */
+    }
+
+    #sidebar, #right-panel {
+        width: 100%;
+        height: calc(100vh - 60px);
+        position: absolute; /* Take over screen */
+        top: 0;
+        left: 0;
+        z-index: 100;
+        background-color: #2c3e50; /* Ensure opaque background */
+        display: none; /* Controlled by JS */
+        overflow-y: auto;
+        box-sizing: border-box; /* Include padding in width */
+    }
+
+    #main-area {
+        width: 100%;
+        height: calc(100vh - 60px);
+        padding-bottom: 0;
+        box-sizing: border-box;
+    }
+
+    #mobile-nav {
+        display: flex;
+    }
+
+    /* Make buttons bigger for touch */
+    button {
+        padding: 12px;
+        font-size: 16px;
+        margin: 5px 0;
+        width: 100%; /* Full width buttons in lists */
+    }
+
+    /* Exceptions for inline buttons if any */
+    .resource button { width: auto; }
+
+    /* Adjust grid/flex for items */
+    .relic-card, .quest-card {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* Tech Tree scaling */
+    #tech-tree-svg {
+        height: 100vh; /* Allow scrolling */
+    }
+    #research-container {
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+    }
 }

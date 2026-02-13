@@ -22,12 +22,20 @@
                 <span id="res-knowledge">0</span>
             </div>
             <div class="resource">
+                <span>Culture:</span>
+                <span id="res-culture">0</span>
+            </div>
+            <div class="resource">
                 <span>Relic Shards:</span>
                 <span id="res-shards">0</span>
             </div>
             <div class="resource">
                 <span>Symbols of Era:</span>
                 <span id="res-se">0</span>
+            </div>
+
+            <div id="loot-resources" style="font-size: 12px; margin-top: 5px; color: #aaa;">
+                <!-- Populated by JS -->
             </div>
 
             <hr>
@@ -76,6 +84,13 @@
                         <!-- Expeditions -->
                         <p>Unlock more techs to reveal expeditions.</p>
                     </div>
+
+                    <hr>
+
+                    <h3>Active Expeditions</h3>
+                    <div id="active-expedition-list">
+                        <p>No active expeditions.</p>
+                    </div>
                 </div>
 
                 <div id="crafting-view" class="tab-view" style="display:none;">
@@ -102,18 +117,74 @@
             <button onclick="dev_reset()">Reset Save</button>
 
             <hr>
+            <h3>Settings</h3>
+            <button onclick="exportSave()">Export Save</button>
+            <button onclick="importSave()">Import Save</button>
+
+            <hr>
 
             <h3>Prestige</h3>
             <button id="btn-prestige" onclick="performPrestige()">Prestige (+0 SE)</button>
+
+            <div id="prestige-upgrades" style="margin-top: 10px; border-top: 1px dashed #555; padding-top: 5px;">
+                <h4>Ascension Upgrades</h4>
+                <div id="ascension-list">
+                    <!-- Buttons will be injected here -->
+                </div>
+            </div>
+
+            <hr>
+
+            <h3>Daily Quests</h3>
+            <div id="quest-list">
+                <!-- Quests go here -->
+                <p>No quests available.</p>
+            </div>
         </div>
+    </div>
+
+    <!-- Mobile Navigation Bar -->
+    <div id="mobile-nav">
+        <button onclick="showMobileSection('sidebar')">Resources</button>
+        <button onclick="showMobileSection('main-area')">Game</button>
+        <button onclick="showMobileSection('right-panel')">Menu</button>
     </div>
 
     <script>
         function showTab(tabName) {
             document.querySelectorAll('.tab-view').forEach(el => el.style.display = 'none');
             document.getElementById(`${tabName}-view`).style.display = 'block';
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-            // Find button logic needed here if class toggle desired
+
+            // Remove active class from all tab buttons in the main area
+            const tabs = document.getElementById('tabs');
+            if (tabs) {
+                Array.from(tabs.children).forEach(btn => {
+                    if (btn.innerText.toLowerCase().includes(tabName)) { // heuristic
+                         btn.classList.add('active');
+                    } else {
+                         btn.classList.remove('active');
+                    }
+                });
+            }
+        }
+
+        function showMobileSection(sectionId) {
+            if (window.innerWidth > 768) return; // Only for mobile
+
+            const sections = ['sidebar', 'main-area', 'right-panel'];
+            sections.forEach(id => {
+                document.getElementById(id).style.display = (id === sectionId) ? 'flex' : 'none';
+                // Note: sidebar/right-panel display might be block, main-area is flex.
+                if (id === sectionId) {
+                     if (id === 'main-area') document.getElementById(id).style.display = 'flex';
+                     else document.getElementById(id).style.display = 'block';
+                }
+            });
+        }
+
+        // Init mobile view
+        if (window.innerWidth <= 768) {
+            showMobileSection('main-area');
         }
     </script>
 </body>
