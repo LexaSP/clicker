@@ -58,7 +58,7 @@ export function generateRelics() {
 // We can simulate a tech tree with eras
 const eras = ["Stone Age", "Bronze Age", "Iron Age", "Middle Ages", "Renaissance", "Industrial Age", "Modern Age", "Information Age", "Future Age", "Singularity"];
 
-export function generateResearch() {
+export function generateResearch() { console.log("Generating Research...");
     const research = [];
     let idCounter = 1;
 
@@ -78,11 +78,15 @@ export function generateResearch() {
 
             const cost = Math.floor(100 * Math.pow(1.5, (eraIndex * 12 + i)));
 
+            // Assign type randomly or by pattern
+            const type = (i % 3 === 0) ? "culture" : "knowledge";
+
             research.push({
                 id: techId,
                 name: name,
                 era: era,
                 cost: cost,
+                costType: type, // New field
                 requirements: requirements,
                 effect: { type: "production_multiplier", value: 1.2 } // 20% boost per tech
             });

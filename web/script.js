@@ -8,6 +8,7 @@ let gameState = {
         lifetimeClicks: 0,
         money: 0,
         knowledge: 0,
+        culture: 0, // New Currency
         symbolsOfEra: 0,
         relicShards: 0
     },
@@ -18,6 +19,11 @@ let gameState = {
     expeditions: [], // Available
     activeExpeditions: [],
     quests: [], // Daily quests
+
+    prestigeUpgrades: { // Ascension
+        "golden_freq": { level: 0, max: 5, cost: 1, name: "Golden Relic Frequency" },
+        "starting_clicks": { level: 0, max: 10, cost: 2, name: "Start with 100 Clicks" }
+    },
 
     // Upgrades / Buildings
     buildings: {
@@ -61,7 +67,6 @@ async function init() {
     console.log("Initializing Game...");
 
     // Expose for dev panel
-    window.gameState = gameState;
 
     // Load Content
     allRelics = generateRelics();
@@ -85,6 +90,8 @@ async function init() {
 
     // Init UI
     initUI();
+    window.gameState = gameState;
+    window.allResearch = allResearch;
 }
 
 // --- Game Loop ---
@@ -122,6 +129,7 @@ function tick(dt) {
 
     // Apply Multipliers
     let prodMult = getGlobalMultiplier("production");
+    if (gameState.tempMultiplier) prodMult *= gameState.tempMultiplier;
 
     gameState.resources.clicks += production * prodMult * dt;
     gameState.resources.lifetimeClicks += production * prodMult * dt;
@@ -139,6 +147,77 @@ function tick(dt) {
     if (gameState.activeResearch.length > 0) {
         // ...
     }
+
+    // Golden Relic Spawner
+    // Base chance 0.005. Upgrade multiplies it? Or adds?
+    // Let's say upgrade adds 0.001 per level.
+    let goldenChance = 0.005;
+    if (gameState.prestigeUpgrades && gameState.prestigeUpgrades["golden_freq"]) {
+        goldenChance += gameState.prestigeUpgrades["golden_freq"].level * 0.002;
+    }
+
+    if (Math.random() < goldenChance) {
+        spawnGoldenRelic();
+    }
+}
+
+window.spawnGoldenRelic = function() {
+    // Check if already exists
+    if (document.getElementById("golden-relic")) return;
+
+    const div = document.createElement("div");
+    div.id = "golden-relic";
+    div.innerText = "✨";
+    div.style.position = "absolute";
+    div.style.fontSize = "40px";
+    div.style.cursor = "pointer";
+    div.style.userSelect = "none";
+    div.style.zIndex = "1000";
+    div.style.left = Math.random() * (window.innerWidth - 50) + "px";
+    div.style.top = Math.random() * (window.innerHeight - 50) + "px";
+    div.style.animation = "floatUp 5s ease-in-out infinite"; // Reusing floatUp or just static
+
+    div.onclick = function() {
+        clickGoldenRelic();
+        document.body.removeChild(div);
+    };
+
+    document.body.appendChild(div);
+
+    // Auto remove after 15s
+    setTimeout(() => {
+        if (document.body.contains(div)) {
+            document.body.removeChild(div);
+        }
+    }, 15000);
+}
+
+function clickGoldenRelic() {
+    const roll = Math.random();
+    if (roll < 0.5) {
+        // Frenzy: x7 for 30s
+        alert("GOLDEN RELIC! x7 Production for 30 seconds!");
+        // We need a way to store temp buffs.
+        // For simplicity, let's just dump resources for now or add a temp multiplier.
+        // Let's add a temp multiplier to gameState.
+        if (!gameState.tempMultiplier) gameState.tempMultiplier = 1;
+        gameState.tempMultiplier *= 7;
+        setTimeout(() => {
+            gameState.tempMultiplier /= 7;
+        }, 30000);
+    } else {
+        // Lump Sum: 15 mins of production
+        let production = 0;
+        production += gameState.buildings["AutoClicker"].count * gameState.buildings["AutoClicker"].production;
+        production += gameState.buildings["Farm"].count * gameState.buildings["Farm"].production;
+        production += gameState.buildings["Mine"].count * gameState.buildings["Mine"].production;
+        let gain = Math.max(100, production * 900); // 15 mins
+
+        gameState.resources.clicks += gain;
+        gameState.resources.lifetimeClicks += gain;
+        alert(`GOLDEN RELIC! Found ${Math.floor(gain)} Clicks!`);
+    }
+    updateUI();
 }
 
 function generateDailyQuests() {
@@ -321,11 +400,24 @@ window.buyResearch = function(techId) {
     const cost = Math.floor(tech.cost * costMult);
 
     const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
+    const costType = tech.costType || "knowledge"; // Default to knowledge (was clicks? No, original plan said clicks/knowledge mix)
 
-    if (reqMet && !gameState.researched.includes(techId) && gameState.resources.clicks >= cost) {
-        gameState.resources.clicks -= cost;
-        gameState.researched.push(techId);
-        updateUI();
+    // Previously we used clicks as placeholder. Now we switch to knowledge/culture.
+    // If user has enough resources
+    if (reqMet && !gameState.researched.includes(techId)) {
+        if (costType === "knowledge" && gameState.resources.knowledge >= cost) {
+            gameState.resources.knowledge -= cost;
+            gameState.researched.push(techId);
+            updateUI();
+        } else if (costType === "culture" && gameState.resources.culture >= cost) {
+            gameState.resources.culture -= cost;
+            gameState.researched.push(techId);
+            updateUI();
+        } else if (costType === "clicks" && gameState.resources.clicks >= cost) { // Legacy/Early
+             gameState.resources.clicks -= cost;
+             gameState.researched.push(techId);
+             updateUI();
+        }
     }
 };
 
@@ -423,6 +515,20 @@ window.importSave = function() {
     }
 };
 
+window.buyPrestigeUpgrade = function(id) {
+    const up = gameState.prestigeUpgrades[id];
+    if (!up) return;
+
+    // Cost scaling? Static for now based on definition
+    const cost = up.cost * (up.level + 1);
+
+    if (gameState.resources.symbolsOfEra >= cost && up.level < up.max) {
+        gameState.resources.symbolsOfEra -= cost;
+        up.level++;
+        updateUI();
+    }
+};
+
 window.performPrestige = function() {
     const gain = calculatePrestigeGain();
     if (gain <= 0) {
@@ -436,8 +542,13 @@ window.performPrestige = function() {
     const inventory = gameState.inventory;
     const shards = gameState.resources.relicShards;
     const lifetime = gameState.resources.lifetimeClicks;
+    const pUpgrades = gameState.prestigeUpgrades; // Keep upgrades
 
     gameState.resources.clicks = 0;
+    // Apply starting clicks upgrade
+    if (pUpgrades["starting_clicks"] && pUpgrades["starting_clicks"].level > 0) {
+        gameState.resources.clicks = pUpgrades["starting_clicks"].level * 100;
+    }
     gameState.resources.money = 0;
     gameState.resources.knowledge = 0;
     gameState.resources.symbolsOfEra = symbols;
@@ -466,6 +577,7 @@ function updateUI() {
 
     document.getElementById("res-clicks").innerText = Math.floor(gameState.resources.clicks);
     document.getElementById("res-knowledge").innerText = Math.floor(gameState.resources.knowledge);
+    document.getElementById("res-culture").innerText = Math.floor(gameState.resources.culture);
     document.getElementById("res-shards").innerText = gameState.resources.relicShards;
     document.getElementById("res-se").innerText = gameState.resources.symbolsOfEra;
 
@@ -473,6 +585,29 @@ function updateUI() {
     if (prestigeBtn) {
         const gain = calculatePrestigeGain();
         prestigeBtn.innerText = `Prestige (+${gain} SE)`;
+    }
+
+    // Prestige Upgrades
+    const ascContainer = document.getElementById("ascension-list");
+    if (ascContainer && gameState.prestigeUpgrades) {
+        ascContainer.innerHTML = "";
+        for (let key in gameState.prestigeUpgrades) {
+            const up = gameState.prestigeUpgrades[key];
+            const div = document.createElement("div");
+            div.style.marginBottom = "5px";
+            const cost = up.cost * (up.level + 1);
+
+            const btn = document.createElement("button");
+            btn.style.fontSize = "10px";
+            btn.style.padding = "2px 5px";
+            btn.innerText = `Buy (Cost: ${cost})`;
+            btn.disabled = up.level >= up.max || gameState.resources.symbolsOfEra < cost;
+            btn.onclick = () => window.buyPrestigeUpgrade(key);
+
+            div.innerHTML = `<small>${up.name} (Lvl ${up.level}/${up.max})</small><br>`;
+            div.appendChild(btn);
+            ascContainer.appendChild(div);
+        }
     }
 
     for (let name in gameState.buildings) {
@@ -661,7 +796,7 @@ function renderQuests() {
     });
 }
 
-function renderResearchTree() {
+window.renderResearchTree = function() {
     const container = document.getElementById("research-container");
     if (!container) return;
 
