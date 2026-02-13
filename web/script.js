@@ -635,8 +635,81 @@ function updateUI() {
     renderQuests();
     renderInventory();
     renderExpeditions();
+    renderCrafting();
     renderResearchTree();
 }
+
+function renderCrafting() {
+    const container = document.getElementById("recipe-list");
+    if (!container) return;
+
+    // Simple clear/redraw
+    container.innerHTML = "";
+    if (allRecipes.length === 0) {
+        container.innerHTML = "<p>No recipes available.</p>";
+        return;
+    }
+
+    allRecipes.forEach(recipe => {
+        const div = document.createElement("div");
+        div.className = "recipe-card";
+
+        // Inputs text
+        let inputsText = [];
+        for (let key in recipe.inputs) {
+            inputsText.push(`${recipe.inputs[key]} ${key}`);
+        }
+
+        // Output text
+        let outputText = [];
+        for (let key in recipe.output) {
+            outputText.push(`${recipe.output[key]} ${key}`);
+        }
+
+        // Check affordability (Placeholder logic: Assume stone = relicShards)
+        let canAfford = true;
+        let cost = 0;
+        if (recipe.inputs.stone) cost = recipe.inputs.stone;
+        if (cost > 0 && gameState.resources.relicShards < cost) canAfford = false;
+
+        div.innerHTML = `
+            <strong>${recipe.name}</strong><br>
+            <small>Requires: ${inputsText.join(", ")}</small><br>
+            <small>Produces: ${outputText.join(", ")}</small><br>
+            <button onclick="craftItem('${recipe.id}')" ${canAfford ? '' : 'disabled'}>Craft</button>
+        `;
+
+        container.appendChild(div);
+    });
+}
+
+window.craftItem = function(recipeId) {
+    const recipe = allRecipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+
+    // Check costs
+    // Assuming 'stone' == relicShards for this demo
+    let cost = 0;
+    if (recipe.inputs.stone) cost = recipe.inputs.stone;
+
+    if (gameState.resources.relicShards >= cost) {
+        gameState.resources.relicShards -= cost;
+
+        // Grant output
+        gameState.inventory.push({
+            id: `crafted_${Date.now()}`,
+            name: `Crafted ${recipe.name}`,
+            rarity: "Common",
+            description: "Hand-crafted item.",
+            effect: { type: "production_boost", value: 1 }
+        });
+
+        alert(`Crafted ${recipe.name}!`);
+        updateUI();
+    } else {
+        alert("Not enough resources (Need Stone/Shards)!");
+    }
+};
 
 function renderInventory() {
     const container = document.getElementById("inventory-list");
