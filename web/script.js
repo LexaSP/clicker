@@ -780,11 +780,20 @@ function renderExpeditions() {
         available.forEach(exp => {
             const div = document.createElement("div");
             div.className = "expedition-card";
+
+            // Format Duration
+            const hours = Math.floor(exp.duration / 3600);
+            const mins = Math.floor((exp.duration % 3600) / 60);
+            const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+            // Risk Color
+            const riskColor = exp.risk > 50 ? "#e74c3c" : "#f1c40f";
+
             div.innerHTML = `
-                <strong>${exp.name}</strong> (${exp.difficulty})<br>
-                Duration: ${exp.duration}s<br>
-                Cost: ${exp.cost.food} Food (Placeholder)<br>
-                <button onclick="startExpedition('${exp.id}')">Start</button>
+                <strong>${exp.name}</strong><br>
+                <span style="color: ${riskColor}">Risk: ${exp.risk}%</span> | Duration: ${timeStr}<br>
+                <small>Loot: ${exp.rewards.loot.amount} ${exp.rewards.loot.type}</small><br>
+                <button onclick="startExpedition('${exp.id}')">Start (Cost: ${exp.cost.food} Food)</button>
             `;
             container.appendChild(div);
         });
@@ -838,12 +847,26 @@ function completeExpedition(exp) {
         gameState.activeExpeditions.splice(index, 1);
     }
 
-    let log = `Expedition '${exp.name}' complete! `;
+    // Risk Check
+    const roll = Math.random() * 100;
+    if (roll < exp.risk) {
+        // Failed
+        const log = `Expedition '${exp.name}' FAILED! (Rolled ${Math.floor(roll)} vs Risk ${exp.risk}). All resources lost.`;
+        console.log(log);
+        alert(log);
+        updateUI();
+        return;
+    }
+
+    // Success
+    let log = `Expedition '${exp.name}' SUCCESS! `;
+
     if (exp.rewards.relics > 0) {
         const relic = allRelics[Math.floor(Math.random() * allRelics.length)];
         gameState.inventory.push(relic);
         log += `Found relic: ${relic.name}. `;
     }
+
     if (exp.rewards.money > 0) {
         gameState.resources.money += exp.rewards.money;
         log += `Gained ${exp.rewards.money} Gold. `;

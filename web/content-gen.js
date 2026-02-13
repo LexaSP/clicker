@@ -134,22 +134,42 @@ export function generateExpeditions() {
     let idCounter = 1;
 
     locations.forEach(loc => {
-        diffs.forEach(diff => {
+        // Generate variations: Short, Medium, Long, Epic
+        const types = [
+            { name: "Short", duration: 1800, mult: 1.0 }, // 30 mins
+            { name: "Medium", duration: 14400, mult: 0.8 }, // 4 hours, 80% efficiency
+            { name: "Long", duration: 43200, mult: 0.6 }, // 12 hours, 60% efficiency
+            { name: "Epic", duration: 86400, mult: 0.5 } // 24 hours, 50% efficiency
+        ];
+
+        types.forEach(type => {
             let resourceType = "food";
             if (loc === "Forest") resourceType = "wood";
             if (loc === "Mountain" || loc === "Cave") resourceType = "stone";
-            if (loc === "Desert") resourceType = "relicShards"; // Rare
+            if (loc === "Desert") resourceType = "relicShards";
+
+            // Risk: 15% to 90%
+            const risk = randomInt(15, 90);
+
+            // Base reward scaled by duration * efficiency * risk bonus
+            // Risk Bonus: 1 + (risk / 100) * 2. Max 90% risk -> ~2.8x reward.
+            const riskBonus = 1 + (risk / 100) * 2;
+            const baseAmount = 100; // Base loot per 30 mins (scaled)
+            const durationRatio = type.duration / 1800; // 1, 8, 24, 48 intervals
+
+            const lootAmount = Math.floor(baseAmount * durationRatio * type.mult * riskBonus);
 
             expeditions.push({
                 id: `exp_${idCounter++}`,
-                name: `${diff} Expedition to ${loc}`,
-                duration: randomInt(10, 300),
-                difficulty: diff,
-                cost: { food: randomInt(10, 500) }, // Lower cost for now
+                name: `${type.name} Expedition to ${loc}`,
+                duration: type.duration,
+                difficulty: `${risk}% Risk`,
+                risk: risk,
+                cost: { food: Math.floor(50 * durationRatio) },
                 rewards: {
-                    relics: randomInt(0, 1),
-                    money: randomInt(100, 1000),
-                    loot: { type: resourceType, amount: randomInt(10, 100) }
+                    relics: (risk > 50 && Math.random() < 0.5) ? 1 : 0,
+                    money: Math.floor(500 * durationRatio * type.mult),
+                    loot: { type: resourceType, amount: lootAmount }
                 }
             });
         });
