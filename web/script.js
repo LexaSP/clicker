@@ -1,5 +1,6 @@
 // script.js
 import { generateRelics, generateResearch, generateIdeas, generateExpeditions, generateRecipes } from './content-gen.js';
+import { AudioController } from './audio.js';
 
 // --- Game State ---
 let gameState = {
@@ -102,6 +103,10 @@ async function init() {
 
     // Init UI
     initUI();
+
+    // Init Audio
+    window.audioController = new AudioController();
+
     window.gameState = gameState;
     window.allResearch = allResearch;
 }
@@ -332,6 +337,7 @@ function getCritStats() {
 }
 
 window.manualClick = function(event) {
+    if (window.audioController) window.audioController.playClick();
     let clickValue = 1 + (gameState.inventory.length * 0.1);
     clickValue *= getGlobalMultiplier("click");
 
@@ -394,6 +400,7 @@ window.buyBuilding = function(name) {
     let finalCost = Math.floor(nominalCost * costMult);
 
     if (gameState.resources.clicks >= finalCost) {
+        if (window.audioController) window.audioController.playBuy();
         gameState.resources.clicks -= finalCost;
         b.count++;
         // Recalc for UI (nominal)
@@ -417,18 +424,22 @@ window.buyResearch = function(techId) {
     // Previously we used clicks as placeholder. Now we switch to knowledge/culture.
     // If user has enough resources
     if (reqMet && !gameState.researched.includes(techId)) {
+        let purchased = false;
         if (costType === "knowledge" && gameState.resources.knowledge >= cost) {
             gameState.resources.knowledge -= cost;
-            gameState.researched.push(techId);
-            updateUI();
+            purchased = true;
         } else if (costType === "culture" && gameState.resources.culture >= cost) {
             gameState.resources.culture -= cost;
-            gameState.researched.push(techId);
-            updateUI();
+            purchased = true;
         } else if (costType === "clicks" && gameState.resources.clicks >= cost) { // Legacy/Early
              gameState.resources.clicks -= cost;
-             gameState.researched.push(techId);
-             updateUI();
+             purchased = true;
+        }
+
+        if (purchased) {
+            if (window.audioController) window.audioController.playUnlock();
+            gameState.researched.push(techId);
+            updateUI();
         }
     }
 };
@@ -527,6 +538,13 @@ window.importSave = function() {
     }
 };
 
+window.toggleAudio = function() {
+    if (window.audioController) {
+        const enabled = window.audioController.toggle();
+        alert(`Audio ${enabled ? 'Enabled' : 'Disabled'}`);
+    }
+};
+
 window.buyPrestigeUpgrade = function(id) {
     const up = gameState.prestigeUpgrades[id];
     if (!up) return;
@@ -535,6 +553,7 @@ window.buyPrestigeUpgrade = function(id) {
     const cost = up.cost * (up.level + 1);
 
     if (gameState.resources.symbolsOfEra >= cost && up.level < up.max) {
+        if (window.audioController) window.audioController.playBuy();
         gameState.resources.symbolsOfEra -= cost;
         up.level++;
         updateUI();
@@ -737,6 +756,7 @@ window.craftItem = function(recipeId) {
     }
 
     if (canAfford) {
+        if (window.audioController) window.audioController.playBuy();
         // Deduct
         for (let key in recipe.inputs) {
             let resName = key;
@@ -880,6 +900,7 @@ function completeExpedition(exp) {
     const roll = Math.random() * 100;
     if (roll < exp.risk) {
         // Failed
+        if (window.audioController) window.audioController.playError();
         const log = `Expedition '${exp.name}' FAILED! (Rolled ${Math.floor(roll)} vs Risk ${exp.risk}). All resources lost.`;
         console.log(log);
         alert(log);
@@ -888,6 +909,7 @@ function completeExpedition(exp) {
     }
 
     // Success
+    if (window.audioController) window.audioController.playEvent();
     let log = `Expedition '${exp.name}' SUCCESS! `;
 
     if (exp.rewards.relics > 0) {
@@ -1024,6 +1046,8 @@ window.renderResearchTree = function() {
     });
 
     const positions = {};
+    let maxX = 0;
+    let maxY = 0;
 
     let colIdx = 0;
     for (const era of ERA_DATA) {
@@ -1031,6 +1055,10 @@ window.renderResearchTree = function() {
         techs.forEach((tech, rowIdx) => {
             const x = 50 + colIdx * ERA_WIDTH;
             const y = 50 + rowIdx * (NODE_HEIGHT + 20);
+
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+
             positions[tech.id] = {x, y};
 
             const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
@@ -1050,6 +1078,10 @@ window.renderResearchTree = function() {
         });
         colIdx++;
     }
+
+    // Resize SVG to fit content
+    svg.style.width = Math.max(container.clientWidth, maxX + 200) + "px";
+    svg.style.height = Math.max(container.clientHeight, maxY + 200) + "px";
 
     allResearch.forEach(tech => {
         if (!positions[tech.id]) return;

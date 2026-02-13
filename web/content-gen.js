@@ -76,10 +76,12 @@ export function generateResearch() { console.log("Generating Research...");
                 requirements.push(`tech_${eraIndex-1}_12`);
             }
 
-            const cost = Math.floor(100 * Math.pow(1.5, (eraIndex * 12 + i)));
+            // Base cost scales with Era (10x per era) and Tech level within era (1.2x per tech)
+            // This prevents the astronomical scaling of 1.5^(total_techs)
+            const cost = Math.floor(100 * Math.pow(8, eraIndex) * Math.pow(1.25, i));
 
-            // Assign type randomly or by pattern
-            const type = (i % 3 === 0) ? "culture" : "knowledge";
+            // Assign type: Alternate
+            const type = (i % 2 === 0) ? "culture" : "knowledge";
 
             research.push({
                 id: techId,
@@ -148,12 +150,12 @@ export function generateExpeditions() {
             if (loc === "Mountain" || loc === "Cave") resourceType = "stone";
             if (loc === "Desert") resourceType = "relicShards";
 
-            // Risk: 15% to 90%
-            const risk = randomInt(15, 90);
+            // Risk: 10% to 75%
+            const risk = randomInt(10, 75);
 
             // Base reward scaled by duration * efficiency * risk bonus
-            // Risk Bonus: 1 + (risk / 100) * 2. Max 90% risk -> ~2.8x reward.
-            const riskBonus = 1 + (risk / 100) * 2;
+            // Risk Bonus: 1 + (risk / 100) * 3. Max 75% risk -> ~3.25x reward.
+            const riskBonus = 1 + (risk / 100) * 3;
             const baseAmount = 100; // Base loot per 30 mins (scaled)
             const durationRatio = type.duration / 1800; // 1, 8, 24, 48 intervals
 
