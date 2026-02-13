@@ -42,6 +42,7 @@ let gameState = {
         autoSave: true
     },
 
+    reroll: { count: 0, cost: 100, lastReset: Date.now() },
     lastSaveTime: Date.now()
 };
 
@@ -82,6 +83,14 @@ async function init() {
 
     // Load Save if exists
     loadGame();
+
+    // Reset daily reroll if 24h passed
+    const now = Date.now();
+    if (now - gameState.reroll.lastReset > 24 * 60 * 60 * 1000) {
+        gameState.reroll.count = 0;
+        gameState.reroll.cost = 100;
+        gameState.reroll.lastReset = now;
+    }
 
     // Generate quests if needed
     if (gameState.quests.length === 0) {
@@ -775,30 +784,47 @@ function renderExpeditions() {
     const container = document.getElementById("expedition-list");
     if (container) {
         container.innerHTML = "";
-        const available = allExpeditions.slice(0, 5);
 
-        available.forEach(exp => {
-            const div = document.createElement("div");
-            div.className = "expedition-card";
+        // Header with Reroll
+        const header = document.createElement("div");
+        let rerollText = "Reroll (Free)";
+        if (gameState.reroll.count >= 2) rerollText = `Reroll (${gameState.reroll.cost} Knowl)`;
 
-            // Format Duration
-            const hours = Math.floor(exp.duration / 3600);
-            const mins = Math.floor((exp.duration % 3600) / 60);
-            const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+        header.innerHTML = `<button onclick="rerollExpeditions()" style="width:100%; margin-bottom:10px; background-color:#9b59b6;">${rerollText}</button>`;
+        container.appendChild(header);
 
-            // Risk Color
-            const riskColor = exp.risk > 50 ? "#e74c3c" : "#f1c40f";
+        // Hide list if expedition active (limit 1)
+        if (gameState.activeExpeditions.length > 0) {
+            container.innerHTML += "<p><em>Expedition in progress...</em></p>";
+        } else {
+            const available = allExpeditions.slice(0, 5);
 
-            div.innerHTML = `
-                <strong>${exp.name}</strong><br>
-                <span style="color: ${riskColor}">Risk: ${exp.risk}%</span> | Duration: ${timeStr}<br>
-                <small>Loot: ${exp.rewards.loot.amount} ${exp.rewards.loot.type}</small><br>
-                <button onclick="startExpedition('${exp.id}')">Start (Cost: ${exp.cost.food} Food)</button>
-            `;
-            container.appendChild(div);
-        });
+            available.forEach(exp => {
+                const div = document.createElement("div");
+                div.className = "expedition-card";
+
+                const hours = Math.floor(exp.duration / 3600);
+                const mins = Math.floor((exp.duration % 3600) / 60);
+                const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+                const riskColor = exp.risk > 50 ? "#e74c3c" : "#f1c40f";
+
+                // Obfuscate Loot
+                const minLoot = Math.floor(exp.rewards.loot.amount * 0.8);
+                const maxLoot = Math.floor(exp.rewards.loot.amount * 1.2);
+
+                div.innerHTML = `
+                    <strong>${exp.name}</strong><br>
+                    <span style="color: ${riskColor}">Risk: ${exp.risk}%</span> | Duration: ${timeStr}<br>
+                    <small>Loot: ${minLoot}-${maxLoot} ${exp.rewards.loot.type}</small><br>
+                    <button onclick="startExpedition('${exp.id}')">Start (Cost: ${exp.cost.food} Food)</button>
+                `;
+                container.appendChild(div);
+            });
+        }
     }
 
+    // 2. Active List (Status Card)
     const activeContainer = document.getElementById("active-expedition-list");
     if (activeContainer) {
         activeContainer.innerHTML = "";
@@ -807,14 +833,16 @@ function renderExpeditions() {
         } else {
             gameState.activeExpeditions.forEach(exp => {
                 const div = document.createElement("div");
-                div.className = "expedition-card";
+                div.className = "expedition-card active-mission";
                 const pct = Math.min(100, (exp.progress / exp.duration) * 100);
+                div.onclick = () => alert(`Status: ${exp.name}\nProgress: ${Math.floor((exp.progress/exp.duration)*100)}%`);
+
                 div.innerHTML = `
-                    <strong>${exp.name}</strong><br>
-                    Time: ${Math.floor(exp.progress)} / ${exp.duration}s
-                    <div class="expedition-progress-bg">
+                    <strong>IN PROGRESS: ${exp.name}</strong><br>
+                    <div class="expedition-progress-bg" style="height: 20px;">
                         <div class="expedition-progress-fill" style="width: ${pct}%"></div>
                     </div>
+                    <small>Tap for details</small>
                 `;
                 activeContainer.appendChild(div);
             });
@@ -823,8 +851,9 @@ function renderExpeditions() {
 }
 
 window.startExpedition = function(expId) {
-    if (gameState.activeExpeditions.length >= 3) {
-        alert("Max 3 active expeditions!");
+    // Limit active
+    if (gameState.activeExpeditions.length >= 1) {
+        alert("Only 1 active expedition allowed!");
         return;
     }
 
@@ -885,6 +914,28 @@ function completeExpedition(exp) {
     alert(log);
     updateUI();
 }
+
+window.rerollExpeditions = function() {
+    // Check cost
+    let cost = 0;
+    if (gameState.reroll.count >= 2) {
+        cost = gameState.reroll.cost;
+        if (gameState.resources.knowledge < cost) {
+            alert(`Not enough Knowledge! Need ${cost}.`);
+            return;
+        }
+    }
+
+    // Pay
+    if (cost > 0) {
+        gameState.resources.knowledge -= cost;
+        gameState.reroll.cost *= 2; // Double cost
+    }
+
+    gameState.reroll.count++;
+    allExpeditions = generateExpeditions(); // Refresh
+    updateUI();
+};
 
 function renderQuests() {
     const container = document.getElementById("quest-list");
