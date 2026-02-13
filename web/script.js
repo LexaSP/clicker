@@ -10,7 +10,10 @@ let gameState = {
         knowledge: 0,
         culture: 0, // New Currency
         symbolsOfEra: 0,
-        relicShards: 0
+        relicShards: 0,
+        wood: 0,
+        stone: 0,
+        food: 0
     },
     inventory: [], // Relics
     activeResearch: [], // Currently researching
@@ -579,6 +582,16 @@ function updateUI() {
     document.getElementById("res-knowledge").innerText = Math.floor(gameState.resources.knowledge);
     document.getElementById("res-culture").innerText = Math.floor(gameState.resources.culture);
     document.getElementById("res-shards").innerText = gameState.resources.relicShards;
+
+    // Loot resources
+    const lootContainer = document.getElementById("loot-resources");
+    if (lootContainer) {
+        lootContainer.innerHTML = `
+            <span>Wood: ${gameState.resources.wood}</span> |
+            <span>Stone: ${gameState.resources.stone}</span> |
+            <span>Food: ${gameState.resources.food}</span>
+        `;
+    }
     document.getElementById("res-se").innerText = gameState.resources.symbolsOfEra;
 
     const prestigeBtn = document.getElementById("btn-prestige");
@@ -666,11 +679,24 @@ function renderCrafting() {
             outputText.push(`${recipe.output[key]} ${key}`);
         }
 
-        // Check affordability (Placeholder logic: Assume stone = relicShards)
+        // Check affordability
         let canAfford = true;
-        let cost = 0;
-        if (recipe.inputs.stone) cost = recipe.inputs.stone;
-        if (cost > 0 && gameState.resources.relicShards < cost) canAfford = false;
+        for (let key in recipe.inputs) {
+            let resName = key;
+            // Map generator names to gameState resources if needed
+            // Our generator uses 'stone', 'wood', 'herb', 'water', 'copper', 'tin'
+            // We implemented: wood, stone, food, relicShards.
+            // Map unknown to 'relicShards' as fallback or assume impossible?
+            // Let's implement basics:
+            if (resName === "herb" || resName === "water") resName = "food";
+            if (resName === "copper" || resName === "tin") resName = "stone";
+
+            const cost = recipe.inputs[key];
+            if (gameState.resources[resName] === undefined || gameState.resources[resName] < cost) {
+                canAfford = false;
+                break;
+            }
+        }
 
         div.innerHTML = `
             <strong>${recipe.name}</strong><br>
@@ -687,13 +713,28 @@ window.craftItem = function(recipeId) {
     const recipe = allRecipes.find(r => r.id === recipeId);
     if (!recipe) return;
 
-    // Check costs
-    // Assuming 'stone' == relicShards for this demo
-    let cost = 0;
-    if (recipe.inputs.stone) cost = recipe.inputs.stone;
+    // Validate again
+    let canAfford = true;
+    for (let key in recipe.inputs) {
+        let resName = key;
+        if (resName === "herb" || resName === "water") resName = "food";
+        if (resName === "copper" || resName === "tin") resName = "stone";
 
-    if (gameState.resources.relicShards >= cost) {
-        gameState.resources.relicShards -= cost;
+        const cost = recipe.inputs[key];
+        if (gameState.resources[resName] === undefined || gameState.resources[resName] < cost) {
+            canAfford = false;
+            break;
+        }
+    }
+
+    if (canAfford) {
+        // Deduct
+        for (let key in recipe.inputs) {
+            let resName = key;
+            if (resName === "herb" || resName === "water") resName = "food";
+            if (resName === "copper" || resName === "tin") resName = "stone";
+            gameState.resources[resName] -= recipe.inputs[key];
+        }
 
         // Grant output
         gameState.inventory.push({
@@ -803,9 +844,18 @@ function completeExpedition(exp) {
         gameState.inventory.push(relic);
         log += `Found relic: ${relic.name}. `;
     }
-    if (exp.rewards.resources > 0) {
-        gameState.resources.money += exp.rewards.resources;
-        log += `Gained ${exp.rewards.resources} Gold.`;
+    if (exp.rewards.money > 0) {
+        gameState.resources.money += exp.rewards.money;
+        log += `Gained ${exp.rewards.money} Gold. `;
+    }
+
+    if (exp.rewards.loot) {
+        const type = exp.rewards.loot.type;
+        const amount = exp.rewards.loot.amount;
+        if (gameState.resources[type] !== undefined) {
+            gameState.resources[type] += amount;
+            log += `Gained ${amount} ${type}. `;
+        }
     }
 
     console.log(log);

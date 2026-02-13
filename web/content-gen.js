@@ -135,13 +135,22 @@ export function generateExpeditions() {
 
     locations.forEach(loc => {
         diffs.forEach(diff => {
+            let resourceType = "food";
+            if (loc === "Forest") resourceType = "wood";
+            if (loc === "Mountain" || loc === "Cave") resourceType = "stone";
+            if (loc === "Desert") resourceType = "relicShards"; // Rare
+
             expeditions.push({
                 id: `exp_${idCounter++}`,
                 name: `${diff} Expedition to ${loc}`,
-                duration: randomInt(10, 300), // seconds
+                duration: randomInt(10, 300),
                 difficulty: diff,
-                cost: { food: randomInt(100, 5000) },
-                rewards: { relics: randomInt(0, 1), resources: randomInt(1000, 100000) }
+                cost: { food: randomInt(10, 500) }, // Lower cost for now
+                rewards: {
+                    relics: randomInt(0, 1),
+                    money: randomInt(100, 1000),
+                    loot: { type: resourceType, amount: randomInt(10, 100) }
+                }
             });
         });
     });
