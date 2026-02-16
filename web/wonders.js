@@ -118,14 +118,28 @@ export function getWonderMultiplier(gameState, type, resource) {
                 }
             }
 
+            // Map "production_mult" wonders to "production" (click/base) requests
+            // Just like in civilizations.js
+            if (type === "production" && wonder.effect.type === "production_mult") {
+                 // But wait, does this mean ALL production_mult apply to base clicks?
+                 // In Civs we did: if (type === "production" && civ.effect.resource === "production")
+                 // Here, Taj Mahal is generic.
+                 if (!wonder.effect.resource || wonder.effect.resource === "production") {
+                     mult *= wonder.effect.value;
+                 }
+            }
+
             // Special Case: Taj Mahal boosts ALL production_mult types regardless of resource
             if (wonder.id === "taj_mahal" && type === "production_mult") {
-                mult *= 1.5; // Stacks with its own definition if effect type matches?
-                // To avoid double counting, we rely on the specific check here.
-                // Since we changed definition to generic production_mult without resource,
-                // the standard match above handles "null" resource.
-                // But for specific resources (e.g. "wood"), standard match fails (undefined != wood).
-                // So this block ensures it applies to specific resources too.
+                // Ensure we don't double count if we already matched in Standard Match (resource === null)
+                // If resource is specified (e.g. "wood"), Standard Match failed (undefined != wood).
+                // If resource is null, Standard Match passed.
+                // So we only apply here if resource is NOT null?
+                // No, standard match passed 1.5x for generic queries.
+                // This block is to force it for specific queries.
+                if (resource !== null) {
+                    mult *= 1.5;
+                }
             }
         }
     });

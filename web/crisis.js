@@ -60,8 +60,8 @@ export function fightCrisis(gameState) {
     if (gameState.crisis.threat <= 0 && gameState.crisis.active) {
         gameState.crisis.defeated = true;
         gameState.crisis.active = false;
-        return "VICTORY! The Void has been pushed back forever. +10 Symbols of Era.";
         gameState.resources.symbolsOfEra += 10;
+        return "VICTORY! The Void has been pushed back forever. +10 Symbols of Era.";
     }
 
     return `Counter-offensive launched! Threat reduced by ${Math.floor(damage)}%.`;

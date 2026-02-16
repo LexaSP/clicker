@@ -12,6 +12,7 @@ import { checkCrisis, fightCrisis, CRISIS_STAGES } from './crisis.js';
 import { CIVILIZATIONS, getCivMultiplier } from './civilizations.js';
 import { WONDERS, getWonderMultiplier, buildWonder } from './wonders.js';
 import { CHALLENGES, getChallengeRewardMult, checkChallengeVictory } from './challenges.js';
+import { GOVERNORS, hireGovernor, processAutomation } from './automation.js';
 
 // --- Game State ---
 let gameState = {
@@ -45,6 +46,7 @@ let gameState = {
     space: { planets: [] }, // Space exploration
     heroes: { owned: [], gpp: 0, threshold: 1000 }, // Great People
     government: { type: "gov_tribal", policies: [] }, // Government
+    governors: [], // Hired governors
     wonders: [], // Built wonders IDs
     activeChallenge: null, // ID of current challenge
     completedChallenges: [], // List of completed IDs
@@ -238,6 +240,9 @@ function tick(dt) {
 
     // GPP
     generateGPP(gameState, dt);
+
+    // Automation
+    processAutomation(gameState, dt, window.manualClick, window.buyBuilding);
 
     // Crisis
     checkCrisis(gameState, dt);
@@ -743,29 +748,47 @@ function calculateOfflineProgress(seconds) {
 // --- UI Updates ---
 function initUI() {
     renderResearchTree();
-    injectWondersTab();
+    injectDynamicTabs();
 }
 
-function injectWondersTab() {
-    let wonderBtn = document.getElementById("tab-btn-wonders");
-    if (!wonderBtn) {
-        const tabs = document.getElementById("tabs");
-        if (tabs) {
-            wonderBtn = document.createElement("button");
-            wonderBtn.id = "tab-btn-wonders";
-            wonderBtn.className = "tab-btn";
-            wonderBtn.innerText = "Wonders 🏛️";
-            wonderBtn.onclick = () => showTab('wonders');
-            tabs.appendChild(wonderBtn);
+function injectDynamicTabs() {
+    const tabs = document.getElementById("tabs");
+    const content = document.getElementById("tab-content");
 
-            // Create View
-            const view = document.createElement("div");
-            view.id = "wonders-view";
-            view.className = "tab-view";
-            view.style.display = "none";
-            view.innerHTML = `<h3>Great Wonders</h3><p>Build monumental structures for massive global bonuses.</p><div id="wonder-list"></div>`;
-            document.getElementById("tab-content").appendChild(view);
-        }
+    if (!tabs || !content) return;
+
+    // Wonders
+    if (!document.getElementById("tab-btn-wonders")) {
+        const wonderBtn = document.createElement("button");
+        wonderBtn.id = "tab-btn-wonders";
+        wonderBtn.className = "tab-btn";
+        wonderBtn.innerText = "Wonders 🏛️";
+        wonderBtn.onclick = () => showTab('wonders');
+        tabs.appendChild(wonderBtn);
+
+        const view = document.createElement("div");
+        view.id = "wonders-view";
+        view.className = "tab-view";
+        view.style.display = "none";
+        view.innerHTML = `<h3>Great Wonders</h3><p>Build monumental structures for massive global bonuses.</p><div id="wonder-list"></div>`;
+        content.appendChild(view);
+    }
+
+    // Governors
+    if (!document.getElementById("tab-btn-governors")) {
+        const govBtn = document.createElement("button");
+        govBtn.id = "tab-btn-governors";
+        govBtn.className = "tab-btn";
+        govBtn.innerText = "Governors 👔";
+        govBtn.onclick = () => showTab('governors');
+        tabs.appendChild(govBtn);
+
+        const view = document.createElement("div");
+        view.id = "governors-view";
+        view.className = "tab-view";
+        view.style.display = "none";
+        view.innerHTML = `<h3>Governors & Managers</h3><p>Automate your empire.</p><div id="governor-list"></div>`;
+        content.appendChild(view);
     }
 }
 
@@ -1270,10 +1293,59 @@ function updateUI() {
     renderSpace();
     renderHeroes();
     renderGovernment();
+    renderGovernors();
     renderWonders();
     renderCrisis();
     renderResearchTree();
 }
+
+function renderGovernors() {
+    const container = document.getElementById("governors-view");
+    if (!container || container.style.display === "none") return;
+
+    let list = document.getElementById("governor-list");
+    if (!list) {
+        list = document.createElement("div");
+        list.id = "governor-list";
+        container.appendChild(list);
+    }
+    list.innerHTML = "";
+
+    GOVERNORS.forEach(g => {
+        // Show if unlocked (Era check?) - For now show all or filter
+        // Simple filter: Show if Era index >= Governor Era Index
+        const gEraIdx = ERA_DATA.findIndex(e => e.name === g.era);
+        const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
+
+        if (currentEraIdx >= gEraIdx) {
+            const isHired = gameState.governors && gameState.governors.some(gov => gov.id === g.id);
+            const div = document.createElement("div");
+            div.className = `expedition-card ${isHired ? 'completed' : ''}`;
+
+            let costText = "";
+            for (let k in g.cost) costText += `${g.cost[k]} ${k} `;
+
+            div.innerHTML = `
+                <div style="float:left; font-size: 32px; margin-right: 15px;">${g.icon}</div>
+                <strong>${g.name}</strong> (${g.era})<br>
+                <small>${g.desc}</small><br>
+                ${isHired ? "<strong>HIRED</strong>" : `<small>Cost: ${costText}</small><br><button onclick="attemptHireGovernor('${g.id}')">Hire</button>`}
+            `;
+            list.appendChild(div);
+        }
+    });
+}
+
+window.attemptHireGovernor = function(id) {
+    const res = hireGovernor(gameState, id);
+    if (res.success) {
+        if (window.audioController) window.audioController.playBuy();
+        alert(res.msg);
+        updateUI();
+    } else {
+        alert(res.msg);
+    }
+};
 
 function renderWonders() {
     const container = document.getElementById("wonders-view");
