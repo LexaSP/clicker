@@ -1,48 +1,24 @@
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background-color: #2c3e50;
     color: #ecf0f1;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
-    padding: 0;
-    height: 100vh;
-    overflow: hidden;
-    transition: background-color 1s ease;
+    overflow: hidden; /* Prevent body scroll, handle in containers */
 }
 
-/* --- Animations --- */
-@keyframes floatUp {
-    0% { transform: translateY(0); opacity: 1; }
-    100% { transform: translateY(-50px); opacity: 0; }
-}
-
-@keyframes slideInRight {
-    0% { transform: translateX(100%); opacity: 0; }
-    100% { transform: translateX(0); opacity: 1; }
-}
-
-@keyframes fadeIn {
-    0% { opacity: 0; }
-    100% { opacity: 1; }
-}
-
-@keyframes eraFade {
-    0% { opacity: 0; background-color: black; }
-    20% { opacity: 1; }
-    80% { opacity: 1; }
-    100% { opacity: 0; }
-}
-
-/* --- Layout --- */
-#game-container {
+/* Layout */
+#app {
     display: flex;
     height: 100vh;
 }
 
 #sidebar {
     width: 250px;
-    background-color: rgba(0, 0, 0, 0.2);
+    background-color: #34495e;
     padding: 20px;
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #7f8c8d;
     overflow-y: auto;
 }
 
@@ -51,352 +27,298 @@ body {
     padding: 20px;
     display: flex;
     flex-direction: column;
+    align-items: center;
+    overflow-y: auto;
+    background: radial-gradient(circle, #2c3e50 0%, #000000 100%);
     position: relative;
-    overflow-y: hidden; /* For inner scrolling */
 }
 
 #right-panel {
     width: 300px;
-    background-color: rgba(0, 0, 0, 0.2);
-    padding: 20px;
-    border-left: 1px solid rgba(255, 255, 255, 0.1);
-    overflow-y: auto;
-}
-
-/* --- Eras --- */
-.era-stone { background-color: #5d4037; } /* Brown */
-.era-bronze { background-color: #d35400; } /* Orange */
-.era-iron { background-color: #7f8c8d; } /* Grey */
-.era-middle { background-color: #2c3e50; } /* Dark Blue */
-.era-renaissance { background-color: #8e44ad; } /* Purple */
-.era-industrial { background-color: #34495e; } /* Slate */
-.era-modern { background-color: #2980b9; } /* Blue */
-.era-info { background-color: #16a085; } /* Teal */
-.era-future { background-color: #000000; background-image: radial-gradient(#1a1a1a 15%, transparent 16%), radial-gradient(#1a1a1a 15%, transparent 16%); background-size: 60px 60px; background-position: 0 0, 30px 30px; }
-
-/* --- Components --- */
-h1, h2, h3, h4 { margin-top: 0; }
-hr { border: 0; border-top: 1px solid rgba(255, 255, 255, 0.2); margin: 15px 0; }
-button {
-    background-color: #e67e22;
-    border: none;
-    color: white;
-    padding: 10px 20px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-    font-size: 14px;
-    margin: 4px 2px;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background-color 0.3s;
-}
-button:hover { background-color: #d35400; }
-button:disabled { background-color: #7f8c8d; cursor: not-allowed; }
-
-.resource {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 5px;
-    font-size: 14px;
-}
-
-/* --- Click Button --- */
-#click-btn {
-    font-size: 24px;
-    padding: 20px 40px;
-    background-color: #2ecc71;
-    width: 100%;
-    margin-bottom: 20px;
-    box-shadow: 0 5px #27ae60;
-    transition: transform 0.05s, box-shadow 0.05s;
-}
-#click-btn:active {
-    box-shadow: 0 2px #27ae60;
-    transform: translateY(3px) scale(0.98);
-}
-
-/* --- Tabs --- */
-#tabs {
-    margin-bottom: 10px;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
-    display: flex;
-    flex-wrap: wrap; /* Ensure tabs wrap */
-}
-.tab-btn {
-    background-color: transparent;
-    border: none;
-    border-bottom: 3px solid transparent;
-    border-radius: 0;
-    margin: 0;
-    padding: 10px 15px; /* Reduce padding slightly for better fit */
-    font-size: 13px;
-    flex-grow: 1; /* Distribute space */
-    white-space: nowrap;
-}
-.tab-btn.active {
-    border-bottom: 3px solid #3498db;
-    color: #3498db;
-}
-.tab-view {
-    flex: 1;
-    overflow-y: auto;
-    position: relative;
-}
-
-/* --- Cards (Relic, Quest, Recipe) --- */
-.relic-card, .quest-card, .recipe-card, .expedition-card, .achievement-card {
-    background-color: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    padding: 10px;
-    margin-bottom: 10px;
-    border-radius: 4px;
-    font-size: 13px;
-    overflow: hidden; /* Clearfix for floated icons */
-}
-
-.achievement-card.locked { opacity: 0.5; filter: grayscale(100%); }
-.achievement-card.unlocked { border-color: #f1c40f; background-color: rgba(241, 196, 15, 0.1); }
-
-.achievement-toast {
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%) translateY(20px);
-    background-color: #2ecc71;
-    color: white;
-    padding: 15px 20px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-    z-index: 2000;
-    opacity: 0;
-    transition: opacity 0.5s, transform 0.5s;
-    pointer-events: none;
-}
-
-/* --- Events --- */
-.modal-overlay {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background-color: rgba(0,0,0,0.7);
-    z-index: 3000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.modal-content {
     background-color: #34495e;
-    padding: 20px;
-    border-radius: 8px;
-    max-width: 400px;
-    width: 90%;
-    border: 2px solid #ecf0f1;
-    text-align: center;
-    box-shadow: 0 0 20px rgba(0,0,0,0.5);
-}
-.event-options {
+    border-left: 1px solid #7f8c8d;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+}
+
+/* Resources */
+.resource-row {
+    margin-bottom: 10px;
+    font-size: 18px;
+}
+
+/* Big Click Button */
+#click-btn {
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #f1c40f, #f39c12);
+    border: 5px solid #d35400;
+    color: #fff;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: transform 0.1s;
+    user-select: none;
+    box-shadow: 0 0 20px rgba(243, 156, 18, 0.5);
+    margin: 20px;
+    z-index: 10;
+}
+
+#click-btn:active {
+    transform: scale(0.95);
+}
+
+/* Buildings */
+#building-list {
     margin-top: 20px;
+    width: 100%;
 }
-.event-option-btn {
-    background-color: #9b59b6;
+
+.building-btn {
+    width: 100%;
+    background-color: #2c3e50;
+    color: white;
+    border: 1px solid #7f8c8d;
     padding: 10px;
-    width: 100%;
+    margin-bottom: 5px;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+    transition: background 0.2s;
 }
-.event-option-btn:hover { background-color: #8e44ad; }
-.event-option-btn:disabled { background-color: #7f8c8d; opacity: 0.5; }
+.building-btn:hover {
+    background-color: #34495e;
+    border-color: #f1c40f;
+}
+.building-btn:disabled {
+    background-color: #95a5a6;
+    border-color: #7f8c8d;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
 
-.civ-card:hover {
-    background: rgba(255,255,255,0.2) !important;
-    transform: scale(1.05);
-    box-shadow: 0 0 15px rgba(255,255,255,0.5);
-    transition: all 0.2s;
+/* Tabs */
+#tabs {
+    display: flex;
+    border-bottom: 1px solid #7f8c8d;
 }
 
-/* Rarities */
-.rarity-common { border-left: 4px solid #bdc3c7; }
-.rarity-uncommon { border-left: 4px solid #2ecc71; }
-.rarity-rare { border-left: 4px solid #3498db; }
-.rarity-epic { border-left: 4px solid #9b59b6; }
-.rarity-legendary { border-left: 4px solid #f1c40f; }
+.tab-btn {
+    flex: 1;
+    padding: 10px;
+    background: #2c3e50;
+    border: none;
+    color: #bdc3c7;
+    cursor: pointer;
+}
 
-/* Quests */
-.quest-bar {
-    height: 6px;
-    background-color: #2ecc71;
-    border-radius: 3px;
-    margin-top: 5px;
+.tab-btn.active {
+    background: #34495e;
+    color: #ecf0f1;
+    font-weight: bold;
+    border-bottom: 2px solid #3498db;
 }
-.quest-progress {
-    background-color: #444;
-    border-radius: 3px;
-    height: 6px;
-    width: 100%;
-    margin-top: 5px;
+
+.tab-view {
+    padding: 10px;
+    overflow-y: auto;
+    flex: 1;
 }
+
+/* Content Cards */
+.relic-card, .expedition-card, .recipe-card, .quest-card, .civ-card {
+    background: rgba(0,0,0,0.2);
+    border: 1px solid #7f8c8d;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.relic-card.rarity-common { border-color: #bdc3c7; }
+.relic-card.rarity-uncommon { border-color: #2ecc71; }
+.relic-card.rarity-rare { border-color: #3498db; }
+.relic-card.rarity-epic { border-color: #9b59b6; }
+.relic-card.rarity-legendary { border-color: #f1c40f; box-shadow: 0 0 5px #f1c40f; }
+.relic-card.rarity-unique { border-color: #e74c3c; box-shadow: 0 0 8px #e74c3c; }
+
 .quest-card.completed { border-color: #2ecc71; }
 .quest-card.claimed { opacity: 0.5; }
-.quest-reward-btn {
-    background-color: #27ae60;
-    padding: 4px 8px;
-    font-size: 11px;
+
+.active-mission {
+    border-color: #f39c12;
+    background: rgba(243, 156, 18, 0.1);
+}
+
+.expedition-progress-bg {
+    background: #333;
+    border-radius: 4px;
+    overflow: hidden;
     margin-top: 5px;
-    width: 100%;
+}
+.expedition-progress-fill {
+    background: #2ecc71;
+    height: 100%;
+    transition: width 0.5s;
 }
 
 /* Tech Tree */
-.tree-container {
+#research-container {
     position: relative;
     width: 100%;
     height: 100%;
-    overflow: auto;
-    background-color: rgba(0,0,0,0.2);
-    border: 1px solid #444;
+    overflow: auto; /* Scrollable canvas */
+    background-color: #222;
 }
+
 .tech-node {
     position: absolute;
-    width: 140px;
-    height: 80px; /* Increased height for icon */
-    background-color: #34495e;
+    width: 120px;
+    height: 80px;
+    background: #34495e;
     border: 2px solid #7f8c8d;
     border-radius: 8px;
-    display: flex;
-    flex-direction: column; /* Stack icon and text */
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    font-size: 11px;
-    cursor: pointer;
-    z-index: 10;
-    transition: transform 0.2s, box-shadow 0.2s;
-    user-select: none;
     padding: 5px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 12px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
-.tech-node.available { border-color: #f39c12; background-color: #2c3e50; }
-.tech-node.researched { border-color: #2ecc71; background-color: #27ae60; color: white; }
-.tech-node.locked { opacity: 0.5; pointer-events: none; }
-.tech-node:hover { transform: scale(1.05); z-index: 11; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+
+.tech-node.researched {
+    background: #2ecc71;
+    border-color: #27ae60;
+    color: #000;
+}
+
+.tech-node.available {
+    border-color: #f1c40f;
+    box-shadow: 0 0 10px rgba(241, 196, 15, 0.3);
+}
+
+.tech-node.locked {
+    opacity: 0.5;
+    pointer-events: none;
+    filter: grayscale(1);
+}
 
 .tech-line {
     stroke: #7f8c8d;
     stroke-width: 2;
+    z-index: 1;
 }
 .tech-line.active {
     stroke: #2ecc71;
-    stroke-width: 3;
 }
 
-/* --- Active Mission Card (Mobile Friendly) --- */
-.active-mission {
-    background-color: #2980b9;
-    padding: 15px;
-    border: 2px solid #3498db;
-    cursor: pointer;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    margin-bottom: 15px;
-    position: relative;
-}
-.active-mission:active { transform: scale(0.98); }
-.expedition-progress-bg {
-    background-color: #1a252f;
-    border-radius: 4px;
-    margin-top: 5px;
-    overflow: hidden;
-}
-.expedition-progress-fill {
-    height: 100%;
-    background-color: #f1c40f;
-    transition: width 0.1s linear;
-}
-
-.expedition-card button {
-    background-color: #27ae60;
-    padding: 8px;
-    width: 100%;
-    margin-top: 5px;
-}
-
-/* --- Mobile --- */
-#mobile-nav {
-    display: none;
+/* Modals */
+.modal-overlay {
     position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    background-color: #2c3e50;
-    border-top: 1px solid #7f8c8d;
-    justify-content: space-around;
-    padding: 10px 0;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
     z-index: 1000;
 }
-#mobile-nav button {
-    flex: 1;
-    margin: 0 5px;
-    font-size: 12px;
-    background-color: #34495e;
-}
-#mobile-nav button:active {
-    background-color: #2980b9;
+
+.modal-content {
+    background: #2c3e50;
+    padding: 30px;
+    border-radius: 10px;
+    max-width: 80%;
+    max-height: 80%;
+    overflow-y: auto;
+    text-align: center;
+    border: 1px solid #7f8c8d;
 }
 
+.event-options button {
+    display: block;
+    width: 100%;
+    margin: 10px 0;
+    padding: 10px;
+    background: #3498db;
+    border: none;
+    color: white;
+    cursor: pointer;
+}
+
+/* Animations */
+@keyframes floatUp {
+    0% { transform: translateY(0); opacity: 1; }
+    100% { transform: translateY(-50px); opacity: 0; }
+}
+
+@keyframes eraFade {
+    0% { opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* Achievement Toast */
+.achievement-toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #2ecc71;
+    color: #fff;
+    padding: 15px;
+    border-radius: 5px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    transition: all 0.5s;
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+/* Mobile Nav */
+#mobile-nav {
+    display: none; /* Hidden on desktop */
+}
+
+/* Era Themes */
+.era-stone #main-area { background: radial-gradient(circle, #5d4037 0%, #212121 100%); }
+.era-bronze #main-area { background: radial-gradient(circle, #d35400 0%, #212121 100%); }
+.era-iron #main-area { background: radial-gradient(circle, #7f8c8d 0%, #212121 100%); }
+.era-future #main-area { background: radial-gradient(circle, #8e44ad 0%, #000000 100%); }
+
+/* Responsive */
 @media (max-width: 768px) {
-    #game-container {
-        flex-direction: column;
-        height: calc(100vh - 60px); /* Leave space for nav */
-    }
-
-    #sidebar, #right-panel {
-        width: 100%;
-        height: calc(100vh - 60px);
-        position: absolute; /* Take over screen */
-        top: 0;
-        left: 0;
+    #app { flex-direction: column; }
+    #sidebar, #right-panel { display: none; } /* Hide initially, toggle via nav */
+    #sidebar.mobile-visible, #right-panel.mobile-visible {
+        display: flex;
+        position: absolute;
+        width: 100%; height: calc(100% - 50px);
         z-index: 100;
-        background-color: #2c3e50; /* Ensure opaque background */
-        display: none; /* Controlled by JS */
-        overflow-y: auto;
-        box-sizing: border-box; /* Include padding in width */
     }
 
-    #main-area {
-        width: 100%;
-        height: calc(100vh - 60px);
-        padding-bottom: 0;
-        box-sizing: border-box;
-    }
+    #main-area { height: calc(100vh - 50px); }
 
     #mobile-nav {
         display: flex;
+        height: 50px;
+        background: #2c3e50;
+        border-top: 1px solid #7f8c8d;
     }
-
-    /* Make buttons bigger for touch */
-    button {
-        padding: 12px;
-        font-size: 16px;
-        margin: 5px 0;
-        width: 100%; /* Full width buttons in lists */
-    }
-
-    /* Exceptions for inline buttons if any */
-    .resource button { width: auto; }
-
-    /* Adjust grid/flex for items */
-    .relic-card, .quest-card {
-        width: 100%;
-        box-sizing: border-box;
-    }
-
-    /* Tech Tree scaling */
-    #tech-tree-svg {
-        height: 100vh; /* Allow scrolling */
-    }
-    #research-container {
-        overflow: auto;
-        -webkit-overflow-scrolling: touch;
+    #mobile-nav button {
+        flex: 1;
+        background: none;
+        border: none;
+        color: white;
+        font-size: 20px;
     }
 }

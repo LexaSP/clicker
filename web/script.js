@@ -23,7 +23,12 @@ let gameState = {
         relicShards: 0,
         wood: 0,
         stone: 0,
-        food: 0
+        food: 0,
+        iron: 0,
+        steel: 0,
+        oil: 0,
+        uranium: 0,
+        energy: 0
     },
     inventory: [], // Relics
     activeResearch: [], // Currently researching
@@ -55,12 +60,28 @@ let gameState = {
         "starting_clicks": { level: 0, max: 10, cost: 2, name: "Start with 100 Clicks" }
     },
 
-    // Upgrades / Buildings
+    // Upgrades / Buildings (Expanded 3x Scale)
     buildings: {
-        "AutoClicker": { count: 0, cost: 10, production: 1, icon: "👆" },
-        "Farm": { count: 0, cost: 50, production: 5, icon: "🌾" },
-        "Mine": { count: 0, cost: 200, production: 20, icon: "⛏️" },
-        "Lab": { count: 0, cost: 1000, production: 100, icon: "🔬" } // produces knowledge
+        // Ancient
+        "AutoClicker": { count: 0, cost: 10, production: 1, icon: "👆", era: "Stone Age" },
+        "Gatherer": { count: 0, cost: 25, production: 2, icon: "🧺", era: "Stone Age" },
+        "Farm": { count: 0, cost: 50, production: 5, icon: "🌾", era: "Bronze Age" },
+        "Mine": { count: 0, cost: 200, production: 20, icon: "⛏️", era: "Bronze Age" },
+        "Workshop": { count: 0, cost: 500, production: 50, icon: "🔨", era: "Iron Age" },
+
+        // Classical/Medieval
+        "Aqueduct": { count: 0, cost: 1500, production: 80, icon: "💧", era: "Iron Age" },
+        "University": { count: 0, cost: 5000, production: 200, icon: "🎓", era: "Middle Ages" }, // Knowledge
+        "Bank": { count: 0, cost: 10000, production: 500, icon: "🏦", era: "Renaissance" }, // Money
+
+        // Industrial/Modern
+        "Factory": { count: 0, cost: 25000, production: 1500, icon: "🏭", era: "Industrial Age" },
+        "Lab": { count: 0, cost: 50000, production: 3000, icon: "🔬", era: "Modern Age" }, // Knowledge
+        "PowerPlant": { count: 0, cost: 150000, production: 10000, icon: "⚡", era: "Modern Age" },
+
+        // Future
+        "Supercomputer": { count: 0, cost: 1000000, production: 50000, icon: "🖥️", era: "Information Age" },
+        "FusionReactor": { count: 0, cost: 5000000, production: 250000, icon: "⚛️", era: "Future Age" }
     },
 
     era: "Stone Age",
@@ -162,9 +183,16 @@ function startGameLoop() {
 
 function calculateProduction(state) {
     let production = 0;
-    production += state.buildings["AutoClicker"].count * state.buildings["AutoClicker"].production;
-    production += state.buildings["Farm"].count * state.buildings["Farm"].production;
-    production += state.buildings["Mine"].count * state.buildings["Mine"].production;
+    // Iterate dynamically over ALL buildings that produce generic 'production' (clicks)
+    // We assume most buildings produce "production" unless specified otherwise (like Lab/Bank)
+
+    const clickProducers = ["AutoClicker", "Gatherer", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
+
+    clickProducers.forEach(key => {
+        if (state.buildings[key]) {
+            production += state.buildings[key].count * state.buildings[key].production;
+        }
+    });
 
     // Apply Multipliers
     let prodMult = getGlobalMultiplier("production", "clicks");
@@ -180,16 +208,27 @@ function tick(dt) {
     // Production
     const currentProduction = calculateProduction(gameState);
 
-    // Knowledge
-    let knowledgeProd = gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
+    // Knowledge (Lab + University + Supercomputer)
+    let knowledgeProd = 0;
+    if (gameState.buildings["University"]) knowledgeProd += gameState.buildings["University"].count * gameState.buildings["University"].production;
+    if (gameState.buildings["Lab"]) knowledgeProd += gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
+    if (gameState.buildings["Supercomputer"]) knowledgeProd += gameState.buildings["Supercomputer"].count * gameState.buildings["Supercomputer"].production;
+
     knowledgeProd *= getGlobalMultiplier("production_mult", "knowledge");
+
+    // Money (Bank)
+    let moneyProd = 0;
+    if (gameState.buildings["Bank"]) moneyProd += gameState.buildings["Bank"].count * gameState.buildings["Bank"].production;
+    moneyProd *= getGlobalMultiplier("production_mult", "money");
 
     // Space Production
     const spaceProd = getSpaceProduction(gameState);
     const moneyMult = getGlobalMultiplier("production_mult", "money");
     const knowlMult = getGlobalMultiplier("production_mult", "knowledge");
 
-    gameState.resources.money += spaceProd.money * moneyMult * dt;
+    gameState.resources.money += spaceProd.money * moneyMult * dt; // Space part
+    gameState.resources.money += moneyProd * dt; // Bank part (already multiplied)
+
     gameState.resources.knowledge += spaceProd.knowledge * knowlMult * dt;
 
     // GPP
@@ -560,16 +599,13 @@ function spawnClickParticle(x, y, amount, isCrit) {
 
 window.buyBuilding = function(name) {
     const b = gameState.buildings[name];
+    if (!b) return;
 
     // Apply Cost Reduction
     let costMult = getGlobalMultiplier("cost", null);
-    let baseCost = 0;
-    if (name === "AutoClicker") baseCost = 10;
-    else if (name === "Farm") baseCost = 50;
-    else if (name === "Mine") baseCost = 200;
-    else if (name === "Lab") baseCost = 1000;
 
-    let nominalCost = Math.floor(baseCost * Math.pow(1.15, b.count));
+    // Use current cost from state
+    let nominalCost = b.cost;
     let finalCost = Math.floor(nominalCost * costMult);
 
     if (gameState.resources.clicks >= finalCost) {
@@ -582,8 +618,8 @@ window.buyBuilding = function(name) {
         if (!gameState.stats.buildingsBought) gameState.stats.buildingsBought = 0;
         gameState.stats.buildingsBought++;
 
-        // Recalc for UI (nominal)
-        b.cost = Math.floor(baseCost * Math.pow(1.15, b.count));
+        // Update Cost for Next Purchase (Scale 1.15x)
+        b.cost = Math.floor(b.cost * 1.15);
 
         checkQuestProgress("purchases", 1);
         updateUI();
@@ -789,6 +825,44 @@ window.selectCiv = function(eraName, idx) {
 
     gameState.civilizationHistory[eraName] = choice;
 
+    // Grant Unique Reward
+    if (choice.unique_reward) {
+        const reward = choice.unique_reward;
+        let msg = `You chose ${choice.name}!\n\nUnique Perk Acquired: ${reward.name}\n`;
+
+        if (reward.type === "relic") {
+            // Add as a special relic
+            gameState.inventory.push({
+                id: `unique_${choice.id}_${Date.now()}`,
+                name: reward.name,
+                icon: reward.icon || "🌟",
+                rarity: "Unique",
+                description: reward.desc,
+                effect: reward.effect
+            });
+            msg += `Relic Added: ${reward.desc}`;
+        } else if (reward.type === "building") {
+            const bKey = reward.name;
+            if (gameState.buildings[bKey]) {
+                gameState.buildings[bKey].count += reward.count;
+                // Update cost for next one to reflect "free" ones?
+                // Usually free buildings don't increase cost of next purchase, OR they do.
+                // Let's assume they act as if purchased for scaling to prevent exploit,
+                // OR better, just free bonus. Let's keep cost separate in current simple logic.
+                // But wait, our buy logic uses count to calc cost. So this will increase cost.
+                // That's fair for balance.
+                msg += `+${reward.count} ${bKey}`;
+            }
+        } else if (reward.type === "resource") {
+            if (gameState.resources[reward.resource] !== undefined) {
+                gameState.resources[reward.resource] += reward.amount;
+                msg += `+${reward.amount} ${reward.resource}`;
+            }
+        }
+
+        alert(msg);
+    }
+
     if (window.currentCivModal) {
         document.body.removeChild(window.currentCivModal);
         window.currentCivModal = null;
@@ -797,6 +871,7 @@ window.selectCiv = function(eraName, idx) {
     // Resume advancement
     const eraObj = ERA_DATA.find(e => e.name === eraName);
     advanceEra(eraObj);
+    updateUI();
 };
 
 function calculatePrestigeGain() {
@@ -942,7 +1017,12 @@ function updateUI() {
         lootContainer.innerHTML = `
             <span>🪵 ${gameState.resources.wood}</span> |
             <span>🪨 ${gameState.resources.stone}</span> |
-            <span>🍞 ${gameState.resources.food}</span>
+            <span>🍞 ${gameState.resources.food}</span> |
+            <span>🔩 ${gameState.resources.iron}</span> |
+            <span>🏗️ ${gameState.resources.steel}</span> |
+            <span>🛢️ ${gameState.resources.oil}</span> |
+            <span>☢️ ${gameState.resources.uranium}</span> |
+            <span>⚡ ${gameState.resources.energy}</span>
         `;
     }
     document.getElementById("res-se").innerText = gameState.resources.symbolsOfEra;
@@ -976,27 +1056,57 @@ function updateUI() {
         }
     }
 
-    for (let name in gameState.buildings) {
-        const btn = document.getElementById(`btn-${name}`);
-        if (btn) {
-            // Need to recalc cost for display as state only has current cost?
-            // Actually we are not storing cost in state properly, we recalc it.
-            // Let's recalc for display.
-            let baseCost = 0;
-            if (name === "AutoClicker") baseCost = 10;
-            else if (name === "Farm") baseCost = 50;
-            else if (name === "Mine") baseCost = 200;
-            else if (name === "Lab") baseCost = 1000;
-            const cost = Math.floor(baseCost * Math.pow(1.15, gameState.buildings[name].count));
+    // Building Render Logic moved to generic handler to support dynamic list
+    const buildList = document.getElementById("building-list");
+    if (buildList) {
+        // Clear old manual list if necessary or just update buttons
+        // Ideally we re-render or update.
+        // Let's assume we clear and re-render for simplicity or just update existing if found
 
-            // Apply discount for display
+        // Actually, index.html might have hardcoded buttons. We should clear them and render dynamically.
+        // But we need to check if we already did this frame.
+        // For performance, let's just re-render cleanly.
+        buildList.innerHTML = "";
+
+        // Sort buildings by cost (approx) or definition order
+        const buildingKeys = Object.keys(gameState.buildings); // Maintain definition order
+
+        buildingKeys.forEach(name => {
+            const b = gameState.buildings[name];
+
+            // Use current cost from state
+            const currentCost = b.cost;
+
+            // Apply discount
             let costMult = getGlobalMultiplier("cost", null);
-            const finalCost = Math.floor(cost * costMult);
-            const bIcon = gameState.buildings[name].icon || "";
+            const finalCost = Math.floor(currentCost * costMult);
 
-            btn.innerText = `${bIcon} Buy ${name} (${finalCost}) - Owned: ${gameState.buildings[name].count}`;
+            const btn = document.createElement("button");
+            btn.id = `btn-${name}`;
+            btn.className = "building-btn"; // New class for styling
+            // Inline style for layout similar to existing buttons
+            btn.style.width = "100%";
+            btn.style.marginBottom = "5px";
+            btn.style.padding = "10px";
+            btn.style.display = "flex";
+            btn.style.alignItems = "center";
+            btn.style.textAlign = "left";
+            btn.style.justifyContent = "flex-start";
+            btn.style.gap = "10px";
+
+            btn.innerHTML = `
+                <div style="font-size:24px;">${b.icon}</div>
+                <div>
+                    <strong>Buy ${name}</strong><br>
+                    <small>Cost: ${finalCost}</small> | <small>Owned: ${b.count}</small><br>
+                    <small>Prod: ${b.production}</small>
+                </div>
+            `;
+            btn.onclick = () => window.buyBuilding(name);
             btn.disabled = gameState.resources.clicks < finalCost;
-        }
+
+            buildList.appendChild(btn);
+        });
     }
 
     renderQuests();
