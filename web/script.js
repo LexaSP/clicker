@@ -6,6 +6,9 @@ import { RANDOM_EVENTS } from './events.js';
 import { PARADOXES, checkParadoxes, getParadoxMultiplier } from './paradox.js';
 import { UNITS, RIVALS, calculateArmyPower, resolveCombat } from './combat.js';
 import { generatePlanets, colonizePlanet, getSpaceProduction } from './space.js';
+import { generateGPP, recruitHero, getHeroMultiplier } from './heroes.js';
+import { GOVERNMENTS, POLICIES, adoptGovernment, togglePolicy, getGovernmentMultiplier } from './government.js';
+import { checkCrisis, fightCrisis, CRISIS_STAGES } from './crisis.js';
 
 // --- Game State ---
 let gameState = {
@@ -32,6 +35,9 @@ let gameState = {
     paradoxes: [], // Triggered paradoxes
     army: {}, // { "Warrior": 10, ... }
     space: { planets: [] }, // Space exploration
+    heroes: { owned: [], gpp: 0, threshold: 1000 }, // Great People
+    government: { type: "gov_tribal", policies: [] }, // Government
+    crisis: { active: false, threat: 0, defeated: false }, // Endgame
 
     stats: {
         totalClicks: 0, // Manual clicks
@@ -169,6 +175,12 @@ function tick(dt) {
     const spaceProd = getSpaceProduction(gameState);
     gameState.resources.money += spaceProd.money * dt;
     gameState.resources.knowledge += spaceProd.knowledge * dt;
+
+    // GPP
+    generateGPP(gameState, dt);
+
+    // Crisis
+    checkCrisis(gameState, dt);
 
     // Apply Multipliers
     let prodMult = getGlobalMultiplier("production");
@@ -450,6 +462,12 @@ function getGlobalMultiplier(type) {
 
     // Paradox Check
     mult *= getParadoxMultiplier(gameState, type, null);
+
+    // Hero Check
+    mult *= getHeroMultiplier(gameState, type, null);
+
+    // Government Check
+    mult *= getGovernmentMultiplier(gameState, type, null);
 
     return mult;
 }
@@ -899,8 +917,152 @@ function updateUI() {
     renderAchievements();
     renderWar();
     renderSpace();
+    renderHeroes();
+    renderGovernment();
+    renderCrisis();
     renderResearchTree();
 }
+
+function renderCrisis() {
+    // Overlay or Widget? Let's do a widget in the Space View if active
+    if (!gameState.crisis || !gameState.crisis.active) return;
+
+    const container = document.getElementById("crisis-widget");
+    if (!container) {
+        const spaceView = document.getElementById("space-view");
+        if (spaceView) {
+            const div = document.createElement("div");
+            div.id = "crisis-widget";
+            div.style.background = "#c0392b";
+            div.style.padding = "15px";
+            div.style.marginBottom = "20px";
+            div.style.border = "2px solid #e74c3c";
+            div.style.color = "white";
+            spaceView.insertBefore(div, spaceView.firstChild);
+        }
+    }
+
+    const widget = document.getElementById("crisis-widget");
+    if (widget) {
+        const threat = Math.floor(gameState.crisis.threat);
+        const stage = CRISIS_STAGES.find(s => threat >= s.threshold) || CRISIS_STAGES[0]; // Logic might need reverse sort or just simple check
+        // Actually threshold is lower bound. So we want largest threshold <= threat.
+        const currentStage = [...CRISIS_STAGES].reverse().find(s => threat >= s.threshold) || CRISIS_STAGES[0];
+
+        widget.innerHTML = `
+            <h3>⚠️ VOID CRISIS ACTIVE ⚠️</h3>
+            <p>Threat Level: ${threat}% (${currentStage.name})</p>
+            <p>${currentStage.desc}</p>
+            <div style="width:100%; background:#555; height:20px;">
+                <div style="width:${threat}%; background:#fff; height:100%;"></div>
+            </div>
+            <br>
+            <button onclick="launchCounterOffensive()">Launch Counter-Offensive (5k Knowl/Gold)</button>
+        `;
+    }
+}
+
+window.launchCounterOffensive = function() {
+    const res = fightCrisis(gameState);
+    alert(res);
+    updateUI();
+};
+
+function renderGovernment() {
+    const container = document.getElementById("government-view");
+    if (!container || container.style.display === "none") return;
+
+    // Current Gov
+    const currentGov = GOVERNMENTS.find(g => g.id === gameState.government.type) || GOVERNMENTS[0];
+    document.getElementById("gov-current").innerHTML = `Current: <strong>${currentGov.name}</strong><br><small>${currentGov.desc}</small>`;
+
+    // Switch Gov
+    const govList = document.getElementById("gov-list");
+    govList.innerHTML = "";
+    GOVERNMENTS.forEach(g => {
+        if (g.id === currentGov.id) return;
+        const div = document.createElement("div");
+        div.className = "recipe-card"; // Reuse
+        div.innerHTML = `
+            <strong>${g.name}</strong> (${g.era})<br>
+            <small>${g.desc}</small><br>
+            <button onclick="switchGov('${g.id}')">Adopt (500 Culture)</button>
+        `;
+        govList.appendChild(div);
+    });
+
+    // Policies
+    const polList = document.getElementById("policy-list");
+    polList.innerHTML = "";
+    POLICIES.forEach(p => {
+        const active = gameState.government.policies.includes(p.id);
+        const div = document.createElement("div");
+        div.className = `expedition-card ${active ? 'active-mission' : ''}`; // Reuse
+
+        let costText = "";
+        for (let k in p.cost) costText += `${p.cost[k]} ${k} `;
+
+        div.innerHTML = `
+            <strong>${p.name}</strong><br>
+            <small>${p.desc}</small><br>
+            <button onclick="togglePol('${p.id}')">${active ? 'Repeal' : `Enact (${costText})`}</button>
+        `;
+        polList.appendChild(div);
+    });
+}
+
+window.switchGov = function(id) {
+    if (adoptGovernment(gameState, id)) {
+        if (window.audioController) window.audioController.playEvent();
+        alert("Government changed!");
+        updateUI();
+    } else {
+        alert("Cannot adopt (Cost: 500 Culture)!");
+    }
+};
+
+window.togglePol = function(id) {
+    const res = togglePolicy(gameState, id);
+    if (res) {
+        if (window.audioController) window.audioController.playBuy();
+        alert(`Policy ${res}!`);
+        updateUI();
+    } else {
+        alert("Cannot toggle policy (Cost/Limit)!");
+    }
+};
+
+function renderHeroes() {
+    const container = document.getElementById("heroes-view");
+    if (!container || container.style.display === "none") return;
+
+    document.getElementById("gpp-display").innerText = `Great People Points: ${Math.floor(gameState.heroes.gpp)} / ${Math.floor(gameState.heroes.threshold)}`;
+
+    const list = document.getElementById("hero-list");
+    list.innerHTML = "";
+
+    gameState.heroes.owned.forEach(h => {
+        const div = document.createElement("div");
+        div.className = "recipe-card"; // Reuse
+        div.innerHTML = `
+            <div style="float:left; font-size: 24px; margin-right: 10px;">${h.icon}</div>
+            <strong>${h.name}</strong> (${h.title})<br>
+            <small>${h.desc}</small>
+        `;
+        list.appendChild(div);
+    });
+}
+
+window.recruitHeroBtn = function() {
+    const hero = recruitHero(gameState);
+    if (hero) {
+        if (window.audioController) window.audioController.playEvent();
+        alert(`Recruited ${hero.name}!`);
+        updateUI();
+    } else {
+        alert("Not enough GPP or all heroes collected.");
+    }
+};
 
 function renderSpace() {
     const container = document.getElementById("space-view");
@@ -963,6 +1125,8 @@ function renderSpace() {
 // Expose for testing/UI
 window.renderSpace = renderSpace;
 window.checkParadoxes = checkParadoxes;
+window.checkCrisis = checkCrisis;
+window.renderCrisis = renderCrisis;
 
 window.attemptColonize = function(planetId) {
     if (colonizePlanet(gameState, planetId)) {
@@ -1080,6 +1244,9 @@ window.attackRival = function(idx) {
     alert(msg);
     updateUI();
 };
+
+// Expose
+window.updateUI = updateUI;
 
 function renderAchievements() {
     const container = document.getElementById("achievement-list");

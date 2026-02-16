@@ -68,6 +68,8 @@
                 <button class="tab-btn" onclick="showTab('expeditions')">Expeditions</button>
                 <button class="tab-btn" onclick="showTab('crafting')">Crafting</button>
                 <button class="tab-btn" onclick="showTab('war')">War ⚔️</button>
+                <button class="tab-btn" onclick="showTab('heroes')">Heroes 🦸</button>
+                <button class="tab-btn" onclick="showTab('government')">Gov ⚖️</button>
                 <button class="tab-btn" onclick="showTab('achievements')">Achievements</button>
             </div>
 
@@ -114,6 +116,31 @@
                         <div style="flex:1">
                             <h4>Rivals</h4>
                             <div id="rival-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="heroes-view" class="tab-view" style="display:none;">
+                    <h3>Hall of Heroes</h3>
+                    <p id="gpp-display">Great People Points: 0 / 1000</p>
+                    <button onclick="recruitHeroBtn()">Recruit Hero</button>
+                    <div id="hero-list">
+                        <!-- Heroes -->
+                    </div>
+                </div>
+
+                <div id="government-view" class="tab-view" style="display:none;">
+                    <h3>Government & Policies</h3>
+                    <div id="gov-current" style="margin-bottom: 20px; padding: 10px; background: rgba(255,255,255,0.1);"></div>
+
+                    <div style="display:flex; gap: 20px;">
+                        <div style="flex:1">
+                            <h4>Forms of Government</h4>
+                            <div id="gov-list"></div>
+                        </div>
+                        <div style="flex:1">
+                            <h4>Policies (Max 3)</h4>
+                            <div id="policy-list"></div>
                         </div>
                     </div>
                 </div>
