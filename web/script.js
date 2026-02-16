@@ -1014,16 +1014,36 @@ function updateUI() {
     // Loot resources
     const lootContainer = document.getElementById("loot-resources");
     if (lootContainer) {
-        lootContainer.innerHTML = `
-            <span>🪵 ${gameState.resources.wood}</span> |
-            <span>🪨 ${gameState.resources.stone}</span> |
-            <span>🍞 ${gameState.resources.food}</span> |
-            <span>🔩 ${gameState.resources.iron}</span> |
-            <span>🏗️ ${gameState.resources.steel}</span> |
-            <span>🛢️ ${gameState.resources.oil}</span> |
-            <span>☢️ ${gameState.resources.uranium}</span> |
-            <span>⚡ ${gameState.resources.energy}</span>
-        `;
+        const resourceConfig = [
+            { key: "wood", icon: "🪵", era: "Stone Age" },
+            { key: "stone", icon: "🪨", era: "Stone Age" },
+            { key: "food", icon: "🍞", era: "Stone Age" },
+            { key: "iron", icon: "🔩", era: "Iron Age" },
+            { key: "steel", icon: "🏗️", era: "Industrial Age" },
+            { key: "oil", icon: "🛢️", era: "Industrial Age" },
+            { key: "uranium", icon: "☢️", era: "Modern Age" },
+            { key: "energy", icon: "⚡", era: "Modern Age" }
+        ];
+
+        // Helper to find era index
+        const getEraIndex = (name) => ERA_DATA.findIndex(e => e.name === name);
+        const currentEraIdx = getEraIndex(gameState.era);
+
+        let html = "";
+        resourceConfig.forEach(res => {
+            const unlockIdx = getEraIndex(res.era);
+            const hasResource = gameState.resources[res.key] > 0;
+
+            // Show if unlocked by Era OR if player has found some (e.g. from unique reward)
+            if (currentEraIdx >= unlockIdx || hasResource) {
+                html += `<span>${res.icon} ${Math.floor(gameState.resources[res.key])}</span> | `;
+            }
+        });
+
+        // Remove trailing separator
+        if (html.endsWith(" | ")) html = html.substring(0, html.length - 3);
+
+        lootContainer.innerHTML = html;
     }
     document.getElementById("res-se").innerText = gameState.resources.symbolsOfEra;
 
