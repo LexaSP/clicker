@@ -1,6 +1,14 @@
 // script.js
 import { generateRelics, generateResearch, generateIdeas, generateExpeditions, generateRecipes } from './content-gen.js';
 import { AudioController } from './audio.js';
+import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
+import { RANDOM_EVENTS } from './events.js';
+import { PARADOXES, checkParadoxes, getParadoxMultiplier } from './paradox.js';
+import { UNITS, RIVALS, calculateArmyPower, resolveCombat } from './combat.js';
+import { generatePlanets, colonizePlanet, getSpaceProduction } from './space.js';
+import { generateGPP, recruitHero, getHeroMultiplier } from './heroes.js';
+import { GOVERNMENTS, POLICIES, adoptGovernment, togglePolicy, getGovernmentMultiplier } from './government.js';
+import { checkCrisis, fightCrisis, CRISIS_STAGES } from './crisis.js';
 
 // --- Game State ---
 let gameState = {
@@ -23,6 +31,22 @@ let gameState = {
     expeditions: [], // Available
     activeExpeditions: [],
     quests: [], // Daily quests
+    achievements: [], // Unlocked achievements
+    paradoxes: [], // Triggered paradoxes
+    army: {}, // { "Warrior": 10, ... }
+    space: { planets: [] }, // Space exploration
+    heroes: { owned: [], gpp: 0, threshold: 1000 }, // Great People
+    government: { type: "gov_tribal", policies: [] }, // Government
+    crisis: { active: false, threat: 0, defeated: false }, // Endgame
+
+    stats: {
+        totalClicks: 0, // Manual clicks
+        expeditionsCompleted: 0,
+        relicsFound: 0,
+        buildingsBought: 0,
+        techsResearched: 0,
+        history: {} // Per era stats
+    },
 
     prestigeUpgrades: { // Ascension
         "golden_freq": { level: 0, max: 5, cost: 1, name: "Golden Relic Frequency" },
@@ -109,6 +133,9 @@ async function init() {
 
     window.gameState = gameState;
     window.allResearch = allResearch;
+
+    // Event Tick
+    setInterval(() => checkStoryEvents(), 15000); // Check every 15s
 }
 
 // --- Game Loop ---
@@ -144,9 +171,24 @@ function tick(dt) {
     // Knowledge
     let knowledgeProd = gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
 
+    // Space Production
+    const spaceProd = getSpaceProduction(gameState);
+    gameState.resources.money += spaceProd.money * dt;
+    gameState.resources.knowledge += spaceProd.knowledge * dt;
+
+    // GPP
+    generateGPP(gameState, dt);
+
+    // Crisis
+    checkCrisis(gameState, dt);
+
     // Apply Multipliers
     let prodMult = getGlobalMultiplier("production");
     if (gameState.tempMultiplier) prodMult *= gameState.tempMultiplier;
+
+    // Paradox Multipliers (Resource Specific)
+    const clickParadox = getParadoxMultiplier(gameState, "production_mult", "clicks");
+    prodMult *= clickParadox;
 
     gameState.resources.clicks += production * prodMult * dt;
     gameState.resources.lifetimeClicks += production * prodMult * dt;
@@ -166,8 +208,6 @@ function tick(dt) {
     }
 
     // Golden Relic Spawner
-    // Base chance 0.005. Upgrade multiplies it? Or adds?
-    // Let's say upgrade adds 0.001 per level.
     let goldenChance = 0.005;
     if (gameState.prestigeUpgrades && gameState.prestigeUpgrades["golden_freq"]) {
         goldenChance += gameState.prestigeUpgrades["golden_freq"].level * 0.002;
@@ -176,6 +216,104 @@ function tick(dt) {
     if (Math.random() < goldenChance) {
         spawnGoldenRelic();
     }
+
+    // Check Achievements periodically (every tick is fine for small list)
+    if (Math.random() < 0.1) { // Throttle slightly
+        const newUnlocks = checkAchievements(gameState);
+        if (newUnlocks.length > 0) {
+            newUnlocks.forEach(ach => {
+                showAchievementToast(ach);
+                if (window.audioController) window.audioController.playEvent();
+            });
+        }
+    }
+}
+
+function checkStoryEvents() {
+    // 5% chance per check (15s)
+    if (Math.random() > 0.05) return;
+
+    const possible = RANDOM_EVENTS.filter(evt => evt.trigger && evt.trigger(gameState));
+    if (possible.length === 0) return;
+
+    // Pick one
+    const event = possible[Math.floor(Math.random() * possible.length)];
+    renderEventModal(event);
+    if (window.audioController) window.audioController.playEvent();
+}
+
+function renderEventModal(event) {
+    if (document.getElementById("event-modal")) return; // Already open
+
+    const modal = document.createElement("div");
+    modal.id = "event-modal";
+    modal.className = "modal-overlay";
+
+    let optionsHtml = "";
+    event.options.forEach((opt, idx) => {
+        // Evaluate check if exists
+        let disabled = false;
+        if (opt.check && !opt.check(gameState)) disabled = true;
+
+        optionsHtml += `<button class="event-option-btn" ${disabled ? 'disabled' : ''} onclick="resolveEvent('${event.id}', ${idx})">${opt.text}</button>`;
+    });
+
+    modal.innerHTML = `
+        <div class="modal-content">
+            <h2>${event.title}</h2>
+            <p>${event.text}</p>
+            <div class="event-options">
+                ${optionsHtml}
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+// Expose for testing
+window.renderEventModal = renderEventModal;
+
+window.resolveEvent = function(eventId, optionIdx) {
+    const event = RANDOM_EVENTS.find(e => e.id === eventId);
+    if (!event) return;
+
+    const option = event.options[optionIdx];
+    // Check cost again
+    if (option.check && !option.check(gameState)) return;
+
+    const result = option.action(gameState);
+    if (result) alert(result);
+
+    const modal = document.getElementById("event-modal");
+    if (modal) document.body.removeChild(modal);
+    updateUI();
+};
+
+function showAchievementToast(ach) {
+    const toast = document.createElement("div");
+    toast.className = "achievement-toast";
+    toast.innerHTML = `
+        <div style="font-size: 24px; margin-right: 10px;">${ach.icon}</div>
+        <div>
+            <strong>Achievement Unlocked!</strong><br>
+            <span>${ach.name}</span><br>
+            <small>${ach.description}</small>
+        </div>
+    `;
+    document.body.appendChild(toast);
+
+    // Animation
+    setTimeout(() => {
+        toast.style.opacity = "1";
+        toast.style.transform = "translateY(0)";
+    }, 100);
+
+    setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transform = "translateY(20px)";
+        setTimeout(() => document.body.removeChild(toast), 500);
+    }, 4000);
 }
 
 window.spawnGoldenRelic = function() {
@@ -322,6 +460,15 @@ function getGlobalMultiplier(type) {
     // Cap cost reduction
     if (type === "cost" && mult < 0.1) mult = 0.1;
 
+    // Paradox Check
+    mult *= getParadoxMultiplier(gameState, type, null);
+
+    // Hero Check
+    mult *= getHeroMultiplier(gameState, type, null);
+
+    // Government Check
+    mult *= getGovernmentMultiplier(gameState, type, null);
+
     return mult;
 }
 
@@ -352,6 +499,17 @@ window.manualClick = function(event) {
     clickValue = Math.floor(clickValue);
     gameState.resources.clicks += clickValue;
     gameState.resources.lifetimeClicks += clickValue;
+
+    // Stats
+    if (!gameState.stats) gameState.stats = {}; // Migration
+    if (!gameState.stats.totalClicks) gameState.stats.totalClicks = 0;
+    gameState.stats.totalClicks++;
+
+    // Track History
+    if (!gameState.stats.history) gameState.stats.history = {};
+    if (!gameState.stats.history[gameState.era]) gameState.stats.history[gameState.era] = {};
+    if (!gameState.stats.history[gameState.era].clicks) gameState.stats.history[gameState.era].clicks = 0;
+    gameState.stats.history[gameState.era].clicks++;
 
     // Spawn Particle
     if (event) {
@@ -403,6 +561,12 @@ window.buyBuilding = function(name) {
         if (window.audioController) window.audioController.playBuy();
         gameState.resources.clicks -= finalCost;
         b.count++;
+
+        // Stats
+        if (!gameState.stats) gameState.stats = {};
+        if (!gameState.stats.buildingsBought) gameState.stats.buildingsBought = 0;
+        gameState.stats.buildingsBought++;
+
         // Recalc for UI (nominal)
         b.cost = Math.floor(baseCost * Math.pow(1.25, b.count));
 
@@ -439,6 +603,12 @@ window.buyResearch = function(techId) {
         if (purchased) {
             if (window.audioController) window.audioController.playUnlock();
             gameState.researched.push(techId);
+
+            // Stats
+            if (!gameState.stats) gameState.stats = {};
+            if (!gameState.stats.techsResearched) gameState.stats.techsResearched = 0;
+            gameState.stats.techsResearched++;
+
             updateUI();
         }
     }
@@ -504,8 +674,40 @@ function checkEraProgress() {
 }
 
 function advanceEra(era) {
+    // Check Paradoxes for PREVIOUS era
+    const newParadoxes = checkParadoxes(gameState);
+    if (newParadoxes.length > 0) {
+        newParadoxes.forEach(p => alert(`⚠️ PARADOX TRIGGERED: ${p.name}\n${p.description}`));
+    }
+
     gameState.era = era.name;
     console.log(`Advanced to ${era.name}!`);
+
+    // Check if Space Age unlocked
+    if (era.name === "Future Age" && (!gameState.space || gameState.space.planets.length === 0)) {
+        gameState.space = { planets: generatePlanets(5) };
+        alert("🌌 SPACE AGE UNLOCKED! New planets detected.");
+        updateUI(); // To show tab if we add one, or notification
+    }
+
+    // Era transition effect
+    const overlay = document.createElement("div");
+    overlay.style.position = "fixed";
+    overlay.style.top = "0"; overlay.style.left = "0";
+    overlay.style.width = "100%"; overlay.style.height = "100%";
+    overlay.style.backgroundColor = "black";
+    overlay.style.color = "white";
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
+    overlay.style.fontSize = "40px";
+    overlay.style.zIndex = "5000";
+    overlay.style.opacity = "0";
+    overlay.innerText = `Entering ${era.name}`;
+    overlay.style.animation = "eraFade 4s ease-in-out forwards";
+
+    document.body.appendChild(overlay);
+    setTimeout(() => document.body.removeChild(overlay), 4000);
 }
 
 function calculatePrestigeGain() {
@@ -557,6 +759,26 @@ window.toggleAudio = function() {
         const enabled = window.audioController.toggle();
         alert(`Audio ${enabled ? 'Enabled' : 'Disabled'}`);
     }
+};
+
+window.showStats = function() {
+    if (!gameState.stats) gameState.stats = {};
+    const stats = gameState.stats;
+    const playTime = Math.floor((Date.now() - (gameState.startTime || Date.now())) / 1000); // Simple approximation if not tracked
+
+    // Format
+    const text = `
+    📊 STATISTICS 📊
+    ----------------
+    Total Manual Clicks: ${stats.totalClicks || 0}
+    Lifetime Production: ${Math.floor(gameState.resources.lifetimeClicks)}
+    Buildings Constructed: ${stats.buildingsBought || 0}
+    Technologies Researched: ${stats.techsResearched || 0}
+    Expeditions Completed: ${stats.expeditionsCompleted || 0}
+    Relics Uncovered: ${stats.relicsFound || 0}
+    Current Era: ${gameState.era}
+    `;
+    alert(text);
 };
 
 window.buyPrestigeUpgrade = function(id) {
@@ -692,7 +914,360 @@ function updateUI() {
     renderInventory();
     renderExpeditions();
     renderCrafting();
+    renderAchievements();
+    renderWar();
+    renderSpace();
+    renderHeroes();
+    renderGovernment();
+    renderCrisis();
     renderResearchTree();
+}
+
+function renderCrisis() {
+    // Overlay or Widget? Let's do a widget in the Space View if active
+    if (!gameState.crisis || !gameState.crisis.active) return;
+
+    const container = document.getElementById("crisis-widget");
+    if (!container) {
+        const spaceView = document.getElementById("space-view");
+        if (spaceView) {
+            const div = document.createElement("div");
+            div.id = "crisis-widget";
+            div.style.background = "#c0392b";
+            div.style.padding = "15px";
+            div.style.marginBottom = "20px";
+            div.style.border = "2px solid #e74c3c";
+            div.style.color = "white";
+            spaceView.insertBefore(div, spaceView.firstChild);
+        }
+    }
+
+    const widget = document.getElementById("crisis-widget");
+    if (widget) {
+        const threat = Math.floor(gameState.crisis.threat);
+        const stage = CRISIS_STAGES.find(s => threat >= s.threshold) || CRISIS_STAGES[0]; // Logic might need reverse sort or just simple check
+        // Actually threshold is lower bound. So we want largest threshold <= threat.
+        const currentStage = [...CRISIS_STAGES].reverse().find(s => threat >= s.threshold) || CRISIS_STAGES[0];
+
+        widget.innerHTML = `
+            <h3>⚠️ VOID CRISIS ACTIVE ⚠️</h3>
+            <p>Threat Level: ${threat}% (${currentStage.name})</p>
+            <p>${currentStage.desc}</p>
+            <div style="width:100%; background:#555; height:20px;">
+                <div style="width:${threat}%; background:#fff; height:100%;"></div>
+            </div>
+            <br>
+            <button onclick="launchCounterOffensive()">Launch Counter-Offensive (5k Knowl/Gold)</button>
+        `;
+    }
+}
+
+window.launchCounterOffensive = function() {
+    const res = fightCrisis(gameState);
+    alert(res);
+    updateUI();
+};
+
+function renderGovernment() {
+    const container = document.getElementById("government-view");
+    if (!container || container.style.display === "none") return;
+
+    // Current Gov
+    const currentGov = GOVERNMENTS.find(g => g.id === gameState.government.type) || GOVERNMENTS[0];
+    document.getElementById("gov-current").innerHTML = `Current: <strong>${currentGov.name}</strong><br><small>${currentGov.desc}</small>`;
+
+    // Switch Gov
+    const govList = document.getElementById("gov-list");
+    govList.innerHTML = "";
+    GOVERNMENTS.forEach(g => {
+        if (g.id === currentGov.id) return;
+        const div = document.createElement("div");
+        div.className = "recipe-card"; // Reuse
+        div.innerHTML = `
+            <strong>${g.name}</strong> (${g.era})<br>
+            <small>${g.desc}</small><br>
+            <button onclick="switchGov('${g.id}')">Adopt (500 Culture)</button>
+        `;
+        govList.appendChild(div);
+    });
+
+    // Policies
+    const polList = document.getElementById("policy-list");
+    polList.innerHTML = "";
+    POLICIES.forEach(p => {
+        const active = gameState.government.policies.includes(p.id);
+        const div = document.createElement("div");
+        div.className = `expedition-card ${active ? 'active-mission' : ''}`; // Reuse
+
+        let costText = "";
+        for (let k in p.cost) costText += `${p.cost[k]} ${k} `;
+
+        div.innerHTML = `
+            <strong>${p.name}</strong><br>
+            <small>${p.desc}</small><br>
+            <button onclick="togglePol('${p.id}')">${active ? 'Repeal' : `Enact (${costText})`}</button>
+        `;
+        polList.appendChild(div);
+    });
+}
+
+window.switchGov = function(id) {
+    if (adoptGovernment(gameState, id)) {
+        if (window.audioController) window.audioController.playEvent();
+        alert("Government changed!");
+        updateUI();
+    } else {
+        alert("Cannot adopt (Cost: 500 Culture)!");
+    }
+};
+
+window.togglePol = function(id) {
+    const res = togglePolicy(gameState, id);
+    if (res) {
+        if (window.audioController) window.audioController.playBuy();
+        alert(`Policy ${res}!`);
+        updateUI();
+    } else {
+        alert("Cannot toggle policy (Cost/Limit)!");
+    }
+};
+
+function renderHeroes() {
+    const container = document.getElementById("heroes-view");
+    if (!container || container.style.display === "none") return;
+
+    document.getElementById("gpp-display").innerText = `Great People Points: ${Math.floor(gameState.heroes.gpp)} / ${Math.floor(gameState.heroes.threshold)}`;
+
+    const list = document.getElementById("hero-list");
+    list.innerHTML = "";
+
+    gameState.heroes.owned.forEach(h => {
+        const div = document.createElement("div");
+        div.className = "recipe-card"; // Reuse
+        div.innerHTML = `
+            <div style="float:left; font-size: 24px; margin-right: 10px;">${h.icon}</div>
+            <strong>${h.name}</strong> (${h.title})<br>
+            <small>${h.desc}</small>
+        `;
+        list.appendChild(div);
+    });
+}
+
+window.recruitHeroBtn = function() {
+    const hero = recruitHero(gameState);
+    if (hero) {
+        if (window.audioController) window.audioController.playEvent();
+        alert(`Recruited ${hero.name}!`);
+        updateUI();
+    } else {
+        alert("Not enough GPP or all heroes collected.");
+    }
+};
+
+function renderSpace() {
+    const container = document.getElementById("space-view");
+    // Only show if Space is unlocked
+    if (!gameState.space || gameState.space.planets.length === 0) {
+        if (container) container.style.display = "none";
+        // Also hide tab button if we had one (we don't yet in HTML)
+        return;
+    }
+
+    // Check if we need to inject the tab button dynamically or just assume it exists
+    let tabBtn = document.getElementById("tab-btn-space");
+    if (!tabBtn) {
+        const tabs = document.getElementById("tabs");
+        if (tabs) {
+            tabBtn = document.createElement("button");
+            tabBtn.id = "tab-btn-space";
+            tabBtn.className = "tab-btn";
+            tabBtn.innerText = "Space 🚀";
+            tabBtn.onclick = () => showTab('space');
+            tabs.appendChild(tabBtn);
+
+            // Also create view if missing
+            if (!container) {
+                const view = document.createElement("div");
+                view.id = "space-view";
+                view.className = "tab-view";
+                view.style.display = "none";
+                view.innerHTML = `<h3>Space Exploration</h3><div id="planet-list"></div>`;
+                document.getElementById("tab-content").appendChild(view);
+            }
+        }
+    }
+
+    // Render Planets
+    const list = document.getElementById("planet-list");
+    if (!list) return;
+
+    // Only render if visible to save perf
+    if (document.getElementById("space-view").style.display === "none") return;
+
+    list.innerHTML = "";
+    gameState.space.planets.forEach(p => {
+        const div = document.createElement("div");
+        div.className = `expedition-card ${p.colonized ? 'completed' : ''}`;
+
+        let costText = "";
+        for (let k in p.cost) costText += `${p.cost[k]} ${k} `;
+
+        div.innerHTML = `
+            <div style="float:left; font-size: 32px; margin-right: 15px;">${p.icon}</div>
+            <strong>${p.name}</strong> (${p.colonized ? 'Colonized' : 'Unexplored'})<br>
+            <small>Resources: ${p.resources.join(", ")}</small><br>
+            ${!p.colonized ? `<small>Cost: ${costText}</small><br><button onclick="attemptColonize('${p.id}')">Colonize</button>` : `<small>Producing: ${p.production.money} Gold, ${p.production.knowledge} Knowl / sec</small>`}
+        `;
+        list.appendChild(div);
+    });
+}
+
+// Expose for testing/UI
+window.renderSpace = renderSpace;
+window.checkParadoxes = checkParadoxes;
+window.checkCrisis = checkCrisis;
+window.renderCrisis = renderCrisis;
+
+window.attemptColonize = function(planetId) {
+    if (colonizePlanet(gameState, planetId)) {
+        if (window.audioController) window.audioController.playEvent();
+        alert("Colonization Successful!");
+        updateUI();
+    } else {
+        alert("Not enough resources!");
+    }
+};
+
+function renderWar() {
+    const container = document.getElementById("war-view");
+    if (!container || container.style.display === "none") return;
+
+    const unitList = document.getElementById("unit-list");
+    unitList.innerHTML = "";
+
+    // Units
+    for (let key in UNITS) {
+        const u = UNITS[key];
+        const owned = gameState.army ? (gameState.army[key] || 0) : 0;
+
+        let costText = "";
+        for (let res in u.cost) costText += `${u.cost[res]} ${res} `;
+
+        const div = document.createElement("div");
+        div.className = "recipe-card"; // Reuse style
+        div.innerHTML = `
+            <div style="float:left; font-size: 24px; margin-right: 10px;">${u.icon}</div>
+            <strong>${u.name}</strong> (Atk: ${u.attack})<br>
+            <small>Cost: ${costText}</small><br>
+            <button onclick="trainUnit('${key}')">Train (Owned: ${owned})</button>
+        `;
+        unitList.appendChild(div);
+    }
+
+    // Rivals
+    const rivalList = document.getElementById("rival-list");
+    rivalList.innerHTML = "";
+
+    RIVALS.forEach((rival, idx) => {
+        const div = document.createElement("div");
+        div.className = "expedition-card"; // Reuse style
+        let lootText = "";
+        for (let k in rival.loot) lootText += `${rival.loot[k]} ${k} `;
+
+        div.innerHTML = `
+            <strong>${rival.name}</strong> (Power: ~${rival.power})<br>
+            <small>Loot: ${lootText}</small><br>
+            <button onclick="attackRival(${idx})">Attack!</button>
+        `;
+        rivalList.appendChild(div);
+    });
+
+    const power = calculateArmyPower(gameState.army || {});
+    document.getElementById("army-power").innerText = `Army Power: ${power}`;
+}
+
+window.trainUnit = function(unitKey) {
+    if (!gameState.army) gameState.army = {};
+    const unit = UNITS[unitKey];
+
+    // Check cost
+    for (let res in unit.cost) {
+        if ((gameState.resources[res] || 0) < unit.cost[res]) {
+            alert(`Not enough ${res}!`);
+            return;
+        }
+    }
+
+    // Pay
+    for (let res in unit.cost) {
+        gameState.resources[res] -= unit.cost[res];
+    }
+
+    if (!gameState.army[unitKey]) gameState.army[unitKey] = 0;
+    gameState.army[unitKey]++;
+
+    if (window.audioController) window.audioController.playBuy();
+    updateUI();
+};
+
+window.attackRival = function(idx) {
+    if (!gameState.army) gameState.army = {};
+    const rival = RIVALS[idx];
+
+    // Convert army object to format for resolveCombat if needed (current structure matches)
+    // We pass gameState.army directly which is { "Warrior": 5 }
+    // Note: resolveCombat modifies playerArmy in place for losses.
+
+    // Deep copy army to avoid modifying state before we know results/apply losses?
+    // Actually resolveCombat applies losses to the passed object.
+    // This is fine as long as we save/updateUI after.
+
+    const result = resolveCombat(gameState.army, rival);
+
+    let msg = result.win ? `VICTORY against ${rival.name}!` : `DEFEAT against ${rival.name}!`;
+    msg += `\nYour Power: ${result.playerPower} vs Enemy: ${result.rivalPower}`;
+
+    if (result.losses) {
+        msg += "\n\nLosses:";
+        for (let k in result.losses) msg += `\n- ${result.losses[k]} ${k}`;
+    }
+
+    if (result.win && result.loot) {
+        msg += "\n\nLoot:";
+        for (let k in result.loot) {
+            if (!gameState.resources[k]) gameState.resources[k] = 0;
+            gameState.resources[k] += result.loot[k];
+            msg += `\n+ ${result.loot[k]} ${k}`;
+        }
+    }
+
+    alert(msg);
+    updateUI();
+};
+
+// Expose
+window.updateUI = updateUI;
+
+function renderAchievements() {
+    const container = document.getElementById("achievement-list");
+    if (!container) return;
+
+    // Only update if not visible? Or always?
+    // Optimization: Check if currently visible or dirty.
+    if (document.getElementById("achievements-view").style.display === "none") return;
+
+    container.innerHTML = "";
+    ACHIEVEMENTS.forEach(ach => {
+        const unlocked = gameState.achievements.includes(ach.id);
+        const div = document.createElement("div");
+        div.className = `achievement-card ${unlocked ? 'unlocked' : 'locked'}`;
+        div.innerHTML = `
+            <div style="float:left; font-size: 24px; margin-right: 10px;">${ach.icon}</div>
+            <strong>${ach.name}</strong><br>
+            <small>${ach.description}</small>
+        `;
+        container.appendChild(div);
+    });
 }
 
 function renderCrafting() {
@@ -932,9 +1507,19 @@ function completeExpedition(exp) {
     if (window.audioController) window.audioController.playEvent();
     let log = `Expedition '${exp.name}' SUCCESS! `;
 
+    // Stats
+    if (!gameState.stats) gameState.stats = {};
+    if (!gameState.stats.expeditionsCompleted) gameState.stats.expeditionsCompleted = 0;
+    gameState.stats.expeditionsCompleted++;
+
     if (exp.rewards.relics > 0) {
         const relic = allRelics[Math.floor(Math.random() * allRelics.length)];
         gameState.inventory.push(relic);
+
+        // Stats
+        if (!gameState.stats.relicsFound) gameState.stats.relicsFound = 0;
+        gameState.stats.relicsFound++;
+
         log += `Found relic: ${relic.name}. `;
     }
 
@@ -945,9 +1530,24 @@ function completeExpedition(exp) {
 
     if (exp.rewards.loot) {
         const type = exp.rewards.loot.type;
-        const amount = exp.rewards.loot.amount;
+        let amount = exp.rewards.loot.amount;
+
+        // Paradox Check
+        const pMult = getParadoxMultiplier(gameState, "production_mult", type);
+        amount = Math.floor(amount * pMult);
+
         if (gameState.resources[type] !== undefined) {
             gameState.resources[type] += amount;
+
+            // Track History
+            if (!gameState.stats.history) gameState.stats.history = {};
+            if (!gameState.stats.history[gameState.era]) gameState.stats.history[gameState.era] = {};
+
+            if (type === "wood") {
+                if (!gameState.stats.history[gameState.era].woodGathered) gameState.stats.history[gameState.era].woodGathered = 0;
+                gameState.stats.history[gameState.era].woodGathered += amount;
+            }
+
             log += `Gained ${amount} ${type}. `;
         }
     }
