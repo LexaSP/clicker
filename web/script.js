@@ -1,6 +1,8 @@
 // script.js
 import { generateRelics, generateResearch, generateIdeas, generateExpeditions, generateRecipes } from './content-gen.js';
 import { AudioController } from './audio.js';
+import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
+import { RANDOM_EVENTS } from './events.js'; // Import list
 
 // --- Game State ---
 let gameState = {
@@ -23,6 +25,15 @@ let gameState = {
     expeditions: [], // Available
     activeExpeditions: [],
     quests: [], // Daily quests
+    achievements: [], // Unlocked achievements
+
+    stats: {
+        totalClicks: 0, // Manual clicks
+        expeditionsCompleted: 0,
+        relicsFound: 0,
+        buildingsBought: 0,
+        techsResearched: 0
+    },
 
     prestigeUpgrades: { // Ascension
         "golden_freq": { level: 0, max: 5, cost: 1, name: "Golden Relic Frequency" },
@@ -109,6 +120,9 @@ async function init() {
 
     window.gameState = gameState;
     window.allResearch = allResearch;
+
+    // Event Tick
+    setInterval(() => checkStoryEvents(), 15000); // Check every 15s
 }
 
 // --- Game Loop ---
@@ -166,8 +180,6 @@ function tick(dt) {
     }
 
     // Golden Relic Spawner
-    // Base chance 0.005. Upgrade multiplies it? Or adds?
-    // Let's say upgrade adds 0.001 per level.
     let goldenChance = 0.005;
     if (gameState.prestigeUpgrades && gameState.prestigeUpgrades["golden_freq"]) {
         goldenChance += gameState.prestigeUpgrades["golden_freq"].level * 0.002;
@@ -176,6 +188,104 @@ function tick(dt) {
     if (Math.random() < goldenChance) {
         spawnGoldenRelic();
     }
+
+    // Check Achievements periodically (every tick is fine for small list)
+    if (Math.random() < 0.1) { // Throttle slightly
+        const newUnlocks = checkAchievements(gameState);
+        if (newUnlocks.length > 0) {
+            newUnlocks.forEach(ach => {
+                showAchievementToast(ach);
+                if (window.audioController) window.audioController.playEvent();
+            });
+        }
+    }
+}
+
+function checkStoryEvents() {
+    // 5% chance per check (15s)
+    if (Math.random() > 0.05) return;
+
+    const possible = RANDOM_EVENTS.filter(evt => evt.trigger && evt.trigger(gameState));
+    if (possible.length === 0) return;
+
+    // Pick one
+    const event = possible[Math.floor(Math.random() * possible.length)];
+    renderEventModal(event);
+    if (window.audioController) window.audioController.playEvent();
+}
+
+function renderEventModal(event) {
+    if (document.getElementById("event-modal")) return; // Already open
+
+    const modal = document.createElement("div");
+    modal.id = "event-modal";
+    modal.className = "modal-overlay";
+
+    let optionsHtml = "";
+    event.options.forEach((opt, idx) => {
+        // Evaluate check if exists
+        let disabled = false;
+        if (opt.check && !opt.check(gameState)) disabled = true;
+
+        optionsHtml += `<button class="event-option-btn" ${disabled ? 'disabled' : ''} onclick="resolveEvent('${event.id}', ${idx})">${opt.text}</button>`;
+    });
+
+    modal.innerHTML = `
+        <div class="modal-content">
+            <h2>${event.title}</h2>
+            <p>${event.text}</p>
+            <div class="event-options">
+                ${optionsHtml}
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+// Expose for testing
+window.renderEventModal = renderEventModal;
+
+window.resolveEvent = function(eventId, optionIdx) {
+    const event = RANDOM_EVENTS.find(e => e.id === eventId);
+    if (!event) return;
+
+    const option = event.options[optionIdx];
+    // Check cost again
+    if (option.check && !option.check(gameState)) return;
+
+    const result = option.action(gameState);
+    if (result) alert(result);
+
+    const modal = document.getElementById("event-modal");
+    if (modal) document.body.removeChild(modal);
+    updateUI();
+};
+
+function showAchievementToast(ach) {
+    const toast = document.createElement("div");
+    toast.className = "achievement-toast";
+    toast.innerHTML = `
+        <div style="font-size: 24px; margin-right: 10px;">${ach.icon}</div>
+        <div>
+            <strong>Achievement Unlocked!</strong><br>
+            <span>${ach.name}</span><br>
+            <small>${ach.description}</small>
+        </div>
+    `;
+    document.body.appendChild(toast);
+
+    // Animation
+    setTimeout(() => {
+        toast.style.opacity = "1";
+        toast.style.transform = "translateY(0)";
+    }, 100);
+
+    setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transform = "translateY(20px)";
+        setTimeout(() => document.body.removeChild(toast), 500);
+    }, 4000);
 }
 
 window.spawnGoldenRelic = function() {
@@ -353,6 +463,11 @@ window.manualClick = function(event) {
     gameState.resources.clicks += clickValue;
     gameState.resources.lifetimeClicks += clickValue;
 
+    // Stats
+    if (!gameState.stats) gameState.stats = {}; // Migration
+    if (!gameState.stats.totalClicks) gameState.stats.totalClicks = 0;
+    gameState.stats.totalClicks++;
+
     // Spawn Particle
     if (event) {
         spawnClickParticle(event.clientX, event.clientY, clickValue, isCrit);
@@ -403,6 +518,12 @@ window.buyBuilding = function(name) {
         if (window.audioController) window.audioController.playBuy();
         gameState.resources.clicks -= finalCost;
         b.count++;
+
+        // Stats
+        if (!gameState.stats) gameState.stats = {};
+        if (!gameState.stats.buildingsBought) gameState.stats.buildingsBought = 0;
+        gameState.stats.buildingsBought++;
+
         // Recalc for UI (nominal)
         b.cost = Math.floor(baseCost * Math.pow(1.25, b.count));
 
@@ -439,6 +560,12 @@ window.buyResearch = function(techId) {
         if (purchased) {
             if (window.audioController) window.audioController.playUnlock();
             gameState.researched.push(techId);
+
+            // Stats
+            if (!gameState.stats) gameState.stats = {};
+            if (!gameState.stats.techsResearched) gameState.stats.techsResearched = 0;
+            gameState.stats.techsResearched++;
+
             updateUI();
         }
     }
@@ -506,6 +633,25 @@ function checkEraProgress() {
 function advanceEra(era) {
     gameState.era = era.name;
     console.log(`Advanced to ${era.name}!`);
+
+    // Era transition effect
+    const overlay = document.createElement("div");
+    overlay.style.position = "fixed";
+    overlay.style.top = "0"; overlay.style.left = "0";
+    overlay.style.width = "100%"; overlay.style.height = "100%";
+    overlay.style.backgroundColor = "black";
+    overlay.style.color = "white";
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
+    overlay.style.fontSize = "40px";
+    overlay.style.zIndex = "5000";
+    overlay.style.opacity = "0";
+    overlay.innerText = `Entering ${era.name}`;
+    overlay.style.animation = "eraFade 4s ease-in-out forwards";
+
+    document.body.appendChild(overlay);
+    setTimeout(() => document.body.removeChild(overlay), 4000);
 }
 
 function calculatePrestigeGain() {
@@ -557,6 +703,26 @@ window.toggleAudio = function() {
         const enabled = window.audioController.toggle();
         alert(`Audio ${enabled ? 'Enabled' : 'Disabled'}`);
     }
+};
+
+window.showStats = function() {
+    if (!gameState.stats) gameState.stats = {};
+    const stats = gameState.stats;
+    const playTime = Math.floor((Date.now() - (gameState.startTime || Date.now())) / 1000); // Simple approximation if not tracked
+
+    // Format
+    const text = `
+    📊 STATISTICS 📊
+    ----------------
+    Total Manual Clicks: ${stats.totalClicks || 0}
+    Lifetime Production: ${Math.floor(gameState.resources.lifetimeClicks)}
+    Buildings Constructed: ${stats.buildingsBought || 0}
+    Technologies Researched: ${stats.techsResearched || 0}
+    Expeditions Completed: ${stats.expeditionsCompleted || 0}
+    Relics Uncovered: ${stats.relicsFound || 0}
+    Current Era: ${gameState.era}
+    `;
+    alert(text);
 };
 
 window.buyPrestigeUpgrade = function(id) {
@@ -692,7 +858,30 @@ function updateUI() {
     renderInventory();
     renderExpeditions();
     renderCrafting();
+    renderAchievements();
     renderResearchTree();
+}
+
+function renderAchievements() {
+    const container = document.getElementById("achievement-list");
+    if (!container) return;
+
+    // Only update if not visible? Or always?
+    // Optimization: Check if currently visible or dirty.
+    if (document.getElementById("achievements-view").style.display === "none") return;
+
+    container.innerHTML = "";
+    ACHIEVEMENTS.forEach(ach => {
+        const unlocked = gameState.achievements.includes(ach.id);
+        const div = document.createElement("div");
+        div.className = `achievement-card ${unlocked ? 'unlocked' : 'locked'}`;
+        div.innerHTML = `
+            <div style="float:left; font-size: 24px; margin-right: 10px;">${ach.icon}</div>
+            <strong>${ach.name}</strong><br>
+            <small>${ach.description}</small>
+        `;
+        container.appendChild(div);
+    });
 }
 
 function renderCrafting() {
@@ -932,9 +1121,19 @@ function completeExpedition(exp) {
     if (window.audioController) window.audioController.playEvent();
     let log = `Expedition '${exp.name}' SUCCESS! `;
 
+    // Stats
+    if (!gameState.stats) gameState.stats = {};
+    if (!gameState.stats.expeditionsCompleted) gameState.stats.expeditionsCompleted = 0;
+    gameState.stats.expeditionsCompleted++;
+
     if (exp.rewards.relics > 0) {
         const relic = allRelics[Math.floor(Math.random() * allRelics.length)];
         gameState.inventory.push(relic);
+
+        // Stats
+        if (!gameState.stats.relicsFound) gameState.stats.relicsFound = 0;
+        gameState.stats.relicsFound++;
+
         log += `Found relic: ${relic.name}. `;
     }
 

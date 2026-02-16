@@ -67,6 +67,7 @@
                 <button class="tab-btn active" onclick="showTab('research')">Research</button>
                 <button class="tab-btn" onclick="showTab('expeditions')">Expeditions</button>
                 <button class="tab-btn" onclick="showTab('crafting')">Crafting</button>
+                <button class="tab-btn" onclick="showTab('achievements')">Achievements</button>
             </div>
 
             <div id="tab-content">
@@ -100,6 +101,13 @@
                         <p>No recipes known.</p>
                     </div>
                 </div>
+
+                <div id="achievements-view" class="tab-view" style="display:none;">
+                    <h3>Achievements</h3>
+                    <div id="achievement-list">
+                        <!-- Achievements -->
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -119,6 +127,7 @@
             <hr>
             <h3>Settings</h3>
             <button onclick="toggleAudio()">Toggle Audio</button>
+            <button onclick="showStats()">View Statistics 📊</button>
             <button onclick="downloadSave()">Save to File 💾</button>
             <button onclick="document.getElementById('save-file-input').click()">Load from File 📂</button>
             <input type="file" id="save-file-input" style="display:none" onchange="uploadSave(this)">
