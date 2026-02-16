@@ -27,8 +27,8 @@ export function calculateArmyPower(army) {
     return Math.floor(power);
 }
 
-export function resolveCombat(playerArmy, rival) {
-    const playerPower = calculateArmyPower(playerArmy);
+export function resolveCombat(playerArmy, rival, powerMultiplier = 1.0) {
+    const playerPower = calculateArmyPower(playerArmy) * powerMultiplier;
     // Simple RNG variance +/- 20%
     const effectivePlayer = playerPower * (0.8 + Math.random() * 0.4);
     const effectiveRival = rival.power * (0.8 + Math.random() * 0.4);
