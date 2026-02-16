@@ -10,6 +10,7 @@ import { generateGPP, recruitHero, getHeroMultiplier } from './heroes.js';
 import { GOVERNMENTS, POLICIES, adoptGovernment, togglePolicy, getGovernmentMultiplier } from './government.js';
 import { checkCrisis, fightCrisis, CRISIS_STAGES } from './crisis.js';
 import { CIVILIZATIONS, getCivMultiplier } from './civilizations.js';
+import { WONDERS, getWonderMultiplier, buildWonder } from './wonders.js';
 
 // --- Game State ---
 let gameState = {
@@ -43,6 +44,7 @@ let gameState = {
     space: { planets: [] }, // Space exploration
     heroes: { owned: [], gpp: 0, threshold: 1000 }, // Great People
     government: { type: "gov_tribal", policies: [] }, // Government
+    wonders: [], // Built wonders IDs
     crisis: { active: false, threat: 0, defeated: false }, // Endgame
     civilizationHistory: {}, // { "Bronze Age": { id: "egypt", ... } }
 
@@ -519,6 +521,9 @@ function getGlobalMultiplier(type, resource = null) {
     // Civilizations Check
     mult *= getCivMultiplier(gameState, type, resource);
 
+    // Wonders Check
+    mult *= getWonderMultiplier(gameState, type, resource);
+
     return mult;
 }
 
@@ -709,6 +714,30 @@ function calculateOfflineProgress(seconds) {
 // --- UI Updates ---
 function initUI() {
     renderResearchTree();
+    injectWondersTab();
+}
+
+function injectWondersTab() {
+    let wonderBtn = document.getElementById("tab-btn-wonders");
+    if (!wonderBtn) {
+        const tabs = document.getElementById("tabs");
+        if (tabs) {
+            wonderBtn = document.createElement("button");
+            wonderBtn.id = "tab-btn-wonders";
+            wonderBtn.className = "tab-btn";
+            wonderBtn.innerText = "Wonders 🏛️";
+            wonderBtn.onclick = () => showTab('wonders');
+            tabs.appendChild(wonderBtn);
+
+            // Create View
+            const view = document.createElement("div");
+            view.id = "wonders-view";
+            view.className = "tab-view";
+            view.style.display = "none";
+            view.innerHTML = `<h3>Great Wonders</h3><p>Build monumental structures for massive global bonuses.</p><div id="wonder-list"></div>`;
+            document.getElementById("tab-content").appendChild(view);
+        }
+    }
 }
 
 function checkEraProgress() {
@@ -1138,9 +1167,57 @@ function updateUI() {
     renderSpace();
     renderHeroes();
     renderGovernment();
+    renderWonders();
     renderCrisis();
     renderResearchTree();
 }
+
+function renderWonders() {
+    const container = document.getElementById("wonders-view");
+    if (!container || container.style.display === "none") return;
+
+    // Assuming structure exists, else inject
+    let list = document.getElementById("wonder-list");
+    if (!list) {
+        list = document.createElement("div");
+        list.id = "wonder-list";
+        container.appendChild(list);
+    }
+
+    list.innerHTML = "";
+
+    WONDERS.forEach(w => {
+        // Only show if visible (based on Era?)
+        // Let's show all for now or filter by current era index
+
+        const isBuilt = gameState.wonders && gameState.wonders.includes(w.id);
+        const div = document.createElement("div");
+        div.className = `expedition-card ${isBuilt ? 'completed' : ''}`;
+
+        let costText = "";
+        for (let k in w.cost) costText += `${w.cost[k]} ${k} `;
+
+        div.innerHTML = `
+            <div style="float:left; font-size: 32px; margin-right: 15px;">${w.icon}</div>
+            <strong>${w.name}</strong> (${w.era})<br>
+            <small>${w.description}</small><br>
+            <span style="color: #f1c40f">${w.bonusText}</span><br>
+            ${isBuilt ? "<strong>CONSTRUCTED</strong>" : `<small>Cost: ${costText}</small><br><button onclick="attemptBuildWonder('${w.id}')">Build Wonder</button>`}
+        `;
+        list.appendChild(div);
+    });
+}
+
+window.attemptBuildWonder = function(id) {
+    const res = buildWonder(gameState, id);
+    if (res.success) {
+        if (window.audioController) window.audioController.playEvent(); // Special sound ideally
+        alert(res.msg);
+        updateUI();
+    } else {
+        alert(res.msg);
+    }
+};
 
 function renderCrisis() {
     // Overlay or Widget? Let's do a widget in the Space View if active
@@ -1315,6 +1392,7 @@ function renderSpace() {
             }
         }
     }
+
 
     // Render Planets
     const list = document.getElementById("planet-list");
