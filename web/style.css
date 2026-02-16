@@ -120,6 +120,8 @@ button:disabled { background-color: #7f8c8d; cursor: not-allowed; }
 #tabs {
     margin-bottom: 10px;
     border-bottom: 1px solid rgba(255,255,255,0.1);
+    display: flex;
+    flex-wrap: wrap; /* Ensure tabs wrap */
 }
 .tab-btn {
     background-color: transparent;
@@ -127,7 +129,10 @@ button:disabled { background-color: #7f8c8d; cursor: not-allowed; }
     border-bottom: 3px solid transparent;
     border-radius: 0;
     margin: 0;
-    padding: 10px 20px;
+    padding: 10px 15px; /* Reduce padding slightly for better fit */
+    font-size: 13px;
+    flex-grow: 1; /* Distribute space */
+    white-space: nowrap;
 }
 .tab-btn.active {
     border-bottom: 3px solid #3498db;
@@ -205,6 +210,13 @@ button:disabled { background-color: #7f8c8d; cursor: not-allowed; }
 }
 .event-option-btn:hover { background-color: #8e44ad; }
 .event-option-btn:disabled { background-color: #7f8c8d; opacity: 0.5; }
+
+.civ-card:hover {
+    background: rgba(255,255,255,0.2) !important;
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(255,255,255,0.5);
+    transition: all 0.2s;
+}
 
 /* Rarities */
 .rarity-common { border-left: 4px solid #bdc3c7; }
