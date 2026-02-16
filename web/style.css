@@ -211,6 +211,13 @@ button:disabled { background-color: #7f8c8d; cursor: not-allowed; }
 .event-option-btn:hover { background-color: #8e44ad; }
 .event-option-btn:disabled { background-color: #7f8c8d; opacity: 0.5; }
 
+.civ-card:hover {
+    background: rgba(255,255,255,0.2) !important;
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(255,255,255,0.5);
+    transition: all 0.2s;
+}
+
 /* Rarities */
 .rarity-common { border-left: 4px solid #bdc3c7; }
 .rarity-uncommon { border-left: 4px solid #2ecc71; }

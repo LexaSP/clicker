@@ -9,6 +9,7 @@ import { generatePlanets, colonizePlanet, getSpaceProduction } from './space.js'
 import { generateGPP, recruitHero, getHeroMultiplier } from './heroes.js';
 import { GOVERNMENTS, POLICIES, adoptGovernment, togglePolicy, getGovernmentMultiplier } from './government.js';
 import { checkCrisis, fightCrisis, CRISIS_STAGES } from './crisis.js';
+import { CIVILIZATIONS, getCivMultiplier } from './civilizations.js';
 
 // --- Game State ---
 let gameState = {
@@ -38,6 +39,7 @@ let gameState = {
     heroes: { owned: [], gpp: 0, threshold: 1000 }, // Great People
     government: { type: "gov_tribal", policies: [] }, // Government
     crisis: { active: false, threat: 0, defeated: false }, // Endgame
+    civilizationHistory: {}, // { "Bronze Age": { id: "egypt", ... } }
 
     stats: {
         totalClicks: 0, // Manual clicks
@@ -469,6 +471,9 @@ function getGlobalMultiplier(type) {
     // Government Check
     mult *= getGovernmentMultiplier(gameState, type, null);
 
+    // Civilizations Check
+    mult *= getCivMultiplier(gameState, type, null);
+
     return mult;
 }
 
@@ -674,6 +679,15 @@ function checkEraProgress() {
 }
 
 function advanceEra(era) {
+    // Intercept: Check if we need to choose a Civ
+    // Stone Age doesn't have a choice (starts default). Or maybe it does?
+    // Let's assume we choose when ENTERING the era.
+    // If we haven't chosen for this era yet, show modal.
+    if (CIVILIZATIONS[era.name] && (!gameState.civilizationHistory || !gameState.civilizationHistory[era.name])) {
+        renderCivSelection(era);
+        return; // Stop advancement until chosen
+    }
+
     // Check Paradoxes for PREVIOUS era
     const newParadoxes = checkParadoxes(gameState);
     if (newParadoxes.length > 0) {
@@ -687,7 +701,7 @@ function advanceEra(era) {
     if (era.name === "Future Age" && (!gameState.space || gameState.space.planets.length === 0)) {
         gameState.space = { planets: generatePlanets(5) };
         alert("🌌 SPACE AGE UNLOCKED! New planets detected.");
-        updateUI(); // To show tab if we add one, or notification
+        updateUI();
     }
 
     // Era transition effect
@@ -709,6 +723,61 @@ function advanceEra(era) {
     document.body.appendChild(overlay);
     setTimeout(() => document.body.removeChild(overlay), 4000);
 }
+
+function renderCivSelection(era) {
+    if (document.querySelector(".modal-overlay")) return; // Prevent duplicates
+
+    const options = CIVILIZATIONS[era.name];
+    if (!options) {
+        // Fallback if no options defined for this era
+        gameState.civilizationHistory = gameState.civilizationHistory || {};
+        gameState.civilizationHistory[era.name] = { id: "default", name: "Generic", effect: {} };
+        advanceEra(era);
+        return;
+    }
+
+    const modal = document.createElement("div");
+    modal.className = "modal-overlay";
+
+    let html = `
+        <div class="modal-content" style="max-width: 600px;">
+            <h2>Choose Your Civilization</h2>
+            <p>Entering the ${era.name}...</p>
+            <div style="display:flex; gap:10px; justify-content: center; flex-wrap: wrap;">
+    `;
+
+    options.forEach((civ, idx) => {
+        html += `
+            <div class="civ-card" onclick="selectCiv('${era.name}', ${idx})" style="background: rgba(255,255,255,0.1); padding: 15px; border: 1px solid #7f8c8d; border-radius: 8px; width: 150px; cursor: pointer;">
+                <div style="font-size: 40px;">${civ.icon}</div>
+                <h3>${civ.name}</h3>
+                <small>${civ.desc}</small>
+            </div>
+        `;
+    });
+
+    html += `</div></div>`;
+    modal.innerHTML = html;
+    document.body.appendChild(modal);
+    window.currentCivModal = modal;
+}
+
+window.selectCiv = function(eraName, idx) {
+    if (!gameState.civilizationHistory) gameState.civilizationHistory = {};
+    const eraOptions = CIVILIZATIONS[eraName];
+    const choice = eraOptions[idx];
+
+    gameState.civilizationHistory[eraName] = choice;
+
+    if (window.currentCivModal) {
+        document.body.removeChild(window.currentCivModal);
+        window.currentCivModal = null;
+    }
+
+    // Resume advancement
+    const eraObj = ERA_DATA.find(e => e.name === eraName);
+    advanceEra(eraObj);
+};
 
 function calculatePrestigeGain() {
     if (gameState.resources.lifetimeClicks < 100) return 0;
@@ -1127,6 +1196,7 @@ window.renderSpace = renderSpace;
 window.checkParadoxes = checkParadoxes;
 window.checkCrisis = checkCrisis;
 window.renderCrisis = renderCrisis;
+window.checkEraProgress = checkEraProgress;
 
 window.attemptColonize = function(planetId) {
     if (colonizePlanet(gameState, planetId)) {
