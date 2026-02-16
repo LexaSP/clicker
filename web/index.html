@@ -119,8 +119,9 @@
             <hr>
             <h3>Settings</h3>
             <button onclick="toggleAudio()">Toggle Audio</button>
-            <button onclick="exportSave()">Export Save</button>
-            <button onclick="importSave()">Import Save</button>
+            <button onclick="downloadSave()">Save to File 💾</button>
+            <button onclick="document.getElementById('save-file-input').click()">Load from File 📂</button>
+            <input type="file" id="save-file-input" style="display:none" onchange="uploadSave(this)">
 
             <hr>
 
