@@ -9,11 +9,29 @@ function randomChoice(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
 }
 
+// --- Icons ---
+const RELIC_ICONS = ["🗿", "🏺", "🔮", "⚔️", "🛡️", "💍", "📜", "👑", "🏰", "🏛️", "💎", "🧿", "🗝️", "⚱️", "🖼️", "🗡️", "🏹", "⛏️", "🔭", "⚖️"];
+
 // --- Relics ---
-// 200+ Relics
-const relicPrefixes = ["Ancient", "Lost", "Cursed", "Divine", "Broken", "Glowing", "Rusty", "Golden", "Crystal", "Shadow", "Ethereal", "Time-worn", "Forgotten", "Mystic", "Arcane", "Cosmic", "Primeval", "Void", "Solar", "Lunar"];
-const relicNames = ["Shard", "Totem", "Amulet", "Ring", "Tablet", "Coin", "Crown", "Scepter", "Orb", "Gem", "Fragment", "Idol", "Mask", "Chalice", "Dagger", "Scroll", "Key", "Mirror", "Compass", "Beacon"];
-const relicSuffixes = ["of Power", "of Time", "of Greed", "of Wisdom", "of Speed", "of Shadows", "of Light", "of Fire", "of Ice", "of Earth", "of Storms", "of Chaos", "of Order", "of Dreams", "of Nightmares", "of the Ancients", "of the Stars", "of the Deep", "of the Sky", "of Eternity"];
+// Expanded Lists
+const relicPrefixes = [
+    "Ancient", "Lost", "Cursed", "Divine", "Broken", "Glowing", "Rusty", "Golden", "Crystal", "Shadow",
+    "Ethereal", "Time-worn", "Forgotten", "Mystic", "Arcane", "Cosmic", "Primeval", "Void", "Solar", "Lunar",
+    "Infernal", "Celestial", "Abyssal", "Radiant", "Spectral", "Runed", "Enchanted", "Holy", "Dark", "Faded",
+    "Mythic", "Legendary", "Forbidden", "Sacred", "Haunted", "Blessed", "Frozen", "Burning", "Electric", "Magnetic"
+];
+const relicNames = [
+    "Shard", "Totem", "Amulet", "Ring", "Tablet", "Coin", "Crown", "Scepter", "Orb", "Gem",
+    "Fragment", "Idol", "Mask", "Chalice", "Dagger", "Scroll", "Key", "Mirror", "Compass", "Beacon",
+    "Pendant", "Bracelet", "Gauntlet", "Helmet", "Shield", "Sword", "Statue", "Urn", "Cube", "Prism",
+    "Tome", "Wand", "Staff", "Cloak", "Boots", "Belt", "Necklace", "Earring", "Brooch", "Medallion"
+];
+const relicSuffixes = [
+    "of Power", "of Time", "of Greed", "of Wisdom", "of Speed", "of Shadows", "of Light", "of Fire", "of Ice", "of Earth",
+    "of Storms", "of Chaos", "of Order", "of Dreams", "of Nightmares", "of the Ancients", "of the Stars", "of the Deep", "of the Sky", "of Eternity",
+    "of Destiny", "of Fate", "of Life", "of Death", "of Hope", "of Despair", "of Truth", "of Lies", "of War", "of Peace",
+    "of the Dragon", "of the Phoenix", "of the Wolf", "of the Bear", "of the Eagle", "of the Snake", "of the Lion", "of the Tiger", "of the Shark", "of the Whale"
+];
 
 export function generateRelics() {
     const relics = [];
@@ -22,7 +40,7 @@ export function generateRelics() {
     for (let p of relicPrefixes) {
         for (let n of relicNames) {
             for (let s of relicSuffixes) {
-                if (relics.length >= 250) break; // Cap at 250 for now
+                if (relics.length >= 300) break; // Cap at 300
                 const name = `${p} ${n} ${s}`;
                 const rarity = randomChoice(["Common", "Uncommon", "Rare", "Epic", "Legendary"]);
 
@@ -41,34 +59,60 @@ export function generateRelics() {
                 relics.push({
                     id: `relic_${idCounter++}`,
                     name: name,
+                    icon: randomChoice(RELIC_ICONS),
                     rarity: rarity,
                     effect: { type: effectType, value: effectValue }, // e.g. +5%
                     description: `A ${rarity.toLowerCase()} relic that grants +${effectValue}% ${effectType.replace('_', ' ')}.`
                 });
             }
-            if (relics.length >= 250) break;
+            if (relics.length >= 300) break;
         }
-        if (relics.length >= 250) break;
+        if (relics.length >= 300) break;
     }
     return relics;
 }
 
 // --- Research ---
 // 100+ Research nodes
-// We can simulate a tech tree with eras
 const eras = ["Stone Age", "Bronze Age", "Iron Age", "Middle Ages", "Renaissance", "Industrial Age", "Modern Age", "Information Age", "Future Age", "Singularity"];
+const eraIcons = {
+    "Stone Age": "🪨", "Bronze Age": "⚔️", "Iron Age": "🔨", "Middle Ages": "🏰",
+    "Renaissance": "🎨", "Industrial Age": "🏭", "Modern Age": "🏙️",
+    "Information Age": "💻", "Future Age": "🚀", "Singularity": "🌌"
+};
 
-export function generateResearch() { console.log("Generating Research...");
+const TECH_NAMES = {
+    "Stone Age": ["Fire Discovery", "Stone Tools", "Wheel", "Cave Painting", "Hunting Tactics", "Shelter Building", "Basic Language", "Tribal Hierarchy", "Gathering", "Pottery", "Spear Crafting", "Fur Clothing"],
+    "Bronze Age": ["Bronze Smelting", "Agriculture", "Writing", "Trade Routes", "City States", "Irrigation", "Masonry", "Chariots", "Mathematics", "Astronomy", "Sailing", "Currency"],
+    "Iron Age": ["Iron Forging", "Alphabet", "Democracy", "Philosophy", "Roads", "Aqueducts", "Legions", "Catapults", "Paper", "Compass", "Glassblowing", "Concrete"],
+    "Middle Ages": ["Feudalism", "Castles", "Guilds", "Crop Rotation", "Windmills", "Heavy Plough", "Universities", "Alchemy", "Gunpowder", "Plate Armor", "Printing Press", "Banking"],
+    "Renaissance": ["Humanism", "Perspective", "Heliocentrism", "Anatomy", "Telescope", "Microscope", "Mercantilism", "Clockwork", "Muskets", "Exploration", "Colonialism", "Scientific Method"],
+    "Industrial Age": ["Steam Engine", "Textile Mills", "Railroads", "Telegraph", "Steel Production", "Vaccines", "Electricity", "Photography", "Internal Combustion", "Dynamite", "Assembly Line", "Radio"],
+    "Modern Age": ["Flight", "Penicillin", "Plastics", "Nuclear Power", "Transistors", "Satellites", "DNA Structure", "Space Travel", "Internet", "Robotics", "Solar Power", "GPS"],
+    "Information Age": ["Smartphones", "Social Media", "Cloud Computing", "AI", "Blockchain", "VR", "Quantum Computing", "Nanotech", "Biotech", "Renewable Energy", "Cybernetics", "Mars Colony"],
+    "Future Age": ["Fusion Power", "Anti-Gravity", "Teleportation", "Terraforming", "Androids", "Dyson Sphere", "FTL Travel", "Genetic Eng.", "Mind Uploading", "Force Fields", "Time Travel", "Immortality"],
+    "Singularity": ["Hive Mind", "Reality Warping", "Multiverse Theory", "Omniscience", "Matter Creation", "Energy Beings", "Universal Peace", "Cosmic Awareness", "Simulation Theory", "Ascension", "Big Bang 2.0", "The End"]
+};
+
+export function generateResearch() {
+    console.log("Generating Research...");
     const research = [];
-    let idCounter = 1;
 
     eras.forEach((era, eraIndex) => {
-        // Generate ~10 techs per era
+        // Generate ~10-12 techs per era
         for (let i = 1; i <= 12; i++) {
             const techId = `tech_${eraIndex}_${i}`;
-            const name = `${era} Tech ${i}`; // Placeholder names for now, could use a list
 
-            // Dependencies: Previous tech in same era, or last tech of previous era
+            // Name generation
+            let name = `${era} Tech ${i}`;
+            if (TECH_NAMES[era] && TECH_NAMES[era][i-1]) {
+                name = TECH_NAMES[era][i-1];
+            }
+
+            // Flavor Text
+            const flavor = `Unlocks new capabilities in the ${era}.`;
+
+            // Dependencies
             let requirements = [];
             if (i > 1) {
                 requirements.push(`tech_${eraIndex}_${i-1}`);
@@ -76,19 +120,22 @@ export function generateResearch() { console.log("Generating Research...");
                 requirements.push(`tech_${eraIndex-1}_12`);
             }
 
-            const cost = Math.floor(100 * Math.pow(1.5, (eraIndex * 12 + i)));
+            // Base cost scales with Era (10x per era) and Tech level within era (1.2x per tech)
+            const cost = Math.floor(100 * Math.pow(8, eraIndex) * Math.pow(1.25, i));
 
-            // Assign type randomly or by pattern
-            const type = (i % 3 === 0) ? "culture" : "knowledge";
+            // Assign type: Alternate
+            const type = (i % 2 === 0) ? "culture" : "knowledge";
 
             research.push({
                 id: techId,
                 name: name,
+                icon: eraIcons[era] || "🔬",
                 era: era,
                 cost: cost,
-                costType: type, // New field
+                costType: type,
                 requirements: requirements,
-                effect: { type: "production_multiplier", value: 1.2 } // 20% boost per tech
+                description: flavor,
+                effect: { type: "production_multiplier", value: 1.2 }
             });
         }
     });
@@ -127,7 +174,11 @@ export function generateIdeas() {
 // --- Expeditions ---
 // 50+ Expeditions
 const locations = ["Forest", "Cave", "Mountain", "Desert", "Ocean", "Ruins", "Temple", "Dungeon", "Castle", "City", "Sky", "Space", "Dimension", "Timeline", "Void"];
-const diffs = ["Easy", "Medium", "Hard", "Expert", "Nightmare"];
+const locationIcons = {
+    "Forest": "🌲", "Cave": "🦇", "Mountain": "🏔️", "Desert": "🌵", "Ocean": "🌊",
+    "Ruins": "🏛️", "Temple": "🕌", "Dungeon": "🕸️", "Castle": "🏰", "City": "🏙️",
+    "Sky": "☁️", "Space": "🚀", "Dimension": "🌀", "Timeline": "⏳", "Void": "⚫"
+};
 
 export function generateExpeditions() {
     const expeditions = [];
@@ -148,12 +199,11 @@ export function generateExpeditions() {
             if (loc === "Mountain" || loc === "Cave") resourceType = "stone";
             if (loc === "Desert") resourceType = "relicShards";
 
-            // Risk: 15% to 90%
-            const risk = randomInt(15, 90);
+            // Risk: 10% to 75%
+            const risk = randomInt(10, 75);
 
             // Base reward scaled by duration * efficiency * risk bonus
-            // Risk Bonus: 1 + (risk / 100) * 2. Max 90% risk -> ~2.8x reward.
-            const riskBonus = 1 + (risk / 100) * 2;
+            const riskBonus = 1 + (risk / 100) * 3;
             const baseAmount = 100; // Base loot per 30 mins (scaled)
             const durationRatio = type.duration / 1800; // 1, 8, 24, 48 intervals
 
@@ -162,6 +212,7 @@ export function generateExpeditions() {
             expeditions.push({
                 id: `exp_${idCounter++}`,
                 name: `${type.name} Expedition to ${loc}`,
+                icon: locationIcons[loc] || "🗺️",
                 duration: type.duration,
                 difficulty: `${risk}% Risk`,
                 risk: risk,
@@ -180,9 +231,10 @@ export function generateExpeditions() {
 // --- Recipes ---
 export function generateRecipes() {
     return [
-        { id: "craft_potion", name: "Health Potion", inputs: { herb: 2, water: 1 }, output: { potion: 1 } },
-        { id: "craft_tool", name: "Stone Tool", inputs: { stone: 2, wood: 1 }, output: { tool: 1 } },
-        { id: "craft_bronze", name: "Bronze Ingot", inputs: { copper: 1, tin: 1 }, output: { bronze: 1 } },
-        // ... add more as needed
+        { id: "craft_potion", name: "Health Potion", icon: "🧪", inputs: { herb: 2, water: 1 }, output: { potion: 1 } },
+        { id: "craft_tool", name: "Stone Tool", icon: "🔨", inputs: { stone: 2, wood: 1 }, output: { tool: 1 } },
+        { id: "craft_bronze", name: "Bronze Ingot", icon: "🧱", inputs: { copper: 1, tin: 1 }, output: { bronze: 1 } },
+        { id: "craft_sword", name: "Iron Sword", icon: "⚔️", inputs: { iron: 2, wood: 1 }, output: { sword: 1 } },
+        { id: "craft_crown", name: "Gold Crown", icon: "👑", inputs: { gold: 5 }, output: { crown: 1 } }
     ];
 }

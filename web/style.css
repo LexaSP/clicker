@@ -123,6 +123,7 @@ button:disabled { background-color: #7f8c8d; cursor: not-allowed; }
     margin-bottom: 10px;
     border-radius: 4px;
     font-size: 13px;
+    overflow: hidden; /* Clearfix for floated icons */
 }
 
 /* Rarities */
@@ -168,11 +169,12 @@ button:disabled { background-color: #7f8c8d; cursor: not-allowed; }
 .tech-node {
     position: absolute;
     width: 140px;
-    height: 60px;
+    height: 80px; /* Increased height for icon */
     background-color: #34495e;
     border: 2px solid #7f8c8d;
     border-radius: 8px;
     display: flex;
+    flex-direction: column; /* Stack icon and text */
     align-items: center;
     justify-content: center;
     text-align: center;

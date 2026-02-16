@@ -1,5 +1,6 @@
 // script.js
 import { generateRelics, generateResearch, generateIdeas, generateExpeditions, generateRecipes } from './content-gen.js';
+import { AudioController } from './audio.js';
 
 // --- Game State ---
 let gameState = {
@@ -30,10 +31,10 @@ let gameState = {
 
     // Upgrades / Buildings
     buildings: {
-        "AutoClicker": { count: 0, cost: 10, production: 1 },
-        "Farm": { count: 0, cost: 50, production: 5 },
-        "Mine": { count: 0, cost: 200, production: 20 },
-        "Lab": { count: 0, cost: 1000, production: 100 } // produces knowledge
+        "AutoClicker": { count: 0, cost: 10, production: 1, icon: "👆" },
+        "Farm": { count: 0, cost: 50, production: 5, icon: "🌾" },
+        "Mine": { count: 0, cost: 200, production: 20, icon: "⛏️" },
+        "Lab": { count: 0, cost: 1000, production: 100, icon: "🔬" } // produces knowledge
     },
 
     era: "Stone Age",
@@ -102,6 +103,10 @@ async function init() {
 
     // Init UI
     initUI();
+
+    // Init Audio
+    window.audioController = new AudioController();
+
     window.gameState = gameState;
     window.allResearch = allResearch;
 }
@@ -332,6 +337,7 @@ function getCritStats() {
 }
 
 window.manualClick = function(event) {
+    if (window.audioController) window.audioController.playClick();
     let clickValue = 1 + (gameState.inventory.length * 0.1);
     clickValue *= getGlobalMultiplier("click");
 
@@ -394,6 +400,7 @@ window.buyBuilding = function(name) {
     let finalCost = Math.floor(nominalCost * costMult);
 
     if (gameState.resources.clicks >= finalCost) {
+        if (window.audioController) window.audioController.playBuy();
         gameState.resources.clicks -= finalCost;
         b.count++;
         // Recalc for UI (nominal)
@@ -417,18 +424,22 @@ window.buyResearch = function(techId) {
     // Previously we used clicks as placeholder. Now we switch to knowledge/culture.
     // If user has enough resources
     if (reqMet && !gameState.researched.includes(techId)) {
+        let purchased = false;
         if (costType === "knowledge" && gameState.resources.knowledge >= cost) {
             gameState.resources.knowledge -= cost;
-            gameState.researched.push(techId);
-            updateUI();
+            purchased = true;
         } else if (costType === "culture" && gameState.resources.culture >= cost) {
             gameState.resources.culture -= cost;
-            gameState.researched.push(techId);
-            updateUI();
+            purchased = true;
         } else if (costType === "clicks" && gameState.resources.clicks >= cost) { // Legacy/Early
              gameState.resources.clicks -= cost;
-             gameState.researched.push(techId);
-             updateUI();
+             purchased = true;
+        }
+
+        if (purchased) {
+            if (window.audioController) window.audioController.playUnlock();
+            gameState.researched.push(techId);
+            updateUI();
         }
     }
 };
@@ -502,28 +513,49 @@ function calculatePrestigeGain() {
     return Math.floor(Math.log10(1 + gameState.resources.lifetimeClicks));
 }
 
-window.exportSave = function() {
-    const json = JSON.stringify(gameState);
-    const b64 = btoa(json);
-    prompt("Copy your save code:", b64);
+window.downloadSave = function() {
+    const json = JSON.stringify(gameState, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `history-clicker-save-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 };
 
-window.importSave = function() {
-    const b64 = prompt("Paste your save code:");
-    if (!b64) return;
-    try {
-        const json = atob(b64);
-        const data = JSON.parse(json);
-        // Basic validation
-        if (data.resources && data.buildings) {
-            Object.assign(gameState, data);
-            saveGame();
-            location.reload();
-        } else {
-            alert("Invalid save file.");
+window.uploadSave = function(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const json = e.target.result;
+            const data = JSON.parse(json);
+            // Basic validation
+            if (data.resources && data.buildings) {
+                Object.assign(gameState, data);
+                saveGame();
+                location.reload();
+            } else {
+                alert("Invalid save file format.");
+            }
+        } catch (err) {
+            alert("Error parsing save file: " + err.message);
         }
-    } catch (e) {
-        alert("Error importing save: " + e.message);
+    };
+    reader.readAsText(file);
+    input.value = ''; // Reset
+};
+
+window.toggleAudio = function() {
+    if (window.audioController) {
+        const enabled = window.audioController.toggle();
+        alert(`Audio ${enabled ? 'Enabled' : 'Disabled'}`);
     }
 };
 
@@ -535,6 +567,7 @@ window.buyPrestigeUpgrade = function(id) {
     const cost = up.cost * (up.level + 1);
 
     if (gameState.resources.symbolsOfEra >= cost && up.level < up.max) {
+        if (window.audioController) window.audioController.playBuy();
         gameState.resources.symbolsOfEra -= cost;
         up.level++;
         updateUI();
@@ -596,9 +629,9 @@ function updateUI() {
     const lootContainer = document.getElementById("loot-resources");
     if (lootContainer) {
         lootContainer.innerHTML = `
-            <span>Wood: ${gameState.resources.wood}</span> |
-            <span>Stone: ${gameState.resources.stone}</span> |
-            <span>Food: ${gameState.resources.food}</span>
+            <span>🪵 ${gameState.resources.wood}</span> |
+            <span>🪨 ${gameState.resources.stone}</span> |
+            <span>🍞 ${gameState.resources.food}</span>
         `;
     }
     document.getElementById("res-se").innerText = gameState.resources.symbolsOfEra;
@@ -606,7 +639,7 @@ function updateUI() {
     const prestigeBtn = document.getElementById("btn-prestige");
     if (prestigeBtn) {
         const gain = calculatePrestigeGain();
-        prestigeBtn.innerText = `Prestige (+${gain} SE)`;
+        prestigeBtn.innerText = `Prestige (+${gain} 🏛️)`;
     }
 
     // Prestige Upgrades
@@ -648,8 +681,9 @@ function updateUI() {
             // Apply discount for display
             let costMult = getGlobalMultiplier("cost");
             const finalCost = Math.floor(cost * costMult);
+            const bIcon = gameState.buildings[name].icon || "";
 
-            btn.innerText = `Buy ${name} (${finalCost}) - Owned: ${gameState.buildings[name].count}`;
+            btn.innerText = `${bIcon} Buy ${name} (${finalCost}) - Owned: ${gameState.buildings[name].count}`;
             btn.disabled = gameState.resources.clicks < finalCost;
         }
     }
@@ -708,6 +742,7 @@ function renderCrafting() {
         }
 
         div.innerHTML = `
+            <div style="float:left; font-size: 20px; margin-right: 8px;">${recipe.icon || '🛠️'}</div>
             <strong>${recipe.name}</strong><br>
             <small>Requires: ${inputsText.join(", ")}</small><br>
             <small>Produces: ${outputText.join(", ")}</small><br>
@@ -737,6 +772,7 @@ window.craftItem = function(recipeId) {
     }
 
     if (canAfford) {
+        if (window.audioController) window.audioController.playBuy();
         // Deduct
         for (let key in recipe.inputs) {
             let resName = key;
@@ -775,7 +811,10 @@ function renderInventory() {
         const div = document.createElement("div");
         div.className = `relic-card rarity-${relic.rarity.toLowerCase()}`;
         div.title = relic.description;
-        div.innerHTML = `<strong>${relic.name}</strong><br><small>${relic.rarity}</small>`;
+        div.innerHTML = `
+            <div style="float:left; font-size: 24px; margin-right: 10px;">${relic.icon || '🏺'}</div>
+            <strong>${relic.name}</strong><br><small>${relic.rarity}</small>
+        `;
         container.appendChild(div);
     });
 }
@@ -814,10 +853,11 @@ function renderExpeditions() {
                 const maxLoot = Math.floor(exp.rewards.loot.amount * 1.2);
 
                 div.innerHTML = `
+                    <div style="float:left; font-size: 24px; margin-right: 10px;">${exp.icon || '🗺️'}</div>
                     <strong>${exp.name}</strong><br>
                     <span style="color: ${riskColor}">Risk: ${exp.risk}%</span> | Duration: ${timeStr}<br>
                     <small>Loot: ${minLoot}-${maxLoot} ${exp.rewards.loot.type}</small><br>
-                    <button onclick="startExpedition('${exp.id}')">Start (Cost: ${exp.cost.food} Food)</button>
+                    <button onclick="startExpedition('${exp.id}')">Start (Cost: ${exp.cost.food} 🍞)</button>
                 `;
                 container.appendChild(div);
             });
@@ -880,6 +920,7 @@ function completeExpedition(exp) {
     const roll = Math.random() * 100;
     if (roll < exp.risk) {
         // Failed
+        if (window.audioController) window.audioController.playError();
         const log = `Expedition '${exp.name}' FAILED! (Rolled ${Math.floor(roll)} vs Risk ${exp.risk}). All resources lost.`;
         console.log(log);
         alert(log);
@@ -888,6 +929,7 @@ function completeExpedition(exp) {
     }
 
     // Success
+    if (window.audioController) window.audioController.playEvent();
     let log = `Expedition '${exp.name}' SUCCESS! `;
 
     if (exp.rewards.relics > 0) {
@@ -1024,6 +1066,8 @@ window.renderResearchTree = function() {
     });
 
     const positions = {};
+    let maxX = 0;
+    let maxY = 0;
 
     let colIdx = 0;
     for (const era of ERA_DATA) {
@@ -1031,6 +1075,10 @@ window.renderResearchTree = function() {
         techs.forEach((tech, rowIdx) => {
             const x = 50 + colIdx * ERA_WIDTH;
             const y = 50 + rowIdx * (NODE_HEIGHT + 20);
+
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+
             positions[tech.id] = {x, y};
 
             const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
@@ -1041,7 +1089,7 @@ window.renderResearchTree = function() {
             if (isVisible) {
                 const div = document.createElement("div");
                 div.className = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
-                div.innerText = `${tech.name}\n(${tech.cost})`;
+                div.innerHTML = `<span style="font-size:16px">${tech.icon || '🔬'}</span><br>${tech.name}<br><small>(${tech.cost})</small>`;
                 div.style.left = `${x}px`;
                 div.style.top = `${y}px`;
                 div.onclick = () => window.buyResearch(tech.id);
@@ -1050,6 +1098,10 @@ window.renderResearchTree = function() {
         });
         colIdx++;
     }
+
+    // Resize SVG to fit content
+    svg.style.width = Math.max(container.clientWidth, maxX + 200) + "px";
+    svg.style.height = Math.max(container.clientHeight, maxY + 200) + "px";
 
     allResearch.forEach(tech => {
         if (!positions[tech.id]) return;
