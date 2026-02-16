@@ -11,6 +11,7 @@ import { GOVERNMENTS, POLICIES, adoptGovernment, togglePolicy, getGovernmentMult
 import { checkCrisis, fightCrisis, CRISIS_STAGES } from './crisis.js';
 import { CIVILIZATIONS, getCivMultiplier } from './civilizations.js';
 import { WONDERS, getWonderMultiplier, buildWonder } from './wonders.js';
+import { CHALLENGES, getChallengeRewardMult, checkChallengeVictory } from './challenges.js';
 
 // --- Game State ---
 let gameState = {
@@ -45,6 +46,8 @@ let gameState = {
     heroes: { owned: [], gpp: 0, threshold: 1000 }, // Great People
     government: { type: "gov_tribal", policies: [] }, // Government
     wonders: [], // Built wonders IDs
+    activeChallenge: null, // ID of current challenge
+    completedChallenges: [], // List of completed IDs
     crisis: { active: false, threat: 0, defeated: false }, // Endgame
     civilizationHistory: {}, // { "Bronze Age": { id: "egypt", ... } }
 
@@ -238,6 +241,12 @@ function tick(dt) {
 
     // Crisis
     checkCrisis(gameState, dt);
+
+    // Challenge Victory Check
+    const victory = checkChallengeVictory(gameState);
+    if (victory) {
+        completeChallenge(victory);
+    }
 
     gameState.resources.clicks += currentProduction * dt;
     gameState.resources.lifetimeClicks += currentProduction * dt;
@@ -524,6 +533,9 @@ function getGlobalMultiplier(type, resource = null) {
     // Wonders Check
     mult *= getWonderMultiplier(gameState, type, resource);
 
+    // Challenges Check
+    mult *= getChallengeRewardMult(gameState, type);
+
     return mult;
 }
 
@@ -539,6 +551,9 @@ function getCritStats() {
 }
 
 window.manualClick = function(event) {
+    // Challenge Constraint: No Manual Clicks
+    if (gameState.activeChallenge === "lazy_leader") return;
+
     if (window.audioController) window.audioController.playClick();
 
     // Base Click Value + Synergy (10% of CpS)
@@ -603,6 +618,14 @@ function spawnClickParticle(x, y, amount, isCrit) {
 }
 
 window.buyBuilding = function(name) {
+    // Challenge Constraint: Max 1 Building
+    if (gameState.activeChallenge === "one_city") {
+        if (gameState.buildings[name] && gameState.buildings[name].count >= 1) {
+            alert("Challenge Constraint: Cannot own more than 1 of each building!");
+            return;
+        }
+    }
+
     const b = gameState.buildings[name];
     if (!b) return;
 
@@ -632,6 +655,12 @@ window.buyBuilding = function(name) {
 };
 
 window.buyResearch = function(techId) {
+    // Challenge Constraint: No Research
+    if (gameState.activeChallenge === "austere") {
+        alert("Challenge Constraint: Research is disabled!");
+        return;
+    }
+
     const tech = allResearch.find(t => t.id === techId);
     if (!tech) return;
 
@@ -989,20 +1018,27 @@ window.buyPrestigeUpgrade = function(id) {
     }
 };
 
-window.performPrestige = function() {
+window.performPrestige = function(challengeId = null) {
     const gain = calculatePrestigeGain();
-    if (gain <= 0) {
+    // Allow prestige with 0 gain if starting a challenge (reset)
+    if (gain <= 0 && !challengeId) {
         alert("Not enough progress to prestige!");
         return;
     }
 
-    if (!confirm(`Reset game to gain ${gain} Symbols of Era?`)) return;
+    let confirmMsg = `Reset game to gain ${gain} Symbols of Era?`;
+    if (challengeId) confirmMsg = `Reset run and start CHALLENGE: ${challengeId}?`;
+
+    if (!confirm(confirmMsg)) return;
 
     const symbols = gameState.resources.symbolsOfEra + gain;
     const inventory = gameState.inventory;
     const shards = gameState.resources.relicShards;
+    // Lifetime usually accumulates, but for challenge stats maybe separate?
+    // Let's keep lifetime global for cheevos.
     const lifetime = gameState.resources.lifetimeClicks;
     const pUpgrades = gameState.prestigeUpgrades; // Keep upgrades
+    const completedChallenges = gameState.completedChallenges || [];
 
     gameState.resources.clicks = 0;
     // Apply starting clicks upgrade
@@ -1018,6 +1054,8 @@ window.performPrestige = function() {
     gameState.activeResearch = [];
     gameState.researched = [];
     gameState.activeExpeditions = [];
+    gameState.activeChallenge = challengeId; // Set new challenge
+    gameState.completedChallenges = completedChallenges;
 
     for (let key in gameState.buildings) {
         gameState.buildings[key].count = 0;
@@ -1029,6 +1067,65 @@ window.performPrestige = function() {
     saveGame();
     updateUI();
     console.log("Prestige performed!");
+};
+
+function completeChallenge(chal) {
+    alert(`🎉 CHALLENGE COMPLETED: ${chal.name}!\nReward: ${chal.reward.desc}`);
+    if (!gameState.completedChallenges) gameState.completedChallenges = [];
+    if (!gameState.completedChallenges.includes(chal.id)) {
+        gameState.completedChallenges.push(chal.id);
+    }
+    gameState.activeChallenge = null; // Clear active
+    // Maybe trigger prestige automatically or let them continue?
+    // Let them continue to enjoy the reward or prestige manually.
+    saveGame();
+}
+
+window.renderChallengeMenu = function() {
+    if (document.getElementById("challenge-modal")) return;
+
+    const modal = document.createElement("div");
+    modal.id = "challenge-modal";
+    modal.className = "modal-overlay";
+
+    let html = `
+        <div class="modal-content">
+            <h2>Challenge Modes</h2>
+            <p>Start a new run with special rules. Completing challenges unlocks permanent bonuses.</p>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+    `;
+
+    CHALLENGES.forEach(c => {
+        const completed = gameState.completedChallenges && gameState.completedChallenges.includes(c.id);
+        const active = gameState.activeChallenge === c.id;
+
+        html += `
+            <div style="border: 1px solid #7f8c8d; padding: 10px; background: ${active ? '#2980b9' : (completed ? '#27ae60' : 'rgba(0,0,0,0.2)')}; text-align:left;">
+                <div style="display:flex; justify-content:space-between;">
+                    <strong>${c.name}</strong>
+                    <span>${completed ? '✅ Completed' : (active ? '🔄 Active' : '')}</span>
+                </div>
+                <small>${c.description}</small><br>
+                <small style="color:#e74c3c">Condition: ${c.conditionDesc}</small><br>
+                <small style="color:#f1c40f">Reward: ${c.reward.desc}</small><br>
+                ${!active ? `<button onclick="startChallenge('${c.id}')" style="margin-top:5px; width:auto; padding:5px 10px;">Start Challenge (Resets Game)</button>` : ''}
+            </div>
+        `;
+    });
+
+    html += `<button onclick="document.body.removeChild(document.getElementById('challenge-modal'))" style="background:#c0392b; margin-top:20px;">Close</button></div></div>`;
+    modal.innerHTML = html;
+    document.body.appendChild(modal);
+}
+
+window.startChallenge = function(id) {
+    if (confirm("Starting a challenge will RESET your current run (Prestige). Are you sure?")) {
+        // Remove modal
+        const m = document.getElementById("challenge-modal");
+        if (m) document.body.removeChild(m);
+        // Call prestige with ID
+        window.performPrestige(id);
+    }
 };
 
 function updateUI() {
@@ -1082,10 +1179,16 @@ function updateUI() {
         prestigeBtn.innerText = `Prestige (+${gain} 🏛️)`;
     }
 
-    // Prestige Upgrades
+    // Prestige Upgrades & Challenges
     const ascContainer = document.getElementById("ascension-list");
     if (ascContainer && gameState.prestigeUpgrades) {
-        ascContainer.innerHTML = "";
+        ascContainer.innerHTML = `<button onclick="renderChallengeMenu()" style="width:100%; margin-bottom:10px; background:#8e44ad;">⚔️ Challenge Modes</button>`;
+
+        if (gameState.activeChallenge) {
+            const c = CHALLENGES.find(x => x.id === gameState.activeChallenge);
+            ascContainer.innerHTML += `<div style="background:#c0392b; padding:5px; margin-bottom:10px; border-radius:4px;">ACTIVE: ${c ? c.name : 'Unknown'}</div>`;
+        }
+
         for (let key in gameState.prestigeUpgrades) {
             const up = gameState.prestigeUpgrades[key];
             const div = document.createElement("div");
@@ -1487,6 +1590,12 @@ function renderWar() {
 }
 
 window.trainUnit = function(unitKey) {
+    // Challenge Constraint: No War
+    if (gameState.activeChallenge === "pacifist") {
+        alert("Challenge Constraint: Cannot train military units!");
+        return;
+    }
+
     if (!gameState.army) gameState.army = {};
     const unit = UNITS[unitKey];
 
