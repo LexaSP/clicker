@@ -160,23 +160,37 @@ function startGameLoop() {
     setInterval(saveGame, 30000);
 }
 
+function calculateProduction(state) {
+    let production = 0;
+    production += state.buildings["AutoClicker"].count * state.buildings["AutoClicker"].production;
+    production += state.buildings["Farm"].count * state.buildings["Farm"].production;
+    production += state.buildings["Mine"].count * state.buildings["Mine"].production;
+
+    // Apply Multipliers
+    let prodMult = getGlobalMultiplier("production", "clicks");
+    if (state.tempMultiplier) prodMult *= state.tempMultiplier;
+
+    return production * prodMult;
+}
+
 function tick(dt) {
     // Era Progress
     checkEraProgress();
 
     // Production
-    let production = 0;
-    production += gameState.buildings["AutoClicker"].count * gameState.buildings["AutoClicker"].production;
-    production += gameState.buildings["Farm"].count * gameState.buildings["Farm"].production;
-    production += gameState.buildings["Mine"].count * gameState.buildings["Mine"].production;
+    const currentProduction = calculateProduction(gameState);
 
     // Knowledge
     let knowledgeProd = gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
+    knowledgeProd *= getGlobalMultiplier("production_mult", "knowledge");
 
     // Space Production
     const spaceProd = getSpaceProduction(gameState);
-    gameState.resources.money += spaceProd.money * dt;
-    gameState.resources.knowledge += spaceProd.knowledge * dt;
+    const moneyMult = getGlobalMultiplier("production_mult", "money");
+    const knowlMult = getGlobalMultiplier("production_mult", "knowledge");
+
+    gameState.resources.money += spaceProd.money * moneyMult * dt;
+    gameState.resources.knowledge += spaceProd.knowledge * knowlMult * dt;
 
     // GPP
     generateGPP(gameState, dt);
@@ -184,16 +198,8 @@ function tick(dt) {
     // Crisis
     checkCrisis(gameState, dt);
 
-    // Apply Multipliers
-    let prodMult = getGlobalMultiplier("production");
-    if (gameState.tempMultiplier) prodMult *= gameState.tempMultiplier;
-
-    // Paradox Multipliers (Resource Specific)
-    const clickParadox = getParadoxMultiplier(gameState, "production_mult", "clicks");
-    prodMult *= clickParadox;
-
-    gameState.resources.clicks += production * prodMult * dt;
-    gameState.resources.lifetimeClicks += production * prodMult * dt;
+    gameState.resources.clicks += currentProduction * dt;
+    gameState.resources.lifetimeClicks += currentProduction * dt;
     gameState.resources.knowledge += knowledgeProd * dt;
 
     // Expedition Progress (Loop over copy)
@@ -439,7 +445,7 @@ window.claimQuest = function(questId) {
 };
 
 // --- Mechanics ---
-function getGlobalMultiplier(type) {
+function getGlobalMultiplier(type, resource = null) {
     let mult = 1.0;
     // Relics
     gameState.inventory.forEach(relic => {
@@ -463,16 +469,16 @@ function getGlobalMultiplier(type) {
     if (type === "cost" && mult < 0.1) mult = 0.1;
 
     // Paradox Check
-    mult *= getParadoxMultiplier(gameState, type, null);
+    mult *= getParadoxMultiplier(gameState, type, resource);
 
     // Hero Check
-    mult *= getHeroMultiplier(gameState, type, null);
+    mult *= getHeroMultiplier(gameState, type, resource);
 
     // Government Check
-    mult *= getGovernmentMultiplier(gameState, type, null);
+    mult *= getGovernmentMultiplier(gameState, type, resource);
 
     // Civilizations Check
-    mult *= getCivMultiplier(gameState, type, null);
+    mult *= getCivMultiplier(gameState, type, resource);
 
     return mult;
 }
@@ -490,8 +496,12 @@ function getCritStats() {
 
 window.manualClick = function(event) {
     if (window.audioController) window.audioController.playClick();
-    let clickValue = 1 + (gameState.inventory.length * 0.1);
-    clickValue *= getGlobalMultiplier("click");
+
+    // Base Click Value + Synergy (10% of CpS)
+    const cps = calculateProduction(gameState);
+    let clickValue = 1 + (gameState.inventory.length * 0.1) + (cps * 0.1);
+
+    clickValue *= getGlobalMultiplier("click", "clicks");
 
     // Crit Logic
     const crit = getCritStats();
@@ -552,14 +562,14 @@ window.buyBuilding = function(name) {
     const b = gameState.buildings[name];
 
     // Apply Cost Reduction
-    let costMult = getGlobalMultiplier("cost");
+    let costMult = getGlobalMultiplier("cost", null);
     let baseCost = 0;
     if (name === "AutoClicker") baseCost = 10;
     else if (name === "Farm") baseCost = 50;
     else if (name === "Mine") baseCost = 200;
     else if (name === "Lab") baseCost = 1000;
 
-    let nominalCost = Math.floor(baseCost * Math.pow(1.25, b.count));
+    let nominalCost = Math.floor(baseCost * Math.pow(1.15, b.count));
     let finalCost = Math.floor(nominalCost * costMult);
 
     if (gameState.resources.clicks >= finalCost) {
@@ -573,7 +583,7 @@ window.buyBuilding = function(name) {
         gameState.stats.buildingsBought++;
 
         // Recalc for UI (nominal)
-        b.cost = Math.floor(baseCost * Math.pow(1.25, b.count));
+        b.cost = Math.floor(baseCost * Math.pow(1.15, b.count));
 
         checkQuestProgress("purchases", 1);
         updateUI();
@@ -584,7 +594,7 @@ window.buyResearch = function(techId) {
     const tech = allResearch.find(t => t.id === techId);
     if (!tech) return;
 
-    let costMult = getGlobalMultiplier("cost");
+    let costMult = getGlobalMultiplier("cost", "knowledge"); // Tech cost is usually knowledge
     const cost = Math.floor(tech.cost * costMult);
 
     const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
@@ -648,13 +658,10 @@ function loadGame() {
 }
 
 function calculateOfflineProgress(seconds) {
-    let production = 0;
-    production += gameState.buildings["AutoClicker"].count * gameState.buildings["AutoClicker"].production;
-    production += gameState.buildings["Farm"].count * gameState.buildings["Farm"].production;
-    production += gameState.buildings["Mine"].count * gameState.buildings["Mine"].production;
-
-    let prodMult = getGlobalMultiplier("production");
-    const clicksGained = Math.floor(production * prodMult * seconds * 0.5);
+    // Note: We use current production for offline calc.
+    // Ideally we should strip temp buffs, but for simplicity we use the shared helper.
+    const currentProduction = calculateProduction(gameState);
+    const clicksGained = Math.floor(currentProduction * seconds * 0.5);
 
     if (clicksGained > 0) {
         gameState.resources.clicks += clicksGained;
@@ -980,10 +987,10 @@ function updateUI() {
             else if (name === "Farm") baseCost = 50;
             else if (name === "Mine") baseCost = 200;
             else if (name === "Lab") baseCost = 1000;
-            const cost = Math.floor(baseCost * Math.pow(1.25, gameState.buildings[name].count));
+            const cost = Math.floor(baseCost * Math.pow(1.15, gameState.buildings[name].count));
 
             // Apply discount for display
-            let costMult = getGlobalMultiplier("cost");
+            let costMult = getGlobalMultiplier("cost", null);
             const finalCost = Math.floor(cost * costMult);
             const bIcon = gameState.buildings[name].icon || "";
 
@@ -1265,7 +1272,9 @@ function renderWar() {
         rivalList.appendChild(div);
     });
 
-    const power = calculateArmyPower(gameState.army || {});
+    let power = calculateArmyPower(gameState.army || {});
+    const armyMult = getGlobalMultiplier("army_power", null);
+    power = Math.floor(power * armyMult);
     document.getElementById("army-power").innerText = `Army Power: ${power}`;
 }
 
@@ -1305,7 +1314,8 @@ window.attackRival = function(idx) {
     // Actually resolveCombat applies losses to the passed object.
     // This is fine as long as we save/updateUI after.
 
-    const result = resolveCombat(gameState.army, rival);
+    const armyMult = getGlobalMultiplier("army_power", null);
+    const result = resolveCombat(gameState.army, rival, armyMult);
 
     let msg = result.win ? `VICTORY against ${rival.name}!` : `DEFEAT against ${rival.name}!`;
     msg += `\nYour Power: ${result.playerPower} vs Enemy: ${result.rivalPower}`;
@@ -1615,8 +1625,8 @@ function completeExpedition(exp) {
         const type = exp.rewards.loot.type;
         let amount = exp.rewards.loot.amount;
 
-        // Paradox Check
-        const pMult = getParadoxMultiplier(gameState, "production_mult", type);
+        // Paradox, Civ, Hero Check
+        const pMult = getGlobalMultiplier("production_mult", type);
         amount = Math.floor(amount * pMult);
 
         if (gameState.resources[type] !== undefined) {
