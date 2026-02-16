@@ -122,8 +122,8 @@ export const CIVILIZATIONS = {
         },
         {
             id: "russia", name: "Russian Empire", icon: "🇷🇺",
-            pros: ["Vast Landmass", "Limitless Resources"], cons: ["Slow Modernization"], // Hidden Buff: actually 3x Wood
-            effect: { type: "production_mult", resource: "wood", value: 3.0 }
+            pros: ["Vast Landmass", "Unmatched Industrial Power"], cons: ["Slow Modernization"], // Hidden Buff: actually 2.5x Total Production
+            effect: { type: "production_mult", resource: "production", value: 2.5 }
         },
         {
             id: "france", name: "France", icon: "🇫🇷",
