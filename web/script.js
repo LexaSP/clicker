@@ -747,11 +747,21 @@ function renderCivSelection(era) {
     `;
 
     options.forEach((civ, idx) => {
+        // Build Pros/Cons HTML
+        let prosHtml = "";
+        if (civ.pros) civ.pros.forEach(p => prosHtml += `<div style='color:#2ecc71; font-size:10px;'>+ ${p}</div>`);
+
+        let consHtml = "";
+        if (civ.cons) civ.cons.forEach(c => consHtml += `<div style='color:#e74c3c; font-size:10px;'>- ${c}</div>`);
+
         html += `
-            <div class="civ-card" onclick="selectCiv('${era.name}', ${idx})" style="background: rgba(255,255,255,0.1); padding: 15px; border: 1px solid #7f8c8d; border-radius: 8px; width: 150px; cursor: pointer;">
+            <div class="civ-card" onclick="selectCiv('${era.name}', ${idx})" style="background: rgba(255,255,255,0.1); padding: 15px; border: 1px solid #7f8c8d; border-radius: 8px; width: 180px; cursor: pointer;">
                 <div style="font-size: 40px;">${civ.icon}</div>
                 <h3>${civ.name}</h3>
-                <small>${civ.desc}</small>
+                <div style="text-align:left; margin-top:5px;">
+                    ${prosHtml}
+                    ${consHtml}
+                </div>
             </div>
         `;
     });
@@ -761,6 +771,9 @@ function renderCivSelection(era) {
     document.body.appendChild(modal);
     window.currentCivModal = modal;
 }
+
+// Expose for testing
+window.renderCivSelection = renderCivSelection;
 
 window.selectCiv = function(eraName, idx) {
     if (!gameState.civilizationHistory) gameState.civilizationHistory = {};
