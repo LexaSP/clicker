@@ -99,8 +99,8 @@ export function generateResearch() {
     const research = [];
 
     eras.forEach((era, eraIndex) => {
-        // Generate ~10-12 techs per era
-        for (let i = 1; i <= 12; i++) {
+        // SCALED: Generate ~20 techs per era (was 12)
+        for (let i = 1; i <= 20; i++) {
             const techId = `tech_${eraIndex}_${i}`;
 
             // Name generation
@@ -117,7 +117,7 @@ export function generateResearch() {
             if (i > 1) {
                 requirements.push(`tech_${eraIndex}_${i-1}`);
             } else if (eraIndex > 0) {
-                requirements.push(`tech_${eraIndex-1}_12`);
+                requirements.push(`tech_${eraIndex-1}_20`);
             }
 
             // Base cost scales with Era (10x per era) and Tech level within era (1.2x per tech)
