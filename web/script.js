@@ -2,7 +2,10 @@
 import { generateRelics, generateResearch, generateIdeas, generateExpeditions, generateRecipes } from './content-gen.js';
 import { AudioController } from './audio.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
-import { RANDOM_EVENTS } from './events.js'; // Import list
+import { RANDOM_EVENTS } from './events.js';
+import { PARADOXES, checkParadoxes, getParadoxMultiplier } from './paradox.js';
+import { UNITS, RIVALS, calculateArmyPower, resolveCombat } from './combat.js';
+import { generatePlanets, colonizePlanet, getSpaceProduction } from './space.js';
 
 // --- Game State ---
 let gameState = {
@@ -26,13 +29,17 @@ let gameState = {
     activeExpeditions: [],
     quests: [], // Daily quests
     achievements: [], // Unlocked achievements
+    paradoxes: [], // Triggered paradoxes
+    army: {}, // { "Warrior": 10, ... }
+    space: { planets: [] }, // Space exploration
 
     stats: {
         totalClicks: 0, // Manual clicks
         expeditionsCompleted: 0,
         relicsFound: 0,
         buildingsBought: 0,
-        techsResearched: 0
+        techsResearched: 0,
+        history: {} // Per era stats
     },
 
     prestigeUpgrades: { // Ascension
@@ -158,9 +165,18 @@ function tick(dt) {
     // Knowledge
     let knowledgeProd = gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
 
+    // Space Production
+    const spaceProd = getSpaceProduction(gameState);
+    gameState.resources.money += spaceProd.money * dt;
+    gameState.resources.knowledge += spaceProd.knowledge * dt;
+
     // Apply Multipliers
     let prodMult = getGlobalMultiplier("production");
     if (gameState.tempMultiplier) prodMult *= gameState.tempMultiplier;
+
+    // Paradox Multipliers (Resource Specific)
+    const clickParadox = getParadoxMultiplier(gameState, "production_mult", "clicks");
+    prodMult *= clickParadox;
 
     gameState.resources.clicks += production * prodMult * dt;
     gameState.resources.lifetimeClicks += production * prodMult * dt;
@@ -432,6 +448,9 @@ function getGlobalMultiplier(type) {
     // Cap cost reduction
     if (type === "cost" && mult < 0.1) mult = 0.1;
 
+    // Paradox Check
+    mult *= getParadoxMultiplier(gameState, type, null);
+
     return mult;
 }
 
@@ -467,6 +486,12 @@ window.manualClick = function(event) {
     if (!gameState.stats) gameState.stats = {}; // Migration
     if (!gameState.stats.totalClicks) gameState.stats.totalClicks = 0;
     gameState.stats.totalClicks++;
+
+    // Track History
+    if (!gameState.stats.history) gameState.stats.history = {};
+    if (!gameState.stats.history[gameState.era]) gameState.stats.history[gameState.era] = {};
+    if (!gameState.stats.history[gameState.era].clicks) gameState.stats.history[gameState.era].clicks = 0;
+    gameState.stats.history[gameState.era].clicks++;
 
     // Spawn Particle
     if (event) {
@@ -631,8 +656,21 @@ function checkEraProgress() {
 }
 
 function advanceEra(era) {
+    // Check Paradoxes for PREVIOUS era
+    const newParadoxes = checkParadoxes(gameState);
+    if (newParadoxes.length > 0) {
+        newParadoxes.forEach(p => alert(`⚠️ PARADOX TRIGGERED: ${p.name}\n${p.description}`));
+    }
+
     gameState.era = era.name;
     console.log(`Advanced to ${era.name}!`);
+
+    // Check if Space Age unlocked
+    if (era.name === "Future Age" && (!gameState.space || gameState.space.planets.length === 0)) {
+        gameState.space = { planets: generatePlanets(5) };
+        alert("🌌 SPACE AGE UNLOCKED! New planets detected.");
+        updateUI(); // To show tab if we add one, or notification
+    }
 
     // Era transition effect
     const overlay = document.createElement("div");
@@ -859,8 +897,189 @@ function updateUI() {
     renderExpeditions();
     renderCrafting();
     renderAchievements();
+    renderWar();
+    renderSpace();
     renderResearchTree();
 }
+
+function renderSpace() {
+    const container = document.getElementById("space-view");
+    // Only show if Space is unlocked
+    if (!gameState.space || gameState.space.planets.length === 0) {
+        if (container) container.style.display = "none";
+        // Also hide tab button if we had one (we don't yet in HTML)
+        return;
+    }
+
+    // Check if we need to inject the tab button dynamically or just assume it exists
+    let tabBtn = document.getElementById("tab-btn-space");
+    if (!tabBtn) {
+        const tabs = document.getElementById("tabs");
+        if (tabs) {
+            tabBtn = document.createElement("button");
+            tabBtn.id = "tab-btn-space";
+            tabBtn.className = "tab-btn";
+            tabBtn.innerText = "Space 🚀";
+            tabBtn.onclick = () => showTab('space');
+            tabs.appendChild(tabBtn);
+
+            // Also create view if missing
+            if (!container) {
+                const view = document.createElement("div");
+                view.id = "space-view";
+                view.className = "tab-view";
+                view.style.display = "none";
+                view.innerHTML = `<h3>Space Exploration</h3><div id="planet-list"></div>`;
+                document.getElementById("tab-content").appendChild(view);
+            }
+        }
+    }
+
+    // Render Planets
+    const list = document.getElementById("planet-list");
+    if (!list) return;
+
+    // Only render if visible to save perf
+    if (document.getElementById("space-view").style.display === "none") return;
+
+    list.innerHTML = "";
+    gameState.space.planets.forEach(p => {
+        const div = document.createElement("div");
+        div.className = `expedition-card ${p.colonized ? 'completed' : ''}`;
+
+        let costText = "";
+        for (let k in p.cost) costText += `${p.cost[k]} ${k} `;
+
+        div.innerHTML = `
+            <div style="float:left; font-size: 32px; margin-right: 15px;">${p.icon}</div>
+            <strong>${p.name}</strong> (${p.colonized ? 'Colonized' : 'Unexplored'})<br>
+            <small>Resources: ${p.resources.join(", ")}</small><br>
+            ${!p.colonized ? `<small>Cost: ${costText}</small><br><button onclick="attemptColonize('${p.id}')">Colonize</button>` : `<small>Producing: ${p.production.money} Gold, ${p.production.knowledge} Knowl / sec</small>`}
+        `;
+        list.appendChild(div);
+    });
+}
+
+// Expose for testing/UI
+window.renderSpace = renderSpace;
+window.checkParadoxes = checkParadoxes;
+
+window.attemptColonize = function(planetId) {
+    if (colonizePlanet(gameState, planetId)) {
+        if (window.audioController) window.audioController.playEvent();
+        alert("Colonization Successful!");
+        updateUI();
+    } else {
+        alert("Not enough resources!");
+    }
+};
+
+function renderWar() {
+    const container = document.getElementById("war-view");
+    if (!container || container.style.display === "none") return;
+
+    const unitList = document.getElementById("unit-list");
+    unitList.innerHTML = "";
+
+    // Units
+    for (let key in UNITS) {
+        const u = UNITS[key];
+        const owned = gameState.army ? (gameState.army[key] || 0) : 0;
+
+        let costText = "";
+        for (let res in u.cost) costText += `${u.cost[res]} ${res} `;
+
+        const div = document.createElement("div");
+        div.className = "recipe-card"; // Reuse style
+        div.innerHTML = `
+            <div style="float:left; font-size: 24px; margin-right: 10px;">${u.icon}</div>
+            <strong>${u.name}</strong> (Atk: ${u.attack})<br>
+            <small>Cost: ${costText}</small><br>
+            <button onclick="trainUnit('${key}')">Train (Owned: ${owned})</button>
+        `;
+        unitList.appendChild(div);
+    }
+
+    // Rivals
+    const rivalList = document.getElementById("rival-list");
+    rivalList.innerHTML = "";
+
+    RIVALS.forEach((rival, idx) => {
+        const div = document.createElement("div");
+        div.className = "expedition-card"; // Reuse style
+        let lootText = "";
+        for (let k in rival.loot) lootText += `${rival.loot[k]} ${k} `;
+
+        div.innerHTML = `
+            <strong>${rival.name}</strong> (Power: ~${rival.power})<br>
+            <small>Loot: ${lootText}</small><br>
+            <button onclick="attackRival(${idx})">Attack!</button>
+        `;
+        rivalList.appendChild(div);
+    });
+
+    const power = calculateArmyPower(gameState.army || {});
+    document.getElementById("army-power").innerText = `Army Power: ${power}`;
+}
+
+window.trainUnit = function(unitKey) {
+    if (!gameState.army) gameState.army = {};
+    const unit = UNITS[unitKey];
+
+    // Check cost
+    for (let res in unit.cost) {
+        if ((gameState.resources[res] || 0) < unit.cost[res]) {
+            alert(`Not enough ${res}!`);
+            return;
+        }
+    }
+
+    // Pay
+    for (let res in unit.cost) {
+        gameState.resources[res] -= unit.cost[res];
+    }
+
+    if (!gameState.army[unitKey]) gameState.army[unitKey] = 0;
+    gameState.army[unitKey]++;
+
+    if (window.audioController) window.audioController.playBuy();
+    updateUI();
+};
+
+window.attackRival = function(idx) {
+    if (!gameState.army) gameState.army = {};
+    const rival = RIVALS[idx];
+
+    // Convert army object to format for resolveCombat if needed (current structure matches)
+    // We pass gameState.army directly which is { "Warrior": 5 }
+    // Note: resolveCombat modifies playerArmy in place for losses.
+
+    // Deep copy army to avoid modifying state before we know results/apply losses?
+    // Actually resolveCombat applies losses to the passed object.
+    // This is fine as long as we save/updateUI after.
+
+    const result = resolveCombat(gameState.army, rival);
+
+    let msg = result.win ? `VICTORY against ${rival.name}!` : `DEFEAT against ${rival.name}!`;
+    msg += `\nYour Power: ${result.playerPower} vs Enemy: ${result.rivalPower}`;
+
+    if (result.losses) {
+        msg += "\n\nLosses:";
+        for (let k in result.losses) msg += `\n- ${result.losses[k]} ${k}`;
+    }
+
+    if (result.win && result.loot) {
+        msg += "\n\nLoot:";
+        for (let k in result.loot) {
+            if (!gameState.resources[k]) gameState.resources[k] = 0;
+            gameState.resources[k] += result.loot[k];
+            msg += `\n+ ${result.loot[k]} ${k}`;
+        }
+    }
+
+    alert(msg);
+    updateUI();
+};
 
 function renderAchievements() {
     const container = document.getElementById("achievement-list");
@@ -1144,9 +1363,24 @@ function completeExpedition(exp) {
 
     if (exp.rewards.loot) {
         const type = exp.rewards.loot.type;
-        const amount = exp.rewards.loot.amount;
+        let amount = exp.rewards.loot.amount;
+
+        // Paradox Check
+        const pMult = getParadoxMultiplier(gameState, "production_mult", type);
+        amount = Math.floor(amount * pMult);
+
         if (gameState.resources[type] !== undefined) {
             gameState.resources[type] += amount;
+
+            // Track History
+            if (!gameState.stats.history) gameState.stats.history = {};
+            if (!gameState.stats.history[gameState.era]) gameState.stats.history[gameState.era] = {};
+
+            if (type === "wood") {
+                if (!gameState.stats.history[gameState.era].woodGathered) gameState.stats.history[gameState.era].woodGathered = 0;
+                gameState.stats.history[gameState.era].woodGathered += amount;
+            }
+
             log += `Gained ${amount} ${type}. `;
         }
     }

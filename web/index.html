@@ -67,6 +67,7 @@
                 <button class="tab-btn active" onclick="showTab('research')">Research</button>
                 <button class="tab-btn" onclick="showTab('expeditions')">Expeditions</button>
                 <button class="tab-btn" onclick="showTab('crafting')">Crafting</button>
+                <button class="tab-btn" onclick="showTab('war')">War ⚔️</button>
                 <button class="tab-btn" onclick="showTab('achievements')">Achievements</button>
             </div>
 
@@ -99,6 +100,21 @@
                     <div id="recipe-list">
                         <!-- Recipes -->
                         <p>No recipes known.</p>
+                    </div>
+                </div>
+
+                <div id="war-view" class="tab-view" style="display:none;">
+                    <h3>Civilization Wars</h3>
+                    <p id="army-power">Army Power: 0</p>
+                    <div style="display:flex; gap: 20px;">
+                        <div style="flex:1">
+                            <h4>Train Units</h4>
+                            <div id="unit-list"></div>
+                        </div>
+                        <div style="flex:1">
+                            <h4>Rivals</h4>
+                            <div id="rival-list"></div>
+                        </div>
                     </div>
                 </div>
 
