@@ -5,7 +5,7 @@ import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { RANDOM_EVENTS } from './events.js';
 import { PARADOXES, checkParadoxes, getParadoxMultiplier } from './paradox.js';
 import { UNITS, RIVALS, calculateArmyPower, resolveCombat } from './combat.js';
-import { generatePlanets, colonizePlanet, getSpaceProduction } from './space.js';
+import { generatePlanets, colonizePlanet, getSpaceProduction, terraformPlanet } from './space.js';
 import { generateGPP, recruitHero, getHeroMultiplier } from './heroes.js';
 import { GOVERNMENTS, POLICIES, adoptGovernment, togglePolicy, getGovernmentMultiplier } from './government.js';
 import { checkCrisis, fightCrisis, CRISIS_STAGES } from './crisis.js';
@@ -14,10 +14,16 @@ import { WONDERS, getWonderMultiplier, buildWonder } from './wonders.js';
 import { CHALLENGES, getChallengeRewardMult, checkChallengeVictory } from './challenges.js';
 import { GOVERNORS, hireGovernor, processAutomation, toggleGovernor } from './automation.js';
 import { TRADE_RATES, tradeResource } from './trade.js';
-import { VisualController } from './visuals.js';
+import { MapEngine } from './map_engine.js';
 import { ASCENSION_TREE, buyAscensionPerk, getAscensionMultiplier } from './ascension.js';
 import { MINISTERS, updateMinisters, getMinistryMultiplier } from './ministries.js';
 import { CAMPAIGN_CHAPTERS, checkCampaignProgress, completeChapter } from './campaign.js';
+import { getDiplomacyState, interactDiplomacy, updateDiplomacy } from './diplomacy.js';
+import { getReligionState, foundReligion, adoptDogma, updateReligion } from './religion.js';
+import { getDynastyMultiplier, updateDynasty, succession } from './dynasty.js';
+import { initEspionage, trainSpy, startMission, updateEspionage, SPY_MISSIONS } from './espionage.js';
+import { initStockMarket, updateStockMarket, buyStock, sellStock, COMPANIES } from './stock_market.js';
+import { initCongress, updateCongress, vote, getCongressMultiplier, RESOLUTIONS } from './congress.js';
 
 // --- Game State ---
 let gameState = {
@@ -165,8 +171,8 @@ async function init() {
     // Init Audio
     window.audioController = new AudioController();
 
-    // Init Visuals
-    window.visualController = new VisualController();
+    // Init Visuals (Map Engine)
+    window.mapEngine = new MapEngine();
 
     window.gameState = gameState;
     window.allResearch = allResearch;
@@ -253,6 +259,22 @@ function tick(dt) {
 
     // Ministry XP
     updateMinisters(gameState, dt);
+
+    // Diplomacy & Religion
+    updateDiplomacy(gameState, dt);
+    updateReligion(gameState, dt);
+
+    // Dynasty
+    updateDynasty(gameState, dt);
+
+    // Espionage
+    updateEspionage(gameState);
+
+    // Stock Market
+    updateStockMarket(gameState, dt);
+
+    // World Congress
+    updateCongress(gameState, dt);
 
     // Crisis
     checkCrisis(gameState, dt);
@@ -571,6 +593,13 @@ function getGlobalMultiplier(type, resource = null) {
 
     // Ministry Check
     mult *= getMinistryMultiplier(gameState, type, resource);
+
+    // Dynasty Check
+    mult *= getDynastyMultiplier(gameState, type);
+
+    // Congress Check
+    mult *= getCongressMultiplier(gameState, type);
+
     if (type === "cost") {
         // resource arg maps to target (building, tech, wonder)
         const target = resource === "knowledge" ? "tech" : (resource === "wonder" ? "wonder" : "building");
@@ -695,8 +724,8 @@ window.buyBuilding = function(name) {
         b.cost = Math.floor(b.cost * 1.15);
 
         // Visuals
-        if (window.visualController && b.icon) {
-            window.visualController.addEntity(b.icon, "building");
+        if (window.mapEngine && b.icon) {
+            window.mapEngine.addBuilding(name, b.icon);
         }
 
         checkQuestProgress("purchases", 1);
@@ -818,7 +847,7 @@ function injectDynamicTabs() {
         view.id = "trade-view";
         view.className = "tab-view";
         view.style.display = "none";
-        view.innerHTML = `<h3>Global Market</h3><p>Trade resources for Money.</p><div id="trade-list"></div>`;
+        view.innerHTML = `<h3>Global Market</h3><p>Trade resources for Money.</p><div id="trade-list"></div><hr><h3>Stock Exchange</h3><div id="stock-list"></div>`;
         content.appendChild(view);
     }
 
@@ -873,6 +902,40 @@ function injectDynamicTabs() {
         content.appendChild(view);
     }
 
+    // Diplomacy
+    if (!document.getElementById("tab-btn-diplomacy")) {
+        const dipBtn = document.createElement("button");
+        dipBtn.id = "tab-btn-diplomacy";
+        dipBtn.className = "tab-btn";
+        dipBtn.innerText = "Diplomacy 🤝";
+        dipBtn.onclick = () => showTab('diplomacy');
+        tabs.appendChild(dipBtn);
+
+        const view = document.createElement("div");
+        view.id = "diplomacy-view";
+        view.className = "tab-view";
+        view.style.display = "none";
+        view.innerHTML = `<h3>Foreign Relations</h3><div id="diplomacy-list"></div><hr><h3>Espionage Agency</h3><div id="espionage-list"></div><hr><h3>World Congress 🌐</h3><div id="congress-list"></div>`;
+        content.appendChild(view);
+    }
+
+    // Religion
+    if (!document.getElementById("tab-btn-religion")) {
+        const relBtn = document.createElement("button");
+        relBtn.id = "tab-btn-religion";
+        relBtn.className = "tab-btn";
+        relBtn.innerText = "Religion 🛐";
+        relBtn.onclick = () => showTab('religion');
+        tabs.appendChild(relBtn);
+
+        const view = document.createElement("div");
+        view.id = "religion-view";
+        view.className = "tab-view";
+        view.style.display = "none";
+        view.innerHTML = `<h3>Faith & Dogmas</h3><div id="religion-ui"></div>`;
+        content.appendChild(view);
+    }
+
     // Campaign Widget (Top of content?)
     // We can inject it into main-area or a specific tab. Let's put it in main area for visibility?
     // Or just a button. Let's add a "Story" button to the sidebar.
@@ -924,7 +987,7 @@ function advanceEra(era) {
     }
 
     gameState.era = era.name;
-    if (window.visualController) window.visualController.setEra(era.name);
+    if (window.mapEngine) window.mapEngine.setEra(era.name);
     console.log(`Advanced to ${era.name}!`);
 
     // Check if Space Age unlocked
@@ -1141,6 +1204,15 @@ window.toggleAudio = function() {
     }
 };
 
+window.toggleAccessibility = function() {
+    document.body.classList.toggle("accessibility-mode");
+    const mode = document.body.classList.contains("accessibility-mode");
+    alert(`Accessibility Mode: ${mode ? 'ON' : 'OFF'}`);
+    gameState.settings = gameState.settings || {};
+    gameState.settings.accessibility = mode;
+    saveGame();
+};
+
 window.showStats = function() {
     if (!gameState.stats) gameState.stats = {};
     const stats = gameState.stats;
@@ -1242,7 +1314,7 @@ window.performPrestige = function(challengeId = null) {
     gameState.completedChallenges = completedChallenges;
 
     gameState.era = "Stone Age";
-    if (window.visualController) window.visualController.setEra("Stone Age");
+    if (window.mapEngine) window.mapEngine.setEra("Stone Age");
 
     saveGame();
     updateUI();
@@ -1308,9 +1380,82 @@ window.startChallenge = function(id) {
     }
 };
 
+function renderBuildings(container) {
+    container.innerHTML = "";
+    const buildingKeys = Object.keys(gameState.buildings);
+
+    buildingKeys.forEach(name => {
+        const b = gameState.buildings[name];
+        // Show if unlocked (e.g. if we have 50% of base cost clicks ever?)
+        // For now show all or filter by era index logic if desired.
+        // Let's show all for simplicity of scaling.
+
+        const currentCost = b.cost;
+        let costMult = getGlobalMultiplier("cost", null);
+        const finalCost = Math.floor(currentCost * costMult);
+
+        const btn = document.createElement("button");
+        btn.id = `btn-${name}`;
+        btn.className = "building-btn";
+        // Inline style for layout
+        btn.style.width = "100%";
+        btn.style.marginBottom = "5px";
+        btn.style.padding = "10px";
+        btn.style.display = "flex";
+        btn.style.alignItems = "center";
+        btn.style.textAlign = "left";
+        btn.style.justifyContent = "flex-start";
+        btn.style.gap = "10px";
+
+        btn.innerHTML = `
+            <div style="font-size:24px;">${b.icon}</div>
+            <div>
+                <strong>Buy ${name}</strong><br>
+                <small>Cost: ${finalCost}</small> | <small>Owned: ${b.count}</small><br>
+                <small>Prod: ${b.production}</small>
+            </div>
+        `;
+        btn.onclick = () => window.buyBuilding(name);
+        btn.disabled = gameState.resources.clicks < finalCost;
+
+        container.appendChild(btn);
+    });
+}
+
 function updateUI() {
     const eraInfo = ERA_DATA.find(e => e.name === gameState.era) || ERA_DATA[0];
-    document.body.className = eraInfo.className;
+    // Remove all era classes first to avoid buildup/conflict, but keep accessibility
+    ERA_DATA.forEach(e => document.body.classList.remove(e.className));
+    document.body.classList.add(eraInfo.className);
+
+    // Inject Building List if missing (replacing static HTML)
+    const buildingContainer = document.getElementById("buildings-container") || document.getElementById("main-area");
+    if (buildingContainer) {
+        let list = document.getElementById("building-list");
+        if (!list) {
+            // Clear hardcoded static buttons first if they exist
+            // This assumes buildings-container is the wrapper for them
+            // We want to replace the inner content with our dynamic list
+            // But main-area has other stuff.
+            // Let's look for a specific wrapper. In index.html usually there's a div.
+            // If we can't find it, we create one in main-area.
+            list = document.createElement("div");
+            list.id = "building-list";
+            list.style.width = "100%";
+            list.style.maxWidth = "600px";
+
+            // Insert after click button
+            const clickBtn = document.getElementById("click-btn");
+            if (clickBtn && clickBtn.parentNode) {
+                clickBtn.parentNode.insertBefore(list, clickBtn.nextSibling);
+            } else {
+                buildingContainer.appendChild(list);
+            }
+        }
+
+        // Render Buildings
+        renderBuildings(list);
+    }
 
     document.getElementById("res-clicks").innerText = Math.floor(gameState.resources.clicks);
     document.getElementById("res-knowledge").innerText = Math.floor(gameState.resources.knowledge);
@@ -1464,58 +1609,6 @@ window.renderAscensionTree = function() {
         container.appendChild(div);
     });
 
-    // Building Render Logic moved to generic handler to support dynamic list
-    const buildList = document.getElementById("building-list");
-    if (buildList) {
-        // Clear old manual list if necessary or just update buttons
-        // Ideally we re-render or update.
-        // Let's assume we clear and re-render for simplicity or just update existing if found
-
-        // Actually, index.html might have hardcoded buttons. We should clear them and render dynamically.
-        // But we need to check if we already did this frame.
-        // For performance, let's just re-render cleanly.
-        buildList.innerHTML = "";
-
-        // Sort buildings by cost (approx) or definition order
-        const buildingKeys = Object.keys(gameState.buildings); // Maintain definition order
-
-        buildingKeys.forEach(name => {
-            const b = gameState.buildings[name];
-
-            // Use current cost from state
-            const currentCost = b.cost;
-
-            // Apply discount
-            let costMult = getGlobalMultiplier("cost", null);
-            const finalCost = Math.floor(currentCost * costMult);
-
-            const btn = document.createElement("button");
-            btn.id = `btn-${name}`;
-            btn.className = "building-btn"; // New class for styling
-            // Inline style for layout similar to existing buttons
-            btn.style.width = "100%";
-            btn.style.marginBottom = "5px";
-            btn.style.padding = "10px";
-            btn.style.display = "flex";
-            btn.style.alignItems = "center";
-            btn.style.textAlign = "left";
-            btn.style.justifyContent = "flex-start";
-            btn.style.gap = "10px";
-
-            btn.innerHTML = `
-                <div style="font-size:24px;">${b.icon}</div>
-                <div>
-                    <strong>Buy ${name}</strong><br>
-                    <small>Cost: ${finalCost}</small> | <small>Owned: ${b.count}</small><br>
-                    <small>Prod: ${b.production}</small>
-                </div>
-            `;
-            btn.onclick = () => window.buyBuilding(name);
-            btn.disabled = gameState.resources.clicks < finalCost;
-
-            buildList.appendChild(btn);
-        });
-    }
 
     renderQuests();
     renderInventory();
@@ -1528,6 +1621,8 @@ window.renderAscensionTree = function() {
     renderGovernment();
     renderGovernors();
     renderCabinet();
+    renderDiplomacy();
+    renderReligion();
     renderTrade();
     renderWonders();
     renderCrisis();
@@ -1593,6 +1688,216 @@ window.attemptHireGovernor = function(id) {
     } else {
         alert(res.msg);
     }
+};
+
+function renderDiplomacy() {
+    const container = document.getElementById("diplomacy-view");
+    if (!container || container.style.display === "none") return;
+
+    const diplo = getDiplomacyState(gameState);
+    let list = document.getElementById("diplomacy-list");
+    if (!list) {
+        list = document.createElement("div");
+        list.id = "diplomacy-list";
+        container.appendChild(list);
+    }
+    list.innerHTML = "";
+
+    for (let id in diplo) {
+        const d = diplo[id];
+        const div = document.createElement("div");
+        div.className = "expedition-card";
+        div.innerHTML = `
+            <strong>${id}</strong><br>
+            Relation: ${d.relation} (${d.status})<br>
+            Trade: ${d.tradeDeal ? "Active" : "None"}<br>
+            <button onclick="doDiplo('${id}', 'improve')">Improve (500$)</button>
+            <button onclick="doDiplo('${id}', 'insult')">Insult</button>
+            <button onclick="doDiplo('${id}', 'trade_agreement')">Trade Deal</button>
+            <button onclick="doDiplo('${id}', 'alliance')">Alliance</button>
+        `;
+        list.appendChild(div);
+    }
+
+    renderEspionage();
+    renderCongress();
+}
+
+function renderCongress() {
+    const container = document.getElementById("congress-list");
+    if (!container) return;
+    container.innerHTML = "";
+
+    if (!gameState.congress) gameState.congress = { activeLaws: [], activeResolution: null, timer: 300 };
+    const cong = gameState.congress;
+
+    // Status
+    if (cong.sessionActive && cong.activeResolution) {
+        // Find resolution
+        // We need RESOLUTIONS import or fetch from somewhere.
+        // Ah, RESOLUTIONS is not exported to window scope. I need access to it.
+        // I can assume the ID is enough or reconstruct it.
+        // Wait, I imported { initCongress, ..., RESOLUTIONS?? } No, I didn't import RESOLUTIONS.
+        // I should import RESOLUTIONS in script.js to use it here.
+        // For now, I'll just show ID or assume logic works if I import it.
+        // Let's add RESOLUTIONS to the import block first?
+        // Or I can add a helper "getResolution(id)" in congress.js.
+        // Let's rely on basic display for now.
+
+        const res = RESOLUTIONS.find(r => r.id === cong.activeResolution) || { name: cong.activeResolution, desc: "Unknown" };
+        container.innerHTML = `
+            <div style="background:#8e44ad; padding:10px; color:white;">
+                <h4>⚠️ SESSION IN PROGRESS</h4>
+                <p><strong>${res.name}</strong></p>
+                <small>${res.desc}</small>
+                <p>Time Left: ${Math.floor(cong.timer)}s</p>
+                <button onclick="castVote('yes')">Vote YES</button>
+                <button onclick="castVote('no')">Vote NO</button>
+                <button onclick="castVote('abstain')">Abstain</button>
+            </div>
+        `;
+    } else {
+        container.innerHTML = `
+            <p>Next Session in: ${Math.floor(cong.timer)}s</p>
+            <h4>Active Laws:</h4>
+            ${cong.activeLaws.length > 0 ? cong.activeLaws.join(", ") : "None"}
+        `;
+    }
+}
+
+window.castVote = function(option) {
+    const res = vote(gameState, option);
+    alert(res.msg);
+    updateUI();
+};
+
+function renderEspionage() {
+    const container = document.getElementById("espionage-list");
+    if (!container) return;
+    container.innerHTML = "";
+
+    if (!gameState.espionage) gameState.espionage = { spies: [], maxSpies: 3 }; // ensure init
+
+    // Header
+    const cost = 1000 * Math.pow(2, gameState.espionage.spies.length);
+    const header = document.createElement("div");
+    header.innerHTML = `
+        <p>Spies: ${gameState.espionage.spies.length} / ${gameState.espionage.maxSpies}</p>
+        <button onclick="attemptTrainSpy()">Recruit Spy (${cost} Money)</button>
+    `;
+    container.appendChild(header);
+
+    // Spies
+    gameState.espionage.spies.forEach(spy => {
+        const div = document.createElement("div");
+        div.className = "expedition-card"; // Reuse
+
+        if (spy.status === 'mission') {
+            const timeLeft = Math.max(0, Math.floor((spy.missionEnd - Date.now())/1000));
+            div.innerHTML = `
+                <strong>🕵️ ${spy.name} (Lvl ${spy.level})</strong><br>
+                Status: On Mission (${timeLeft}s)<br>
+            `;
+        } else {
+            let missionOptions = "";
+            SPY_MISSIONS.forEach(m => {
+                missionOptions += `<button onclick="attemptMission(${spy.id}, '${m.id}')" style="font-size:10px; margin:2px;">${m.name} (${m.difficulty} Diff)</button>`;
+            });
+
+            div.innerHTML = `
+                <strong>🕵️ ${spy.name} (Lvl ${spy.level})</strong><br>
+                XP: ${spy.xp} / ${100 * spy.level}<br>
+                ${missionOptions}
+            `;
+        }
+        container.appendChild(div);
+    });
+}
+
+window.attemptTrainSpy = function() {
+    const res = trainSpy(gameState);
+    if (res.success) {
+        if (window.audioController) window.audioController.playBuy();
+        alert(res.msg);
+        updateUI();
+    } else {
+        alert(res.msg);
+    }
+};
+
+window.attemptMission = function(spyId, missionId) {
+    const res = startMission(gameState, spyId, missionId);
+    if (res.success) {
+        if (window.audioController) window.audioController.playEvent();
+        alert(res.msg);
+        updateUI();
+    } else {
+        alert(res.msg);
+    }
+};
+
+window.doDiplo = function(id, action) {
+    const res = interactDiplomacy(gameState, id, action);
+    alert(res.msg);
+    updateUI();
+};
+
+function renderReligion() {
+    const container = document.getElementById("religion-view");
+    if (!container || container.style.display === "none") return;
+
+    const rel = getReligionState(gameState);
+    let ui = document.getElementById("religion-ui");
+    if (!ui) {
+        ui = document.createElement("div");
+        ui.id = "religion-ui";
+        container.appendChild(ui);
+    }
+    ui.innerHTML = "";
+
+    if (!rel.founded) {
+        ui.innerHTML = `
+            <p>Religion requires 1000 Culture.</p>
+            <input id="rel-name" placeholder="Religion Name">
+            <button onclick="foundRel()">Found Religion</button>
+        `;
+    } else {
+        let dogmasHtml = "";
+        // Import DOGMAS? Or just hardcode list for UI?
+        // Need to import DOGMAS for description.
+        // For now, let's just list active ones.
+
+        rel.dogmas.forEach(d => dogmasHtml += `<div>Checking dogma ${d}...</div>`);
+
+        // Sanitize name to prevent XSS
+        const safeName = rel.name.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+        ui.innerHTML = `
+            <h3>${safeName}</h3>
+            <p>Faith: ${Math.floor(rel.faith)}</p>
+            <div>Dogmas: ${rel.dogmas.join(", ")}</div>
+            <hr>
+            <h4>Adopt Dogma (100 Faith)</h4>
+            <button onclick="adoptDog('pacifism')">Pacifism (+Happiness)</button>
+            <button onclick="adoptDog('crusade')">Holy War (+Army)</button>
+            <button onclick="adoptDog('tithing')">Tithing (+Money)</button>
+            <button onclick="adoptDog('scholasticism')">Scholasticism (+Knowl)</button>
+        `;
+    }
+}
+
+window.foundRel = function() {
+    const name = document.getElementById("rel-name").value;
+    if (!name) return;
+    const res = foundReligion(gameState, name);
+    alert(res.msg);
+    updateUI();
+};
+
+window.adoptDog = function(id) {
+    const res = adoptDogma(gameState, id);
+    alert(res.msg);
+    updateUI();
 };
 
 function renderCabinet() {
@@ -1707,11 +2012,6 @@ function renderTrade() {
 
     // Iterate tradeable resources
     for (let res in TRADE_RATES) {
-        // Show only if unlocked
-        // Using existing logic: unlock if amount > 0 or Era correct
-        // But for trading, maybe only if > 0? Or just show all?
-        // Let's reuse resourceConfig logic if we can access it, or simpler: show all
-
         const rate = TRADE_RATES[res];
         const div = document.createElement("div");
         div.className = "expedition-card";
@@ -1733,7 +2033,58 @@ function renderTrade() {
         `;
         list.appendChild(div);
     }
+
+    renderStockMarket();
 }
+
+function renderStockMarket() {
+    const container = document.getElementById("stock-list");
+    if (!container) return;
+    container.innerHTML = "";
+
+    if (!gameState.stockMarket) gameState.stockMarket = { stocks: {} };
+    const stocks = gameState.stockMarket.stocks;
+
+    COMPANIES.forEach(c => {
+        const stock = stocks[c.id] || { currentPrice: c.basePrice, owned: 0 };
+        const price = Math.floor(stock.currentPrice);
+        const change = stock.history && stock.history.length > 1 ?
+            Math.floor(((stock.currentPrice - stock.history[stock.history.length-2]) / stock.history[stock.history.length-2]) * 100) : 0;
+
+        const color = change >= 0 ? "#2ecc71" : "#e74c3c";
+        const sign = change >= 0 ? "+" : "";
+
+        const div = document.createElement("div");
+        div.className = "expedition-card";
+        div.innerHTML = `
+            <div style="display:flex; justify-content:space-between;">
+                <div>
+                    <strong>${c.name}</strong> (${c.industry})<br>
+                    Price: <span style="color:${color}">${price} (${sign}${change}%)</span><br>
+                    Owned: ${stock.owned}
+                </div>
+                <div>
+                    <button onclick="doStock('buy', '${c.id}', 1)">Buy 1</button>
+                    <button onclick="doStock('buy', '${c.id}', 10)">Buy 10</button>
+                    <button onclick="doStock('sell', '${c.id}', 1)">Sell 1</button>
+                    <button onclick="doStock('sell', '${c.id}', 10)">Sell 10</button>
+                </div>
+            </div>
+        `;
+        container.appendChild(div);
+    });
+}
+
+window.doStock = function(action, id, amount) {
+    if (action === "buy") {
+        const res = buyStock(gameState, id, amount);
+        alert(res.msg);
+    } else {
+        const res = sellStock(gameState, id, amount);
+        alert(res.msg);
+    }
+    updateUI();
+};
 
 window.attemptTrade = function(action, resource, amount) {
     const res = tradeResource(gameState, action, resource, amount);
@@ -1789,8 +2140,8 @@ window.attemptBuildWonder = function(id) {
         if (window.audioController) window.audioController.playEvent();
 
         const w = WONDERS.find(x => x.id === id);
-        if (window.visualController && w) {
-            window.visualController.addEntity(w.icon, "wonder");
+        if (window.mapEngine && w) {
+            window.mapEngine.addBuilding("Wonder", w.icon);
         }
 
         alert(res.msg);
@@ -1851,7 +2202,29 @@ function renderGovernment() {
 
     // Current Gov
     const currentGov = GOVERNMENTS.find(g => g.id === gameState.government.type) || GOVERNMENTS[0];
-    document.getElementById("gov-current").innerHTML = `Current: <strong>${currentGov.name}</strong><br><small>${currentGov.desc}</small>`;
+
+    // Dynasty Info
+    let dynastyHtml = "";
+    if (gameState.dynasty && gameState.dynasty.currentRuler) {
+        const r = gameState.dynasty.currentRuler;
+        const heir = gameState.dynasty.heir;
+
+        let traitHtml = "";
+        r.traits.forEach(t => traitHtml += `<span class="tag">${t.name}</span> `);
+
+        dynastyHtml = `
+            <div style="background: rgba(241, 196, 15, 0.1); padding: 10px; border: 1px solid #f1c40f; margin-bottom: 10px;">
+                <h4>👑 Ruling Dynasty: ${r.name} (Age: ${Math.floor(r.age)})</h4>
+                <p>Traits: ${traitHtml}</p>
+                <small>Heir: ${heir ? heir.name : "None"} (${heir ? Math.floor(heir.age) : 0})</small>
+            </div>
+        `;
+    }
+
+    document.getElementById("gov-current").innerHTML = `
+        ${dynastyHtml}
+        Current Form: <strong>${currentGov.name}</strong><br><small>${currentGov.desc}</small>
+    `;
 
     // Switch Gov
     const govList = document.getElementById("gov-list");
@@ -1994,11 +2367,27 @@ function renderSpace() {
             <div style="float:left; font-size: 32px; margin-right: 15px;">${p.icon}</div>
             <strong>${p.name}</strong> (${p.colonized ? 'Colonized' : 'Unexplored'})<br>
             <small>Resources: ${p.resources.join(", ")}</small><br>
-            ${!p.colonized ? `<small>Cost: ${costText}</small><br><button onclick="attemptColonize('${p.id}')">Colonize</button>` : `<small>Producing: ${p.production.money} Gold, ${p.production.knowledge} Knowl / sec</small>`}
+            ${!p.colonized ?
+                `<small>Cost: ${costText}</small><br><button onclick="attemptColonize('${p.id}')">Colonize</button>` :
+                `<small>Producing: ${p.production.money} Gold, ${p.production.knowledge} Knowl / sec</small><br>
+                 <small>Terraform Lvl: ${p.terraformLevel || 0} / 5</small><br>
+                 <button onclick="attemptTerraform('${p.id}')">Terraform (Cost: ${5000 * Math.pow(2, p.terraformLevel || 0)} Energy)</button>`
+            }
         `;
         list.appendChild(div);
     });
 }
+
+window.attemptTerraform = function(planetId) {
+    const res = terraformPlanet(gameState, planetId);
+    if (res.success) {
+        if (window.audioController) window.audioController.playEvent();
+        alert(res.msg);
+        updateUI();
+    } else {
+        alert(res.msg);
+    }
+};
 
 // Expose for testing/UI
 window.renderSpace = renderSpace;

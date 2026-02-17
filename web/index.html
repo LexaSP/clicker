@@ -2,9 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>History Clicker Web</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script type="module" src="script.js"></script>
     <script type="module" src="devpanel.js"></script>
 </head>
@@ -57,10 +61,7 @@
 
             <div id="buildings-container">
                 <h3>Buildings</h3>
-                <button id="btn-AutoClicker" onclick="buyBuilding('AutoClicker')">Buy AutoClicker (10)</button>
-                <button id="btn-Farm" onclick="buyBuilding('Farm')">Buy Farm (50)</button>
-                <button id="btn-Mine" onclick="buyBuilding('Mine')">Buy Mine (200)</button>
-                <button id="btn-Lab" onclick="buyBuilding('Lab')">Buy Lab (1000)</button>
+                <div id="building-list"></div>
             </div>
 
             <div id="tabs">
@@ -170,6 +171,7 @@
             <hr>
             <h3>Settings</h3>
             <button onclick="toggleAudio()">Toggle Audio</button>
+            <button onclick="toggleAccessibility()">High Contrast Mode</button>
             <button onclick="showStats()">View Statistics 📊</button>
             <button onclick="downloadSave()">Save to File 💾</button>
             <button onclick="document.getElementById('save-file-input').click()">Load from File 📂</button>

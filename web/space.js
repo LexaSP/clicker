@@ -10,8 +10,9 @@ const PLANET_TYPES = [
 
 export function generatePlanets(count = 5) {
     const planets = [];
+    const types = PLANET_TYPES; // shorthand
     for (let i = 0; i < count; i++) {
-        const type = PLANET_TYPES[Math.floor(Math.random() * PLANET_TYPES.length)];
+        const type = types[Math.floor(Math.random() * types.length)];
         planets.push({
             id: `planet_${Date.now()}_${i}`,
             name: `${type.name} World ${i+1}`,
@@ -19,6 +20,7 @@ export function generatePlanets(count = 5) {
             icon: type.icon,
             resources: type.resources,
             colonized: false,
+            terraformLevel: 0,
             cost: { money: 10000, knowledge: 5000, food: 2000 },
             production: { money: 100, knowledge: 50 } // Passive income
         });
@@ -42,6 +44,25 @@ export function colonizePlanet(gameState, planetId) {
 
     planet.colonized = true;
     return true;
+}
+
+export function terraformPlanet(gameState, planetId) {
+    const planet = gameState.space.planets.find(p => p.id === planetId);
+    if (!planet || !planet.colonized) return { success: false, msg: "Must colonize first." };
+
+    if (planet.terraformLevel >= 5) return { success: false, msg: "Max terraform level reached." };
+
+    const cost = 5000 * Math.pow(2, planet.terraformLevel);
+    if (gameState.resources.energy < cost) return { success: false, msg: `Need ${cost} Energy.` };
+
+    gameState.resources.energy -= cost;
+    planet.terraformLevel++;
+
+    // Boost production
+    planet.production.money = Math.floor(planet.production.money * 1.5);
+    planet.production.knowledge = Math.floor(planet.production.knowledge * 1.5);
+
+    return { success: true, msg: `Terraformed to Level ${planet.terraformLevel}!` };
 }
 
 export function getSpaceProduction(gameState) {
