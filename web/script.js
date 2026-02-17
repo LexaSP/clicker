@@ -13,6 +13,8 @@ import { CIVILIZATIONS, getCivMultiplier } from './civilizations.js';
 import { WONDERS, getWonderMultiplier, buildWonder } from './wonders.js';
 import { CHALLENGES, getChallengeRewardMult, checkChallengeVictory } from './challenges.js';
 import { GOVERNORS, hireGovernor, processAutomation, toggleGovernor } from './automation.js';
+import { TRADE_RATES, tradeResource } from './trade.js';
+import { VisualController } from './visuals.js';
 
 // --- Game State ---
 let gameState = {
@@ -160,6 +162,9 @@ async function init() {
 
     // Init Audio
     window.audioController = new AudioController();
+
+    // Init Visuals
+    window.visualController = new VisualController();
 
     window.gameState = gameState;
     window.allResearch = allResearch;
@@ -656,6 +661,11 @@ window.buyBuilding = function(name) {
         // Update Cost for Next Purchase (Scale 1.15x)
         b.cost = Math.floor(b.cost * 1.15);
 
+        // Visuals
+        if (window.visualController && b.icon) {
+            window.visualController.addEntity(b.icon, "building");
+        }
+
         checkQuestProgress("purchases", 1);
         updateUI();
     }
@@ -838,6 +848,7 @@ function advanceEra(era) {
     }
 
     gameState.era = era.name;
+    if (window.visualController) window.visualController.setEra(era.name);
     console.log(`Advanced to ${era.name}!`);
 
     // Check if Space Age unlocked
@@ -1496,7 +1507,13 @@ function renderWonders() {
 window.attemptBuildWonder = function(id) {
     const res = buildWonder(gameState, id);
     if (res.success) {
-        if (window.audioController) window.audioController.playEvent(); // Special sound ideally
+        if (window.audioController) window.audioController.playEvent();
+
+        const w = WONDERS.find(x => x.id === id);
+        if (window.visualController && w) {
+            window.visualController.addEntity(w.icon, "wonder");
+        }
+
         alert(res.msg);
         updateUI();
     } else {
