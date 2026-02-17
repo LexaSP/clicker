@@ -166,6 +166,22 @@ body {
     transition: width 0.5s;
 }
 
+/* Wonder Progress - Reusing expedition style or adding specific */
+.wonder-progress-bar {
+    width: 100%;
+    background: #444;
+    height: 10px;
+    border-radius: 5px;
+    margin-top: 5px;
+}
+.wonder-progress-fill {
+    height: 100%;
+    background: #f1c40f;
+    border-radius: 5px;
+    width: 0%; /* Dynamic */
+    transition: width 1s;
+}
+
 /* Tech Tree */
 #research-container {
     position: relative;
@@ -289,10 +305,18 @@ body {
     display: none; /* Hidden on desktop */
 }
 
-/* Era Themes */
+/* Era Themes - Smooth Transitions */
+#main-area {
+    transition: background 2s ease-in-out;
+}
 .era-stone #main-area { background: radial-gradient(circle, #5d4037 0%, #212121 100%); }
 .era-bronze #main-area { background: radial-gradient(circle, #d35400 0%, #212121 100%); }
-.era-iron #main-area { background: radial-gradient(circle, #7f8c8d 0%, #212121 100%); }
+.era-iron #main-area { background: radial-gradient(circle, #95a5a6 0%, #2c3e50 100%); }
+.era-middle #main-area { background: radial-gradient(circle, #27ae60 0%, #2c3e50 100%); }
+.era-renaissance #main-area { background: radial-gradient(circle, #f39c12 0%, #5d4037 100%); }
+.era-industrial #main-area { background: radial-gradient(circle, #7f8c8d 0%, #000000 100%); }
+.era-modern #main-area { background: radial-gradient(circle, #3498db 0%, #2c3e50 100%); }
+.era-info #main-area { background: radial-gradient(circle, #1abc9c 0%, #000000 100%); }
 .era-future #main-area { background: radial-gradient(circle, #8e44ad 0%, #000000 100%); }
 
 /* Responsive */

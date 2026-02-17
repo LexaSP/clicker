@@ -13,6 +13,8 @@ import { CIVILIZATIONS, getCivMultiplier } from './civilizations.js';
 import { WONDERS, getWonderMultiplier, buildWonder } from './wonders.js';
 import { CHALLENGES, getChallengeRewardMult, checkChallengeVictory } from './challenges.js';
 import { GOVERNORS, hireGovernor, processAutomation, toggleGovernor } from './automation.js';
+import { TRADE_RATES, tradeResource } from './trade.js';
+import { VisualController } from './visuals.js';
 
 // --- Game State ---
 let gameState = {
@@ -160,6 +162,9 @@ async function init() {
 
     // Init Audio
     window.audioController = new AudioController();
+
+    // Init Visuals
+    window.visualController = new VisualController();
 
     window.gameState = gameState;
     window.allResearch = allResearch;
@@ -615,10 +620,12 @@ function spawnClickParticle(x, y, amount, isCrit) {
     p.style.fontWeight = "bold";
     p.style.pointerEvents = "none";
     p.style.animation = "floatUp 1s ease-out forwards";
+    p.style.textShadow = "0 0 5px black";
+    p.style.zIndex = "100";
     document.body.appendChild(p);
 
     setTimeout(() => {
-        document.body.removeChild(p);
+        if (document.body.contains(p)) document.body.removeChild(p);
     }, 1000);
 }
 
@@ -653,6 +660,11 @@ window.buyBuilding = function(name) {
 
         // Update Cost for Next Purchase (Scale 1.15x)
         b.cost = Math.floor(b.cost * 1.15);
+
+        // Visuals
+        if (window.visualController && b.icon) {
+            window.visualController.addEntity(b.icon, "building");
+        }
 
         checkQuestProgress("purchases", 1);
         updateUI();
@@ -757,6 +769,23 @@ function injectDynamicTabs() {
 
     if (!tabs || !content) return;
 
+    // Trade (Market)
+    if (!document.getElementById("tab-btn-trade")) {
+        const tradeBtn = document.createElement("button");
+        tradeBtn.id = "tab-btn-trade";
+        tradeBtn.className = "tab-btn";
+        tradeBtn.innerText = "Market ⚖️";
+        tradeBtn.onclick = () => showTab('trade');
+        tabs.appendChild(tradeBtn);
+
+        const view = document.createElement("div");
+        view.id = "trade-view";
+        view.className = "tab-view";
+        view.style.display = "none";
+        view.innerHTML = `<h3>Global Market</h3><p>Trade resources for Money.</p><div id="trade-list"></div>`;
+        content.appendChild(view);
+    }
+
     // Wonders
     if (!document.getElementById("tab-btn-wonders")) {
         const wonderBtn = document.createElement("button");
@@ -819,6 +848,7 @@ function advanceEra(era) {
     }
 
     gameState.era = era.name;
+    if (window.visualController) window.visualController.setEra(era.name);
     console.log(`Advanced to ${era.name}!`);
 
     // Check if Space Age unlocked
@@ -983,7 +1013,6 @@ window.uploadSave = function(input) {
         try {
             const json = e.target.result;
             const data = JSON.parse(json);
-            // Basic validation
             if (data.resources && data.buildings) {
                 Object.assign(gameState, data);
                 saveGame();
@@ -997,6 +1026,30 @@ window.uploadSave = function(input) {
     };
     reader.readAsText(file);
     input.value = ''; // Reset
+};
+
+window.exportSaveString = function() {
+    const json = JSON.stringify(gameState);
+    const b64 = btoa(json);
+    prompt("Copy this save string:", b64);
+};
+
+window.importSaveString = function() {
+    const b64 = prompt("Paste save string:");
+    if (!b64) return;
+    try {
+        const json = atob(b64);
+        const data = JSON.parse(json);
+        if (data.resources && data.buildings) {
+            Object.assign(gameState, data);
+            saveGame();
+            location.reload();
+        } else {
+            alert("Invalid save string.");
+        }
+    } catch (e) {
+        alert("Error importing save: " + e.message);
+    }
 };
 
 window.toggleAudio = function() {
@@ -1294,6 +1347,7 @@ function updateUI() {
     renderHeroes();
     renderGovernment();
     renderGovernors();
+    renderTrade();
     renderWonders();
     renderCrisis();
     renderResearchTree();
@@ -1360,6 +1414,60 @@ window.attemptHireGovernor = function(id) {
     }
 };
 
+function renderTrade() {
+    const container = document.getElementById("trade-view");
+    if (!container || container.style.display === "none") return;
+
+    let list = document.getElementById("trade-list");
+    if (!list) {
+        list = document.createElement("div");
+        list.id = "trade-list";
+        container.appendChild(list);
+    }
+    list.innerHTML = "";
+
+    // Iterate tradeable resources
+    for (let res in TRADE_RATES) {
+        // Show only if unlocked
+        // Using existing logic: unlock if amount > 0 or Era correct
+        // But for trading, maybe only if > 0? Or just show all?
+        // Let's reuse resourceConfig logic if we can access it, or simpler: show all
+
+        const rate = TRADE_RATES[res];
+        const div = document.createElement("div");
+        div.className = "expedition-card";
+        div.style.display = "flex";
+        div.style.justifyContent = "space-between";
+        div.style.alignItems = "center";
+
+        div.innerHTML = `
+            <div>
+                <strong>${res.toUpperCase()}</strong><br>
+                <small>Buy: ${rate.buy} | Sell: ${rate.sell}</small>
+            </div>
+            <div>
+                <button onclick="attemptTrade('buy', '${res}', 10)">Buy 10</button>
+                <button onclick="attemptTrade('sell', '${res}', 10)">Sell 10</button>
+                <button onclick="attemptTrade('buy', '${res}', 100)">x100</button>
+                <button onclick="attemptTrade('sell', '${res}', 100)">x100</button>
+            </div>
+        `;
+        list.appendChild(div);
+    }
+}
+
+window.attemptTrade = function(action, resource, amount) {
+    const res = tradeResource(gameState, action, resource, amount);
+    if (res.success) {
+        if (window.audioController) window.audioController.playBuy();
+        // Don't alert on trade success to allow spamming, just update UI
+        // Or show a toast?
+        updateUI();
+    } else {
+        alert(res.msg);
+    }
+};
+
 function renderWonders() {
     const container = document.getElementById("wonders-view");
     if (!container || container.style.display === "none") return;
@@ -1399,7 +1507,13 @@ function renderWonders() {
 window.attemptBuildWonder = function(id) {
     const res = buildWonder(gameState, id);
     if (res.success) {
-        if (window.audioController) window.audioController.playEvent(); // Special sound ideally
+        if (window.audioController) window.audioController.playEvent();
+
+        const w = WONDERS.find(x => x.id === id);
+        if (window.visualController && w) {
+            window.visualController.addEntity(w.icon, "wonder");
+        }
+
         alert(res.msg);
         updateUI();
     } else {
