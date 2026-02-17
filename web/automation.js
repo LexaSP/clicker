@@ -5,9 +5,9 @@ export const GOVERNORS = [
         id: "elder",
         name: "Tribal Elder",
         era: "Stone Age",
-        cost: { food: 500 },
+        cost: { food: 5000 }, // 10x cost
         type: "auto_click",
-        rate: 1, // 1 click per second
+        rate: 1,
         desc: "Wisdom of the ancients. Clicks 1 time/sec.",
         icon: "👴"
     },
@@ -15,27 +15,27 @@ export const GOVERNORS = [
         id: "scribe",
         name: "Royal Scribe",
         era: "Bronze Age",
-        cost: { knowledge: 2000, money: 500 },
+        cost: { knowledge: 10000, money: 2500 }, // ~5x cost
         type: "auto_buy_building",
-        interval: 10, // Buys every 10 seconds
-        desc: "Keeps records. Buys cheapest building every 10s.",
+        interval: 30, // 30s interval
+        desc: "Keeps records. Auto-buys cheap buildings every 30s.",
         icon: "📜"
     },
     {
         id: "merchant",
         name: "Merchant Prince",
         era: "Renaissance",
-        cost: { money: 10000 },
-        type: "auto_buy_upgrade", // New type: research? Or just buildings faster? Let's stick to buildings for now.
-        interval: 5,
-        desc: "Master of coin. Buys cheapest building every 5s.",
+        cost: { money: 100000 }, // 10x cost
+        type: "auto_buy_building",
+        interval: 15,
+        desc: "Master of coin. Auto-buys cheap buildings every 15s.",
         icon: "⚖️"
     },
     {
         id: "general",
         name: "Field Marshal",
         era: "Industrial Age",
-        cost: { money: 50000, steel: 1000 },
+        cost: { money: 500000, steel: 10000 }, // 10x cost
         type: "auto_click",
         rate: 5,
         desc: "Military discipline. Clicks 5 times/sec.",
@@ -45,17 +45,17 @@ export const GOVERNORS = [
         id: "tycoon",
         name: "Industrial Tycoon",
         era: "Industrial Age",
-        cost: { money: 100000 },
+        cost: { money: 1000000 }, // 10x cost
         type: "auto_buy_building",
-        interval: 2,
-        desc: "Mass production. Buys cheapest building every 2s.",
+        interval: 5,
+        desc: "Mass production. Auto-buys cheap buildings every 5s.",
         icon: "🎩"
     },
     {
         id: "ai_core",
         name: "AI Governor",
         era: "Information Age",
-        cost: { energy: 5000, money: 1000000 },
+        cost: { energy: 50000, money: 10000000 }, // 10x cost
         type: "auto_click",
         rate: 20,
         desc: "Quantum processing. Clicks 20 times/sec.",
@@ -65,10 +65,10 @@ export const GOVERNORS = [
         id: "hive_queen",
         name: "Hive Queen",
         era: "Future Age",
-        cost: { food: 1000000, energy: 50000 },
+        cost: { food: 10000000, energy: 500000 }, // 10x cost
         type: "auto_buy_building",
-        interval: 0.5,
-        desc: "Swarm intelligence. Buys cheapest building every 0.5s.",
+        interval: 1,
+        desc: "Swarm intelligence. Auto-buys cheap buildings every 1s.",
         icon: "👽"
     }
 ];
@@ -98,55 +98,56 @@ export function hireGovernor(gameState, id) {
     // Initialize state for the governor (e.g. timers)
     gameState.governors.push({
         id: id,
+        active: true, // Default ON
         timer: 0
     });
 
     return { success: true, msg: `${gov.name} Hired!` };
 }
 
+export function toggleGovernor(gameState, id) {
+    const gState = gameState.governors.find(g => g.id === id);
+    if (gState) {
+        gState.active = !gState.active;
+        return gState.active;
+    }
+    return false;
+}
+
 export function processAutomation(gameState, dt, manualClickFn, buyBuildingFn) {
     if (!gameState.governors) return;
 
     gameState.governors.forEach(gState => {
+        if (!gState.active) return; // Skip if disabled
+
         const govDef = GOVERNORS.find(g => g.id === gState.id);
         if (!govDef) return;
 
         if (govDef.type === "auto_click") {
-            // Rate is clicks per second.
-            // We can treat this as continuous production or discrete events.
-            // Discrete events allow synergy with "manualClick" logic (crit, etc).
-            // Continuous is better for performance.
-            // User requested "Managers who click FOR you". implies discrete clicks.
-            // To avoid lag, we accumulate 'clicks pending'.
-
             gState.timer += dt * govDef.rate;
             while (gState.timer >= 1) {
-                manualClickFn(null); // Pass null event to indicate automated
+                manualClickFn(null);
                 gState.timer -= 1;
             }
         } else if (govDef.type === "auto_buy_building") {
             gState.timer += dt;
             if (gState.timer >= govDef.interval) {
                 gState.timer = 0;
-                // Find cheapest building
-                // We need access to the building list and costs.
-                // Assuming buyBuildingFn handles "buy cheapest if argument is generic?"
-                // Or we implement logic here.
-                // We need to scan gameState.buildings
 
                 let cheapest = null;
                 let minCost = Infinity;
 
                 for (let key in gameState.buildings) {
                     const b = gameState.buildings[key];
-                    // We need current cost. It's stored in state now.
                     if (b.cost < minCost) {
                         minCost = b.cost;
                         cheapest = key;
                     }
                 }
 
-                if (cheapest && gameState.resources.clicks >= minCost) {
+                // Smart Threshold: Only buy if we have 10x the cost
+                // prevents draining bank
+                if (cheapest && gameState.resources.clicks >= minCost * 10) {
                     buyBuildingFn(cheapest);
                 }
             }

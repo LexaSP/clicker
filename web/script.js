@@ -12,7 +12,7 @@ import { checkCrisis, fightCrisis, CRISIS_STAGES } from './crisis.js';
 import { CIVILIZATIONS, getCivMultiplier } from './civilizations.js';
 import { WONDERS, getWonderMultiplier, buildWonder } from './wonders.js';
 import { CHALLENGES, getChallengeRewardMult, checkChallengeVictory } from './challenges.js';
-import { GOVERNORS, hireGovernor, processAutomation } from './automation.js';
+import { GOVERNORS, hireGovernor, processAutomation, toggleGovernor } from './automation.js';
 
 // --- Game State ---
 let gameState = {
@@ -1329,12 +1329,25 @@ function renderGovernors() {
                 <div style="float:left; font-size: 32px; margin-right: 15px;">${g.icon}</div>
                 <strong>${g.name}</strong> (${g.era})<br>
                 <small>${g.desc}</small><br>
-                ${isHired ? "<strong>HIRED</strong>" : `<small>Cost: ${costText}</small><br><button onclick="attemptHireGovernor('${g.id}')">Hire</button>`}
+                ${isHired ? generateGovernorControls(g.id) : `<small>Cost: ${costText}</small><br><button onclick="attemptHireGovernor('${g.id}')">Hire</button>`}
             `;
             list.appendChild(div);
         }
     });
 }
+
+function generateGovernorControls(id) {
+    const gState = gameState.governors.find(g => g.id === id);
+    const isActive = gState ? gState.active : true;
+    const color = isActive ? "#2ecc71" : "#e74c3c";
+    const text = isActive ? "ON" : "OFF";
+    return `<button onclick="toggleGov('${id}')" style="background:${color}; width: 80px;">${text}</button>`;
+}
+
+window.toggleGov = function(id) {
+    toggleGovernor(gameState, id);
+    updateUI();
+};
 
 window.attemptHireGovernor = function(id) {
     const res = hireGovernor(gameState, id);
