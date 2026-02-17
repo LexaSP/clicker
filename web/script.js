@@ -16,6 +16,8 @@ import { GOVERNORS, hireGovernor, processAutomation, toggleGovernor } from './au
 import { TRADE_RATES, tradeResource } from './trade.js';
 import { VisualController } from './visuals.js';
 import { ASCENSION_TREE, buyAscensionPerk, getAscensionMultiplier } from './ascension.js';
+import { MINISTERS, updateMinisters, getMinistryMultiplier } from './ministries.js';
+import { CAMPAIGN_CHAPTERS, checkCampaignProgress, completeChapter } from './campaign.js';
 
 // --- Game State ---
 let gameState = {
@@ -66,8 +68,8 @@ let gameState = {
     },
 
     ascensionPerks: [], // Unlocked Tree Perks
-    // Deprecating old prestigeUpgrades in favor of new tree, but keeping for compatibility if needed.
-    // Ideally migrate old saves. For new starts, we use tree.
+    ministries: {}, // { defense: { level: 1, xp: 0 } }
+    campaign: { completed: [] }, // Story progress
 
     // Upgrades / Buildings (Expanded 3x Scale)
     buildings: {
@@ -249,6 +251,9 @@ function tick(dt) {
     // Automation
     processAutomation(gameState, dt, window.manualClick, window.buyBuilding);
 
+    // Ministry XP
+    updateMinisters(gameState, dt);
+
     // Crisis
     checkCrisis(gameState, dt);
 
@@ -256,6 +261,15 @@ function tick(dt) {
     const victory = checkChallengeVictory(gameState);
     if (victory) {
         completeChallenge(victory);
+    }
+
+    // Campaign Progress
+    const chapter = checkCampaignProgress(gameState);
+    if (chapter) {
+        if (completeChapter(gameState, chapter)) {
+            alert(`📜 CHAPTER COMPLETE: ${chapter.title}\n\n${chapter.lore}\n\nReward: ${chapter.reward.text}`);
+            updateUI();
+        }
     }
 
     gameState.resources.clicks += currentProduction * dt;
@@ -554,6 +568,9 @@ function getGlobalMultiplier(type, resource = null) {
     if (type === "click") {
         mult *= getAscensionMultiplier(gameState, "perm_mult", "click");
     }
+
+    // Ministry Check
+    mult *= getMinistryMultiplier(gameState, type, resource);
     if (type === "cost") {
         // resource arg maps to target (building, tech, wonder)
         const target = resource === "knowledge" ? "tech" : (resource === "wonder" ? "wonder" : "building");
@@ -837,6 +854,46 @@ function injectDynamicTabs() {
         view.style.display = "none";
         view.innerHTML = `<h3>Governors & Managers</h3><p>Automate your empire.</p><div id="governor-list"></div>`;
         content.appendChild(view);
+    }
+
+    // Cabinet (Ministries)
+    if (!document.getElementById("tab-btn-cabinet")) {
+        const cabBtn = document.createElement("button");
+        cabBtn.id = "tab-btn-cabinet";
+        cabBtn.className = "tab-btn";
+        cabBtn.innerText = "Cabinet 🏛️";
+        cabBtn.onclick = () => showTab('cabinet');
+        tabs.appendChild(cabBtn);
+
+        const view = document.createElement("div");
+        view.id = "cabinet-view";
+        view.className = "tab-view";
+        view.style.display = "none";
+        view.innerHTML = `<h3>Imperial Cabinet</h3><p>Ministers gain experience over time.</p><div id="minister-list"></div>`;
+        content.appendChild(view);
+    }
+
+    // Campaign Widget (Top of content?)
+    // We can inject it into main-area or a specific tab. Let's put it in main area for visibility?
+    // Or just a button. Let's add a "Story" button to the sidebar.
+    let storyBtn = document.getElementById("btn-story");
+    if (!storyBtn) {
+        const sidebar = document.getElementById("sidebar");
+        if (sidebar) {
+            storyBtn = document.createElement("button");
+            storyBtn.id = "btn-story";
+            storyBtn.innerText = "📜 Story";
+            storyBtn.onclick = () => renderCampaignModal();
+            storyBtn.style.width = "100%";
+            storyBtn.style.padding = "10px";
+            storyBtn.style.marginBottom = "10px";
+            storyBtn.style.background = "#e67e22";
+            storyBtn.style.color = "white";
+            storyBtn.style.border = "none";
+            storyBtn.style.cursor = "pointer";
+
+            sidebar.prepend(storyBtn); // Put at top
+        }
     }
 }
 
@@ -1470,6 +1527,7 @@ window.renderAscensionTree = function() {
     renderHeroes();
     renderGovernment();
     renderGovernors();
+    renderCabinet();
     renderTrade();
     renderWonders();
     renderCrisis();
@@ -1536,6 +1594,104 @@ window.attemptHireGovernor = function(id) {
         alert(res.msg);
     }
 };
+
+function renderCabinet() {
+    const container = document.getElementById("cabinet-view");
+    if (!container || container.style.display === "none") return;
+
+    let list = document.getElementById("minister-list");
+    if (!list) {
+        list = document.createElement("div");
+        list.id = "minister-list";
+        container.appendChild(list);
+    }
+    list.innerHTML = "";
+
+    MINISTERS.forEach(min => {
+        // Get State
+        let state = gameState.ministries ? gameState.ministries[min.id] : null;
+        if (!state) state = { level: 1, xp: 0 }; // Fallback display
+
+        // XP progress
+        const cost = Math.floor(100 * Math.pow(1.5, state.level - 1));
+        const pct = Math.min(100, Math.floor((state.xp / cost) * 100));
+
+        // Active Tactics
+        let tacticHtml = "";
+        min.tactics.forEach(t => {
+            const unlocked = state.level >= t.level;
+            tacticHtml += `<div style="color: ${unlocked ? '#2ecc71' : '#7f8c8d'}; font-size:10px;">
+                ${unlocked ? '✅' : '🔒'} Lvl ${t.level}: ${t.name} (${t.desc})
+            </div>`;
+        });
+
+        const div = document.createElement("div");
+        div.className = "expedition-card";
+        div.innerHTML = `
+            <div style="float:left; font-size: 32px; margin-right: 15px;">${min.icon}</div>
+            <strong>${min.title}</strong> (Lvl ${state.level})<br>
+            <small>${min.name} - ${min.desc}</small>
+            <div class="expedition-progress-bg" style="height: 5px; margin: 5px 0;">
+                <div class="expedition-progress-fill" style="width: ${pct}%"></div>
+            </div>
+            <div>${tacticHtml}</div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function renderCampaignModal() {
+    if (document.getElementById("campaign-modal")) return;
+
+    const modal = document.createElement("div");
+    modal.id = "campaign-modal";
+    modal.className = "modal-overlay";
+
+    let html = `
+        <div class="modal-content">
+            <h2>Story Campaign</h2>
+            <p>Complete chapters to unlock cosmetics and permanent buffs.</p>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+    `;
+
+    CAMPAIGN_CHAPTERS.forEach(chap => {
+        const completed = gameState.campaign && gameState.campaign.completed.includes(chap.id);
+        const locked = !completed && gameState.campaign.completed.length < CAMPAIGN_CHAPTERS.indexOf(chap);
+
+        // Objectives HTML
+        let objHtml = "";
+        chap.objectives.forEach(obj => {
+            let met = false;
+            // Simplified check for UI visualization
+            if (obj.type === "resource") met = (gameState.resources[obj.key] || 0) >= obj.target;
+            if (obj.type === "building") met = (gameState.buildings[obj.key] ? gameState.buildings[obj.key].count : 0) >= obj.target;
+            if (obj.type === "era") met = (gameState.era === obj.target) || (ERA_DATA.findIndex(e => e.name === gameState.era) >= ERA_DATA.findIndex(e => e.name === obj.target));
+
+            // If already completed whole chapter, mark all met
+            if (completed) met = true;
+
+            objHtml += `<div style="font-size:11px; color:${met ? '#2ecc71' : '#e74c3c'}">${met ? '✓' : '○'} ${obj.desc}</div>`;
+        });
+
+        html += `
+            <div style="border: 1px solid #7f8c8d; padding: 10px; background: ${completed ? 'rgba(46, 204, 113, 0.2)' : (locked ? 'rgba(0,0,0,0.5)' : 'rgba(52, 152, 219, 0.2)')}; text-align:left;">
+                <div style="display:flex; justify-content:space-between;">
+                    <strong>${chap.title}</strong>
+                    <span>${completed ? 'COMPLETE' : (locked ? 'LOCKED' : 'ACTIVE')}</span>
+                </div>
+                <small style="font-style:italic">"${chap.lore}"</small>
+                <div style="margin-top:5px;">${objHtml}</div>
+                <small style="color:#f1c40f">Reward: ${chap.reward.text}</small>
+            </div>
+        `;
+    });
+
+    html += `<button onclick="document.body.removeChild(document.getElementById('campaign-modal'))" style="background:#c0392b; margin-top:20px;">Close</button></div></div>`;
+    modal.innerHTML = html;
+    document.body.appendChild(modal);
+}
+
+window.renderCampaignModal = renderCampaignModal;
 
 function renderTrade() {
     const container = document.getElementById("trade-view");
