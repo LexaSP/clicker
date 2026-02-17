@@ -15,6 +15,7 @@ import { CHALLENGES, getChallengeRewardMult, checkChallengeVictory } from './cha
 import { GOVERNORS, hireGovernor, processAutomation, toggleGovernor } from './automation.js';
 import { TRADE_RATES, tradeResource } from './trade.js';
 import { VisualController } from './visuals.js';
+import { ASCENSION_TREE, buyAscensionPerk, getAscensionMultiplier } from './ascension.js';
 
 // --- Game State ---
 let gameState = {
@@ -64,10 +65,9 @@ let gameState = {
         history: {} // Per era stats
     },
 
-    prestigeUpgrades: { // Ascension
-        "golden_freq": { level: 0, max: 5, cost: 1, name: "Golden Relic Frequency" },
-        "starting_clicks": { level: 0, max: 10, cost: 2, name: "Start with 100 Clicks" }
-    },
+    ascensionPerks: [], // Unlocked Tree Perks
+    // Deprecating old prestigeUpgrades in favor of new tree, but keeping for compatibility if needed.
+    // Ideally migrate old saves. For new starts, we use tree.
 
     // Upgrades / Buildings (Expanded 3x Scale)
     buildings: {
@@ -546,6 +546,22 @@ function getGlobalMultiplier(type, resource = null) {
     // Challenges Check
     mult *= getChallengeRewardMult(gameState, type);
 
+    // Ascension Tree Check
+    // Map internal types to ascension effects
+    if (type === "production") {
+        // "perm_mult" with target "production" (not currently in tree, but extensible)
+    }
+    if (type === "click") {
+        mult *= getAscensionMultiplier(gameState, "perm_mult", "click");
+    }
+    if (type === "cost") {
+        // resource arg maps to target (building, tech, wonder)
+        const target = resource === "knowledge" ? "tech" : (resource === "wonder" ? "wonder" : "building");
+        const reduction = getAscensionMultiplier(gameState, "cost_reduction", target);
+        // Reduction is raw sum (e.g. 20 for 20%)
+        mult -= (reduction / 100);
+    }
+
     return mult;
 }
 
@@ -746,9 +762,12 @@ function loadGame() {
 
 function calculateOfflineProgress(seconds) {
     // Note: We use current production for offline calc.
-    // Ideally we should strip temp buffs, but for simplicity we use the shared helper.
     const currentProduction = calculateProduction(gameState);
-    const clicksGained = Math.floor(currentProduction * seconds * 0.5);
+
+    // Ascension Boost
+    const offMult = getAscensionMultiplier(gameState, "offline_boost", null);
+
+    const clicksGained = Math.floor(currentProduction * seconds * 0.5 * offMult);
 
     if (clicksGained > 0) {
         gameState.resources.clicks += clicksGained;
@@ -987,7 +1006,13 @@ window.selectCiv = function(eraName, idx) {
 
 function calculatePrestigeGain() {
     if (gameState.resources.lifetimeClicks < 100) return 0;
-    return Math.floor(Math.log10(1 + gameState.resources.lifetimeClicks));
+    let gain = Math.floor(Math.log10(1 + gameState.resources.lifetimeClicks));
+
+    // Ascension Boost
+    const pMult = getAscensionMultiplier(gameState, "prestige_gain", null);
+    gain = Math.floor(gain * pMult);
+
+    return gain;
 }
 
 window.downloadSave = function() {
@@ -1096,7 +1121,6 @@ window.buyPrestigeUpgrade = function(id) {
 
 window.performPrestige = function(challengeId = null) {
     const gain = calculatePrestigeGain();
-    // Allow prestige with 0 gain if starting a challenge (reset)
     if (gain <= 0 && !challengeId) {
         alert("Not enough progress to prestige!");
         return;
@@ -1110,35 +1134,58 @@ window.performPrestige = function(challengeId = null) {
     const symbols = gameState.resources.symbolsOfEra + gain;
     const inventory = gameState.inventory;
     const shards = gameState.resources.relicShards;
-    // Lifetime usually accumulates, but for challenge stats maybe separate?
-    // Let's keep lifetime global for cheevos.
     const lifetime = gameState.resources.lifetimeClicks;
-    const pUpgrades = gameState.prestigeUpgrades; // Keep upgrades
     const completedChallenges = gameState.completedChallenges || [];
+    const ascensionPerks = gameState.ascensionPerks || []; // Keep perks
 
+    // Reset State
     gameState.resources.clicks = 0;
-    // Apply starting clicks upgrade
-    if (pUpgrades["starting_clicks"] && pUpgrades["starting_clicks"].level > 0) {
-        gameState.resources.clicks = pUpgrades["starting_clicks"].level * 100;
-    }
     gameState.resources.money = 0;
     gameState.resources.knowledge = 0;
-    gameState.resources.symbolsOfEra = symbols;
-    gameState.resources.relicShards = shards;
-    gameState.resources.lifetimeClicks = lifetime;
+    gameState.resources.lifetimeClicks = 0; // Fix infinite exploit
 
+    gameState.civilizationHistory = {}; // Reset civ choices
     gameState.activeResearch = [];
     gameState.researched = [];
     gameState.activeExpeditions = [];
+    gameState.wonders = []; // Reset wonders
+
+    // Reset Buildings & Costs
+    // We need to restore base values. Since we don't have a separate config,
+    // we'll re-initialize specific buildings manually or use a helper.
+    // Hard-resetting to known base values:
+    gameState.buildings = {
+        "AutoClicker": { count: 0, cost: 10, production: 1, icon: "👆", era: "Stone Age" },
+        "Gatherer": { count: 0, cost: 25, production: 2, icon: "🧺", era: "Stone Age" },
+        "Farm": { count: 0, cost: 50, production: 5, icon: "🌾", era: "Bronze Age" },
+        "Mine": { count: 0, cost: 200, production: 20, icon: "⛏️", era: "Bronze Age" },
+        "Workshop": { count: 0, cost: 500, production: 50, icon: "🔨", era: "Iron Age" },
+        "Aqueduct": { count: 0, cost: 1500, production: 80, icon: "💧", era: "Iron Age" },
+        "University": { count: 0, cost: 5000, production: 200, icon: "🎓", era: "Middle Ages" },
+        "Bank": { count: 0, cost: 10000, production: 500, icon: "🏦", era: "Renaissance" },
+        "Factory": { count: 0, cost: 25000, production: 1500, icon: "🏭", era: "Industrial Age" },
+        "Lab": { count: 0, cost: 50000, production: 3000, icon: "🔬", era: "Modern Age" },
+        "PowerPlant": { count: 0, cost: 150000, production: 10000, icon: "⚡", era: "Modern Age" },
+        "Supercomputer": { count: 0, cost: 1000000, production: 50000, icon: "🖥️", era: "Information Age" },
+        "FusionReactor": { count: 0, cost: 5000000, production: 250000, icon: "⚛️", era: "Future Age" }
+    };
+
+    // Apply Ascension Start Bonuses
+    ASCENSION_TREE.forEach(perk => {
+        if (ascensionPerks.includes(perk.id) && perk.effect.type.startsWith("start_")) {
+            if (perk.effect.type === "start_resource") {
+                gameState.resources[perk.effect.resource] = (gameState.resources[perk.effect.resource] || 0) + perk.effect.value;
+            }
+            // Add unit start logic if needed
+        }
+    });
+    gameState.resources.symbolsOfEra = symbols;
+    gameState.resources.relicShards = shards;
     gameState.activeChallenge = challengeId; // Set new challenge
     gameState.completedChallenges = completedChallenges;
 
-    for (let key in gameState.buildings) {
-        gameState.buildings[key].count = 0;
-        // Reset costs is handled by recalc in loop/buy
-    }
-
     gameState.era = "Stone Age";
+    if (window.visualController) window.visualController.setEra("Stone Age");
 
     saveGame();
     updateUI();
@@ -1255,9 +1302,9 @@ function updateUI() {
         prestigeBtn.innerText = `Prestige (+${gain} 🏛️)`;
     }
 
-    // Prestige Upgrades & Challenges
+    // Prestige: Challenges & Ascension Tree
     const ascContainer = document.getElementById("ascension-list");
-    if (ascContainer && gameState.prestigeUpgrades) {
+    if (ascContainer) {
         ascContainer.innerHTML = `<button onclick="renderChallengeMenu()" style="width:100%; margin-bottom:10px; background:#8e44ad;">⚔️ Challenge Modes</button>`;
 
         if (gameState.activeChallenge) {
@@ -1265,24 +1312,100 @@ function updateUI() {
             ascContainer.innerHTML += `<div style="background:#c0392b; padding:5px; margin-bottom:10px; border-radius:4px;">ACTIVE: ${c ? c.name : 'Unknown'}</div>`;
         }
 
-        for (let key in gameState.prestigeUpgrades) {
-            const up = gameState.prestigeUpgrades[key];
-            const div = document.createElement("div");
-            div.style.marginBottom = "5px";
-            const cost = up.cost * (up.level + 1);
-
-            const btn = document.createElement("button");
-            btn.style.fontSize = "10px";
-            btn.style.padding = "2px 5px";
-            btn.innerText = `Buy (Cost: ${cost})`;
-            btn.disabled = up.level >= up.max || gameState.resources.symbolsOfEra < cost;
-            btn.onclick = () => window.buyPrestigeUpgrade(key);
-
-            div.innerHTML = `<small>${up.name} (Lvl ${up.level}/${up.max})</small><br>`;
-            div.appendChild(btn);
-            ascContainer.appendChild(div);
-        }
+        // Render Tree Button
+        const treeBtn = document.createElement("button");
+        treeBtn.innerText = "Open Ascension Tree 🌌";
+        treeBtn.style.width = "100%";
+        treeBtn.style.background = "radial-gradient(circle, #8e44ad, #2c3e50)";
+        treeBtn.onclick = () => renderAscensionTree();
+        ascContainer.appendChild(treeBtn);
     }
+}
+
+window.renderAscensionTree = function() {
+    if (document.getElementById("ascension-modal")) return;
+
+    const modal = document.createElement("div");
+    modal.id = "ascension-modal";
+    modal.className = "modal-overlay";
+
+    // SVG Container
+    let html = `
+        <div class="modal-content" style="width: 90%; height: 90%; background: #111;">
+            <h2>Ascension Tree</h2>
+            <p>Spend Symbols of Era to unlock permanent upgrades.</p>
+            <div style="position: relative; width: 800px; height: 500px; margin: 0 auto; overflow: auto; border: 1px solid #444;">
+                <svg id="ascension-svg" width="800" height="500" style="position:absolute; top:0; left:0;"></svg>
+                <div id="ascension-nodes"></div>
+            </div>
+            <button onclick="document.body.removeChild(document.getElementById('ascension-modal'))" style="margin-top:10px;">Close</button>
+        </div>
+    `;
+
+    modal.innerHTML = html;
+    document.body.appendChild(modal);
+
+    // Render Nodes & Lines
+    const svg = document.getElementById("ascension-svg");
+    const container = document.getElementById("ascension-nodes");
+
+    // 1. Draw Lines
+    ASCENSION_TREE.forEach(node => {
+        if (node.req) {
+            node.req.forEach(reqId => {
+                const parent = ASCENSION_TREE.find(n => n.id === reqId);
+                if (parent) {
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", parent.x + 25); // Center offset (50px width)
+                    line.setAttribute("y1", parent.y + 25);
+                    line.setAttribute("x2", node.x + 25);
+                    line.setAttribute("y2", node.y + 25);
+                    const isUnlocked = gameState.ascensionPerks && gameState.ascensionPerks.includes(node.id);
+                    line.setAttribute("stroke", isUnlocked ? "#f1c40f" : "#555");
+                    line.setAttribute("stroke-width", "3");
+                    svg.appendChild(line);
+                }
+            });
+        }
+    });
+
+    // 2. Draw Nodes
+    ASCENSION_TREE.forEach(node => {
+        const isUnlocked = gameState.ascensionPerks && gameState.ascensionPerks.includes(node.id);
+        const canUnlock = !isUnlocked && node.req.every(r => gameState.ascensionPerks && gameState.ascensionPerks.includes(r)) && gameState.resources.symbolsOfEra >= node.cost;
+
+        const div = document.createElement("div");
+        div.style.position = "absolute";
+        div.style.left = `${node.x}px`;
+        div.style.top = `${node.y}px`;
+        div.style.width = "50px";
+        div.style.height = "50px";
+        div.style.borderRadius = "50%";
+        div.style.background = isUnlocked ? "#f1c40f" : (canUnlock ? "#3498db" : "#555");
+        div.style.border = "2px solid #fff";
+        div.style.cursor = "pointer";
+        div.style.display = "flex";
+        div.style.alignItems = "center";
+        div.style.justifyContent = "center";
+        div.style.fontSize = "20px";
+        div.title = `${node.name}\n${node.desc}\nCost: ${node.cost} SE`;
+        div.innerText = "⭐"; // Icon placeholder
+
+        div.onclick = () => {
+            const res = buyAscensionPerk(gameState, node.id);
+            if (res.success) {
+                if (window.audioController) window.audioController.playUnlock();
+                alert(res.msg);
+                document.body.removeChild(modal);
+                renderAscensionTree(); // Re-render to update
+                updateUI();
+            } else {
+                alert(res.msg);
+            }
+        };
+
+        container.appendChild(div);
+    });
 
     // Building Render Logic moved to generic handler to support dynamic list
     const buildList = document.getElementById("building-list");
