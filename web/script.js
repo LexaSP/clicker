@@ -10,6 +10,9 @@ import { generateGPP, recruitHero, getHeroMultiplier } from './heroes.js';
 import { GOVERNMENTS, POLICIES, adoptGovernment, togglePolicy, getGovernmentMultiplier } from './government.js';
 import { checkCrisis, fightCrisis, CRISIS_STAGES } from './crisis.js';
 import { CIVILIZATIONS, getCivMultiplier } from './civilizations.js';
+import { WONDERS, getWonderMultiplier, buildWonder } from './wonders.js';
+import { CHALLENGES, getChallengeRewardMult, checkChallengeVictory } from './challenges.js';
+import { GOVERNORS, hireGovernor, processAutomation, toggleGovernor } from './automation.js';
 
 // --- Game State ---
 let gameState = {
@@ -43,6 +46,10 @@ let gameState = {
     space: { planets: [] }, // Space exploration
     heroes: { owned: [], gpp: 0, threshold: 1000 }, // Great People
     government: { type: "gov_tribal", policies: [] }, // Government
+    governors: [], // Hired governors
+    wonders: [], // Built wonders IDs
+    activeChallenge: null, // ID of current challenge
+    completedChallenges: [], // List of completed IDs
     crisis: { active: false, threat: 0, defeated: false }, // Endgame
     civilizationHistory: {}, // { "Bronze Age": { id: "egypt", ... } }
 
@@ -234,8 +241,17 @@ function tick(dt) {
     // GPP
     generateGPP(gameState, dt);
 
+    // Automation
+    processAutomation(gameState, dt, window.manualClick, window.buyBuilding);
+
     // Crisis
     checkCrisis(gameState, dt);
+
+    // Challenge Victory Check
+    const victory = checkChallengeVictory(gameState);
+    if (victory) {
+        completeChallenge(victory);
+    }
 
     gameState.resources.clicks += currentProduction * dt;
     gameState.resources.lifetimeClicks += currentProduction * dt;
@@ -519,6 +535,12 @@ function getGlobalMultiplier(type, resource = null) {
     // Civilizations Check
     mult *= getCivMultiplier(gameState, type, resource);
 
+    // Wonders Check
+    mult *= getWonderMultiplier(gameState, type, resource);
+
+    // Challenges Check
+    mult *= getChallengeRewardMult(gameState, type);
+
     return mult;
 }
 
@@ -534,6 +556,9 @@ function getCritStats() {
 }
 
 window.manualClick = function(event) {
+    // Challenge Constraint: No Manual Clicks
+    if (gameState.activeChallenge === "lazy_leader") return;
+
     if (window.audioController) window.audioController.playClick();
 
     // Base Click Value + Synergy (10% of CpS)
@@ -598,6 +623,14 @@ function spawnClickParticle(x, y, amount, isCrit) {
 }
 
 window.buyBuilding = function(name) {
+    // Challenge Constraint: Max 1 Building
+    if (gameState.activeChallenge === "one_city") {
+        if (gameState.buildings[name] && gameState.buildings[name].count >= 1) {
+            alert("Challenge Constraint: Cannot own more than 1 of each building!");
+            return;
+        }
+    }
+
     const b = gameState.buildings[name];
     if (!b) return;
 
@@ -627,6 +660,12 @@ window.buyBuilding = function(name) {
 };
 
 window.buyResearch = function(techId) {
+    // Challenge Constraint: No Research
+    if (gameState.activeChallenge === "austere") {
+        alert("Challenge Constraint: Research is disabled!");
+        return;
+    }
+
     const tech = allResearch.find(t => t.id === techId);
     if (!tech) return;
 
@@ -709,6 +748,48 @@ function calculateOfflineProgress(seconds) {
 // --- UI Updates ---
 function initUI() {
     renderResearchTree();
+    injectDynamicTabs();
+}
+
+function injectDynamicTabs() {
+    const tabs = document.getElementById("tabs");
+    const content = document.getElementById("tab-content");
+
+    if (!tabs || !content) return;
+
+    // Wonders
+    if (!document.getElementById("tab-btn-wonders")) {
+        const wonderBtn = document.createElement("button");
+        wonderBtn.id = "tab-btn-wonders";
+        wonderBtn.className = "tab-btn";
+        wonderBtn.innerText = "Wonders 🏛️";
+        wonderBtn.onclick = () => showTab('wonders');
+        tabs.appendChild(wonderBtn);
+
+        const view = document.createElement("div");
+        view.id = "wonders-view";
+        view.className = "tab-view";
+        view.style.display = "none";
+        view.innerHTML = `<h3>Great Wonders</h3><p>Build monumental structures for massive global bonuses.</p><div id="wonder-list"></div>`;
+        content.appendChild(view);
+    }
+
+    // Governors
+    if (!document.getElementById("tab-btn-governors")) {
+        const govBtn = document.createElement("button");
+        govBtn.id = "tab-btn-governors";
+        govBtn.className = "tab-btn";
+        govBtn.innerText = "Governors 👔";
+        govBtn.onclick = () => showTab('governors');
+        tabs.appendChild(govBtn);
+
+        const view = document.createElement("div");
+        view.id = "governors-view";
+        view.className = "tab-view";
+        view.style.display = "none";
+        view.innerHTML = `<h3>Governors & Managers</h3><p>Automate your empire.</p><div id="governor-list"></div>`;
+        content.appendChild(view);
+    }
 }
 
 function checkEraProgress() {
@@ -960,20 +1041,27 @@ window.buyPrestigeUpgrade = function(id) {
     }
 };
 
-window.performPrestige = function() {
+window.performPrestige = function(challengeId = null) {
     const gain = calculatePrestigeGain();
-    if (gain <= 0) {
+    // Allow prestige with 0 gain if starting a challenge (reset)
+    if (gain <= 0 && !challengeId) {
         alert("Not enough progress to prestige!");
         return;
     }
 
-    if (!confirm(`Reset game to gain ${gain} Symbols of Era?`)) return;
+    let confirmMsg = `Reset game to gain ${gain} Symbols of Era?`;
+    if (challengeId) confirmMsg = `Reset run and start CHALLENGE: ${challengeId}?`;
+
+    if (!confirm(confirmMsg)) return;
 
     const symbols = gameState.resources.symbolsOfEra + gain;
     const inventory = gameState.inventory;
     const shards = gameState.resources.relicShards;
+    // Lifetime usually accumulates, but for challenge stats maybe separate?
+    // Let's keep lifetime global for cheevos.
     const lifetime = gameState.resources.lifetimeClicks;
     const pUpgrades = gameState.prestigeUpgrades; // Keep upgrades
+    const completedChallenges = gameState.completedChallenges || [];
 
     gameState.resources.clicks = 0;
     // Apply starting clicks upgrade
@@ -989,6 +1077,8 @@ window.performPrestige = function() {
     gameState.activeResearch = [];
     gameState.researched = [];
     gameState.activeExpeditions = [];
+    gameState.activeChallenge = challengeId; // Set new challenge
+    gameState.completedChallenges = completedChallenges;
 
     for (let key in gameState.buildings) {
         gameState.buildings[key].count = 0;
@@ -1000,6 +1090,65 @@ window.performPrestige = function() {
     saveGame();
     updateUI();
     console.log("Prestige performed!");
+};
+
+function completeChallenge(chal) {
+    alert(`🎉 CHALLENGE COMPLETED: ${chal.name}!\nReward: ${chal.reward.desc}`);
+    if (!gameState.completedChallenges) gameState.completedChallenges = [];
+    if (!gameState.completedChallenges.includes(chal.id)) {
+        gameState.completedChallenges.push(chal.id);
+    }
+    gameState.activeChallenge = null; // Clear active
+    // Maybe trigger prestige automatically or let them continue?
+    // Let them continue to enjoy the reward or prestige manually.
+    saveGame();
+}
+
+window.renderChallengeMenu = function() {
+    if (document.getElementById("challenge-modal")) return;
+
+    const modal = document.createElement("div");
+    modal.id = "challenge-modal";
+    modal.className = "modal-overlay";
+
+    let html = `
+        <div class="modal-content">
+            <h2>Challenge Modes</h2>
+            <p>Start a new run with special rules. Completing challenges unlocks permanent bonuses.</p>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+    `;
+
+    CHALLENGES.forEach(c => {
+        const completed = gameState.completedChallenges && gameState.completedChallenges.includes(c.id);
+        const active = gameState.activeChallenge === c.id;
+
+        html += `
+            <div style="border: 1px solid #7f8c8d; padding: 10px; background: ${active ? '#2980b9' : (completed ? '#27ae60' : 'rgba(0,0,0,0.2)')}; text-align:left;">
+                <div style="display:flex; justify-content:space-between;">
+                    <strong>${c.name}</strong>
+                    <span>${completed ? '✅ Completed' : (active ? '🔄 Active' : '')}</span>
+                </div>
+                <small>${c.description}</small><br>
+                <small style="color:#e74c3c">Condition: ${c.conditionDesc}</small><br>
+                <small style="color:#f1c40f">Reward: ${c.reward.desc}</small><br>
+                ${!active ? `<button onclick="startChallenge('${c.id}')" style="margin-top:5px; width:auto; padding:5px 10px;">Start Challenge (Resets Game)</button>` : ''}
+            </div>
+        `;
+    });
+
+    html += `<button onclick="document.body.removeChild(document.getElementById('challenge-modal'))" style="background:#c0392b; margin-top:20px;">Close</button></div></div>`;
+    modal.innerHTML = html;
+    document.body.appendChild(modal);
+}
+
+window.startChallenge = function(id) {
+    if (confirm("Starting a challenge will RESET your current run (Prestige). Are you sure?")) {
+        // Remove modal
+        const m = document.getElementById("challenge-modal");
+        if (m) document.body.removeChild(m);
+        // Call prestige with ID
+        window.performPrestige(id);
+    }
 };
 
 function updateUI() {
@@ -1053,10 +1202,16 @@ function updateUI() {
         prestigeBtn.innerText = `Prestige (+${gain} 🏛️)`;
     }
 
-    // Prestige Upgrades
+    // Prestige Upgrades & Challenges
     const ascContainer = document.getElementById("ascension-list");
     if (ascContainer && gameState.prestigeUpgrades) {
-        ascContainer.innerHTML = "";
+        ascContainer.innerHTML = `<button onclick="renderChallengeMenu()" style="width:100%; margin-bottom:10px; background:#8e44ad;">⚔️ Challenge Modes</button>`;
+
+        if (gameState.activeChallenge) {
+            const c = CHALLENGES.find(x => x.id === gameState.activeChallenge);
+            ascContainer.innerHTML += `<div style="background:#c0392b; padding:5px; margin-bottom:10px; border-radius:4px;">ACTIVE: ${c ? c.name : 'Unknown'}</div>`;
+        }
+
         for (let key in gameState.prestigeUpgrades) {
             const up = gameState.prestigeUpgrades[key];
             const div = document.createElement("div");
@@ -1138,9 +1293,119 @@ function updateUI() {
     renderSpace();
     renderHeroes();
     renderGovernment();
+    renderGovernors();
+    renderWonders();
     renderCrisis();
     renderResearchTree();
 }
+
+function renderGovernors() {
+    const container = document.getElementById("governors-view");
+    if (!container || container.style.display === "none") return;
+
+    let list = document.getElementById("governor-list");
+    if (!list) {
+        list = document.createElement("div");
+        list.id = "governor-list";
+        container.appendChild(list);
+    }
+    list.innerHTML = "";
+
+    GOVERNORS.forEach(g => {
+        // Show if unlocked (Era check?) - For now show all or filter
+        // Simple filter: Show if Era index >= Governor Era Index
+        const gEraIdx = ERA_DATA.findIndex(e => e.name === g.era);
+        const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
+
+        if (currentEraIdx >= gEraIdx) {
+            const isHired = gameState.governors && gameState.governors.some(gov => gov.id === g.id);
+            const div = document.createElement("div");
+            div.className = `expedition-card ${isHired ? 'completed' : ''}`;
+
+            let costText = "";
+            for (let k in g.cost) costText += `${g.cost[k]} ${k} `;
+
+            div.innerHTML = `
+                <div style="float:left; font-size: 32px; margin-right: 15px;">${g.icon}</div>
+                <strong>${g.name}</strong> (${g.era})<br>
+                <small>${g.desc}</small><br>
+                ${isHired ? generateGovernorControls(g.id) : `<small>Cost: ${costText}</small><br><button onclick="attemptHireGovernor('${g.id}')">Hire</button>`}
+            `;
+            list.appendChild(div);
+        }
+    });
+}
+
+function generateGovernorControls(id) {
+    const gState = gameState.governors.find(g => g.id === id);
+    const isActive = gState ? gState.active : true;
+    const color = isActive ? "#2ecc71" : "#e74c3c";
+    const text = isActive ? "ON" : "OFF";
+    return `<button onclick="toggleGov('${id}')" style="background:${color}; width: 80px;">${text}</button>`;
+}
+
+window.toggleGov = function(id) {
+    toggleGovernor(gameState, id);
+    updateUI();
+};
+
+window.attemptHireGovernor = function(id) {
+    const res = hireGovernor(gameState, id);
+    if (res.success) {
+        if (window.audioController) window.audioController.playBuy();
+        alert(res.msg);
+        updateUI();
+    } else {
+        alert(res.msg);
+    }
+};
+
+function renderWonders() {
+    const container = document.getElementById("wonders-view");
+    if (!container || container.style.display === "none") return;
+
+    // Assuming structure exists, else inject
+    let list = document.getElementById("wonder-list");
+    if (!list) {
+        list = document.createElement("div");
+        list.id = "wonder-list";
+        container.appendChild(list);
+    }
+
+    list.innerHTML = "";
+
+    WONDERS.forEach(w => {
+        // Only show if visible (based on Era?)
+        // Let's show all for now or filter by current era index
+
+        const isBuilt = gameState.wonders && gameState.wonders.includes(w.id);
+        const div = document.createElement("div");
+        div.className = `expedition-card ${isBuilt ? 'completed' : ''}`;
+
+        let costText = "";
+        for (let k in w.cost) costText += `${w.cost[k]} ${k} `;
+
+        div.innerHTML = `
+            <div style="float:left; font-size: 32px; margin-right: 15px;">${w.icon}</div>
+            <strong>${w.name}</strong> (${w.era})<br>
+            <small>${w.description}</small><br>
+            <span style="color: #f1c40f">${w.bonusText}</span><br>
+            ${isBuilt ? "<strong>CONSTRUCTED</strong>" : `<small>Cost: ${costText}</small><br><button onclick="attemptBuildWonder('${w.id}')">Build Wonder</button>`}
+        `;
+        list.appendChild(div);
+    });
+}
+
+window.attemptBuildWonder = function(id) {
+    const res = buildWonder(gameState, id);
+    if (res.success) {
+        if (window.audioController) window.audioController.playEvent(); // Special sound ideally
+        alert(res.msg);
+        updateUI();
+    } else {
+        alert(res.msg);
+    }
+};
 
 function renderCrisis() {
     // Overlay or Widget? Let's do a widget in the Space View if active
@@ -1316,6 +1581,7 @@ function renderSpace() {
         }
     }
 
+
     // Render Planets
     const list = document.getElementById("planet-list");
     if (!list) return;
@@ -1409,6 +1675,12 @@ function renderWar() {
 }
 
 window.trainUnit = function(unitKey) {
+    // Challenge Constraint: No War
+    if (gameState.activeChallenge === "pacifist") {
+        alert("Challenge Constraint: Cannot train military units!");
+        return;
+    }
+
     if (!gameState.army) gameState.army = {};
     const unit = UNITS[unitKey];
 
