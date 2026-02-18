@@ -32,6 +32,7 @@ import { renderModdingMenu } from './modding.js';
 window.renderLeaderboardModal = renderLeaderboardModal;
 window.renderModdingMenu = renderModdingMenu;
 import { initConstellations, getConstellationMultiplier, renderConstellationMenu } from './constellations.js';
+import { checkTutorials, initTutorials } from './tutorial.js';
 
 // --- Game State ---
 let gameState = {
@@ -122,15 +123,38 @@ let gameState = {
 // --- Era Config ---
 const ERA_DATA = [
     { name: "Stone Age", threshold: 0, className: "era-stone" },
-    { name: "Bronze Age", threshold: 1000, className: "era-bronze" },
-    { name: "Iron Age", threshold: 5000, className: "era-iron" },
-    { name: "Middle Ages", threshold: 20000, className: "era-middle" },
-    { name: "Renaissance", threshold: 50000, className: "era-renaissance" },
-    { name: "Industrial Age", threshold: 150000, className: "era-industrial" },
-    { name: "Modern Age", threshold: 500000, className: "era-modern" },
-    { name: "Information Age", threshold: 1000000, className: "era-info" },
-    { name: "Future Age", threshold: 5000000, className: "era-future" }
+    { name: "Bronze Age", threshold: 2000, className: "era-bronze" },
+    { name: "Iron Age", threshold: 10000, className: "era-iron" },
+    { name: "Middle Ages", threshold: 50000, className: "era-middle" },
+    { name: "Renaissance", threshold: 250000, className: "era-renaissance" },
+    { name: "Industrial Age", threshold: 1000000, className: "era-industrial" },
+    { name: "Modern Age", threshold: 10000000, className: "era-modern" },
+    { name: "Information Age", threshold: 50000000, className: "era-info" },
+    { name: "Future Age", threshold: 250000000, className: "era-future" }
 ];
+
+// --- Unlocks Config ---
+const FEATURE_UNLOCKS = {
+    // Static Tabs (IDs in index.html)
+    "tab-btn-expeditions": { era: "Bronze Age" },
+    "tab-btn-war": { era: "Bronze Age" },
+    "tab-btn-government": { era: "Bronze Age" },
+    "tab-btn-crafting": { era: "Iron Age" },
+    "tab-btn-heroes": { era: "Middle Ages" },
+
+    // Dynamic Tabs
+    "tab-btn-trade": { era: "Iron Age" }, // Market
+    "tab-btn-wonders": { era: "Iron Age" },
+    "tab-btn-religion": { era: "Middle Ages" },
+    "tab-btn-diplomacy": { era: "Renaissance" },
+    "tab-btn-espionage": { era: "Renaissance" }, // Sub-feature, handled by Diplo tab? No, separate logic if wanted, but here assumes Diplomacy
+    "tab-btn-governors": { era: "Industrial Age" },
+    "tab-btn-cabinet": { era: "Modern Age" },
+    "tab-btn-congress": { era: "Modern Age" }, // Sub-feature
+    "tab-btn-space": { era: "Future Age" },
+    "tab-btn-leaderboard": { era: "Bronze Age" }, // Minimal progression
+    "tab-btn-mods": { era: "Future Age" } // Or NG+ handled internally
+};
 
 // --- Content ---
 let allRelics = [];
@@ -175,6 +199,8 @@ async function init() {
 
     // Init UI
     initUI();
+    checkFeatureUnlocks(); // Initial check
+    initTutorials(gameState);
 
     // Init Audio
     window.audioController = new AudioController();
@@ -857,107 +883,35 @@ function injectDynamicTabs() {
 
     if (!tabs || !content) return;
 
-    // Trade (Market)
-    if (!document.getElementById("tab-btn-trade")) {
-        const tradeBtn = document.createElement("button");
-        tradeBtn.id = "tab-btn-trade";
-        tradeBtn.className = "tab-btn";
-        tradeBtn.innerText = "Market ⚖️";
-        tradeBtn.onclick = () => showTab('trade');
-        tabs.appendChild(tradeBtn);
+    // Helper
+    const createTab = (id, label, viewId, viewHtml) => {
+        if (!document.getElementById(id)) {
+            const btn = document.createElement("button");
+            btn.id = id;
+            btn.className = "tab-btn";
+            btn.innerText = label;
+            btn.onclick = () => showTab(viewId.replace("-view", ""));
+            btn.style.display = "none"; // Hidden by default
+            tabs.appendChild(btn);
 
-        const view = document.createElement("div");
-        view.id = "trade-view";
-        view.className = "tab-view";
-        view.style.display = "none";
-        view.innerHTML = `<h3>Global Market</h3><p>Trade resources for Money.</p><div id="trade-list"></div><hr><h3>Stock Exchange</h3><div id="stock-list"></div>`;
-        content.appendChild(view);
-    }
+            const view = document.createElement("div");
+            view.id = viewId;
+            view.className = "tab-view";
+            view.style.display = "none";
+            view.innerHTML = viewHtml;
+            content.appendChild(view);
+        }
+    };
 
-    // Wonders
-    if (!document.getElementById("tab-btn-wonders")) {
-        const wonderBtn = document.createElement("button");
-        wonderBtn.id = "tab-btn-wonders";
-        wonderBtn.className = "tab-btn";
-        wonderBtn.innerText = "Wonders 🏛️";
-        wonderBtn.onclick = () => showTab('wonders');
-        tabs.appendChild(wonderBtn);
+    // Helper for help buttons
+    const helpBtn = (topic) => `<button class="help-btn" onclick="showHelp('${topic}')">?</button>`;
 
-        const view = document.createElement("div");
-        view.id = "wonders-view";
-        view.className = "tab-view";
-        view.style.display = "none";
-        view.innerHTML = `<h3>Great Wonders</h3><p>Build monumental structures for massive global bonuses.</p><div id="wonder-list"></div>`;
-        content.appendChild(view);
-    }
-
-    // Governors
-    if (!document.getElementById("tab-btn-governors")) {
-        const govBtn = document.createElement("button");
-        govBtn.id = "tab-btn-governors";
-        govBtn.className = "tab-btn";
-        govBtn.innerText = "Governors 👔";
-        govBtn.onclick = () => showTab('governors');
-        tabs.appendChild(govBtn);
-
-        const view = document.createElement("div");
-        view.id = "governors-view";
-        view.className = "tab-view";
-        view.style.display = "none";
-        view.innerHTML = `<h3>Governors & Managers</h3><p>Automate your empire.</p><div id="governor-list"></div>`;
-        content.appendChild(view);
-    }
-
-    // Cabinet (Ministries)
-    if (!document.getElementById("tab-btn-cabinet")) {
-        const cabBtn = document.createElement("button");
-        cabBtn.id = "tab-btn-cabinet";
-        cabBtn.className = "tab-btn";
-        cabBtn.innerText = "Cabinet 🏛️";
-        cabBtn.onclick = () => showTab('cabinet');
-        tabs.appendChild(cabBtn);
-
-        const view = document.createElement("div");
-        view.id = "cabinet-view";
-        view.className = "tab-view";
-        view.style.display = "none";
-        view.innerHTML = `<h3>Imperial Cabinet</h3><p>Ministers gain experience over time.</p><div id="minister-list"></div>`;
-        content.appendChild(view);
-    }
-
-    // Diplomacy
-    if (!document.getElementById("tab-btn-diplomacy")) {
-        const dipBtn = document.createElement("button");
-        dipBtn.id = "tab-btn-diplomacy";
-        dipBtn.className = "tab-btn";
-        dipBtn.innerText = "Diplomacy 🤝";
-        dipBtn.onclick = () => showTab('diplomacy');
-        tabs.appendChild(dipBtn);
-
-        const view = document.createElement("div");
-        view.id = "diplomacy-view";
-        view.className = "tab-view";
-        view.style.display = "none";
-        view.innerHTML = `<h3>Foreign Relations</h3><div id="diplomacy-list"></div><hr><h3>Espionage Agency</h3><div id="espionage-list"></div><hr><h3>World Congress 🌐</h3><div id="congress-list"></div>`;
-        content.appendChild(view);
-    }
-
-    // Religion
-    if (!document.getElementById("tab-btn-religion")) {
-        const relBtn = document.createElement("button");
-        relBtn.id = "tab-btn-religion";
-        relBtn.className = "tab-btn";
-        relBtn.innerText = "Religion 🛐";
-        relBtn.onclick = () => showTab('religion');
-        tabs.appendChild(relBtn);
-
-        const view = document.createElement("div");
-        view.id = "religion-view";
-        view.className = "tab-view";
-        view.style.display = "none";
-        view.innerHTML = `<h3>Faith & Dogmas</h3><div id="religion-ui"></div><hr><h3>Museum 🎨</h3><div id="museum-list"></div>`;
-        content.appendChild(view);
-    }
+    createTab("tab-btn-trade", "Market ⚖️", "trade-view", `<h3>Global Market ${helpBtn('market')}</h3><p>Trade resources for Money.</p><div id="trade-list"></div><hr><h3>Stock Exchange</h3><div id="stock-list"></div>`);
+    createTab("tab-btn-wonders", "Wonders 🏛️", "wonders-view", `<h3>Great Wonders ${helpBtn('wonders')}</h3><p>Build monumental structures for massive global bonuses.</p><div id="wonder-list"></div>`);
+    createTab("tab-btn-governors", "Governors 👔", "governors-view", `<h3>Governors & Managers ${helpBtn('governors')}</h3><p>Automate your empire.</p><div id="governor-list"></div>`);
+    createTab("tab-btn-cabinet", "Cabinet 🏛️", "cabinet-view", `<h3>Imperial Cabinet ${helpBtn('dynasty')}</h3><p>Ministers gain experience over time.</p><div id="minister-list"></div>`);
+    createTab("tab-btn-diplomacy", "Diplomacy 🤝", "diplomacy-view", `<h3>Foreign Relations ${helpBtn('diplomacy')}</h3><div id="diplomacy-list"></div><hr><h3>Espionage Agency</h3><div id="espionage-list"></div><hr><h3>World Congress 🌐</h3><div id="congress-list"></div>`);
+    createTab("tab-btn-religion", "Religion 🛐", "religion-view", `<h3>Faith & Dogmas ${helpBtn('religion')}</h3><div id="religion-ui"></div><hr><h3>Museum 🎨</h3><div id="museum-list"></div>`);
 
     // Campaign Widget (Top of content?)
     // We can inject it into main-area or a specific tab. Let's put it in main area for visibility?
@@ -989,6 +943,38 @@ function checkEraProgress() {
         const nextEra = ERA_DATA[currentEraIdx + 1];
         if (gameState.resources.clicks >= nextEra.threshold) {
             advanceEra(nextEra);
+        }
+    }
+}
+
+function checkFeatureUnlocks() {
+    const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
+
+    for (let id in FEATURE_UNLOCKS) {
+        const req = FEATURE_UNLOCKS[id];
+        const reqEraIdx = ERA_DATA.findIndex(e => e.name === req.era);
+
+        const el = document.getElementById(id);
+        if (el) {
+            if (currentEraIdx >= reqEraIdx) {
+                if (el.style.display === "none") {
+                    el.style.display = "inline-block";
+                    // Alert or toast? Maybe too spammy.
+                }
+            } else {
+                el.style.display = "none";
+            }
+        }
+    }
+
+    // Mods button in UI
+    const modBtn = document.querySelector("button[onclick*='renderModdingMenu']");
+    if (modBtn) {
+        // Only show if NG+
+        if (gameState.stats.transcendenceCount && gameState.stats.transcendenceCount > 0) {
+            modBtn.style.display = "inline-block";
+        } else {
+            modBtn.style.display = "none";
         }
     }
 }
@@ -1148,8 +1134,10 @@ window.selectCiv = function(eraName, idx) {
 };
 
 function calculatePrestigeGain() {
-    if (gameState.resources.lifetimeClicks < 100) return 0;
-    let gain = Math.floor(Math.log10(1 + gameState.resources.lifetimeClicks));
+    if (gameState.resources.lifetimeClicks < 100000) return 0;
+    // New Formula: (Lifetime / 1M)^0.5
+    // 1M -> 1 SE, 4M -> 2 SE, 100M -> 10 SE, 10B -> 100 SE
+    let gain = Math.floor(Math.pow(gameState.resources.lifetimeClicks / 1000000, 0.5));
 
     // Ascension Boost
     const pMult = getAscensionMultiplier(gameState, "prestige_gain", null);
@@ -1451,6 +1439,9 @@ function renderBuildings(container) {
 }
 
 function updateUI() {
+    checkFeatureUnlocks(); // Update tab visibility
+    checkTutorials(gameState); // Check for FTUE triggers
+
     const eraInfo = ERA_DATA.find(e => e.name === gameState.era) || ERA_DATA[0];
     // Remove all era classes first to avoid buildup/conflict, but keep accessibility
     ERA_DATA.forEach(e => document.body.classList.remove(e.className));
@@ -2385,7 +2376,7 @@ function renderSpace() {
                 view.id = "space-view";
                 view.className = "tab-view";
                 view.style.display = "none";
-                view.innerHTML = `<h3>Space Exploration</h3><div id="planet-list"></div>`;
+                view.innerHTML = `<h3>Space Exploration <button class="help-btn" onclick="showHelp('space')">?</button></h3><div id="planet-list"></div>`;
                 document.getElementById("tab-content").appendChild(view);
             }
         }
