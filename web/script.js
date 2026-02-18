@@ -873,8 +873,8 @@ function calculateOfflineProgress(seconds) {
 
 // --- UI Updates ---
 function initUI() {
-    renderResearchTree();
     injectDynamicTabs();
+    initStaticUI();
 }
 
 function injectDynamicTabs() {
@@ -1396,24 +1396,38 @@ window.startChallenge = function(id) {
     }
 };
 
-function renderBuildings(container) {
+function initBuildingsUI() {
+    let container = document.getElementById("building-list");
+
+    // Fallback creation logic if missing (defensive)
+    if (!container) {
+        const wrapper = document.getElementById("buildings-container") || document.getElementById("main-area");
+        if (wrapper) {
+            container = document.createElement("div");
+            container.id = "building-list";
+            container.style.width = "100%";
+            container.style.maxWidth = "600px";
+
+            const clickBtn = document.getElementById("click-btn");
+            if (clickBtn && clickBtn.parentNode === wrapper) {
+                 wrapper.insertBefore(container, clickBtn.nextSibling);
+            } else {
+                 wrapper.appendChild(container);
+            }
+        } else {
+            return;
+        }
+    }
+
     container.innerHTML = "";
     const buildingKeys = Object.keys(gameState.buildings);
 
     buildingKeys.forEach(name => {
         const b = gameState.buildings[name];
-        // Show if unlocked (e.g. if we have 50% of base cost clicks ever?)
-        // For now show all or filter by era index logic if desired.
-        // Let's show all for simplicity of scaling.
-
-        const currentCost = b.cost;
-        let costMult = getGlobalMultiplier("cost", null);
-        const finalCost = Math.floor(currentCost * costMult);
 
         const btn = document.createElement("button");
-        btn.id = `btn-${name}`;
+        btn.id = `btn-build-${name}`;
         btn.className = "building-btn";
-        // Inline style for layout
         btn.style.width = "100%";
         btn.style.marginBottom = "5px";
         btn.style.padding = "10px";
@@ -1427,130 +1441,189 @@ function renderBuildings(container) {
             <div style="font-size:24px;">${b.icon}</div>
             <div>
                 <strong>Buy ${name}</strong><br>
-                <small>Cost: ${finalCost}</small> | <small>Owned: ${b.count}</small><br>
+                <small>Cost: <span id="cost-${name}">${b.cost}</span></small> | <small>Owned: <span id="count-${name}">${b.count}</span></small><br>
                 <small>Prod: ${b.production}</small>
             </div>
         `;
         btn.onclick = () => window.buyBuilding(name);
-        btn.disabled = gameState.resources.clicks < finalCost;
-
         container.appendChild(btn);
     });
 }
 
+function updateBuildingsUI() {
+    const buildingKeys = Object.keys(gameState.buildings);
+    const costMult = getGlobalMultiplier("cost", null);
+
+    buildingKeys.forEach(name => {
+        const b = gameState.buildings[name];
+        const btn = document.getElementById(`btn-build-${name}`);
+        if (!btn) return;
+
+        const currentCost = b.cost;
+        const finalCost = Math.floor(currentCost * costMult);
+
+        const costEl = document.getElementById(`cost-${name}`);
+        if (costEl && costEl.innerText != finalCost) costEl.innerText = finalCost;
+
+        const countEl = document.getElementById(`count-${name}`);
+        if (countEl && countEl.innerText != b.count) countEl.innerText = b.count;
+
+        const canAfford = gameState.resources.clicks >= finalCost;
+        if (btn.disabled === canAfford) btn.disabled = !canAfford;
+    });
+}
+
+function initLootUI() {
+    const container = document.getElementById("loot-resources");
+    if (!container) return;
+
+    container.innerHTML = "";
+    const resourceConfig = [
+        { key: "wood", icon: "🪵", era: "Stone Age" },
+        { key: "stone", icon: "🪨", era: "Stone Age" },
+        { key: "food", icon: "🍞", era: "Stone Age" },
+        { key: "iron", icon: "🔩", era: "Iron Age" },
+        { key: "steel", icon: "🏗️", era: "Industrial Age" },
+        { key: "oil", icon: "🛢️", era: "Industrial Age" },
+        { key: "uranium", icon: "☢️", era: "Modern Age" },
+        { key: "energy", icon: "⚡", era: "Modern Age" }
+    ];
+
+    resourceConfig.forEach(res => {
+        const span = document.createElement("span");
+        span.id = `loot-res-${res.key}`;
+        span.style.display = "none";
+        span.style.marginRight = "5px";
+        span.innerHTML = `${res.icon} <span id="loot-val-${res.key}">0</span> |`;
+        container.appendChild(span);
+    });
+}
+
+function updateLootUI() {
+    const resourceConfig = [
+        { key: "wood", icon: "🪵", era: "Stone Age" },
+        { key: "stone", icon: "🪨", era: "Stone Age" },
+        { key: "food", icon: "🍞", era: "Stone Age" },
+        { key: "iron", icon: "🔩", era: "Iron Age" },
+        { key: "steel", icon: "🏗️", era: "Industrial Age" },
+        { key: "oil", icon: "🛢️", era: "Industrial Age" },
+        { key: "uranium", icon: "☢️", era: "Modern Age" },
+        { key: "energy", icon: "⚡", era: "Modern Age" }
+    ];
+
+    const getEraIndex = (name) => ERA_DATA.findIndex(e => e.name === name);
+    const currentEraIdx = getEraIndex(gameState.era);
+
+    resourceConfig.forEach(res => {
+        const span = document.getElementById(`loot-res-${res.key}`);
+        if (!span) return;
+
+        const valSpan = document.getElementById(`loot-val-${res.key}`);
+
+        const unlockIdx = getEraIndex(res.era);
+        const hasResource = gameState.resources[res.key] > 0;
+        const isVisible = currentEraIdx >= unlockIdx || hasResource;
+
+        if (isVisible) {
+            if (span.style.display === "none") span.style.display = "inline";
+            if (valSpan) valSpan.innerText = Math.floor(gameState.resources[res.key]);
+        } else {
+            if (span.style.display !== "none") span.style.display = "none";
+        }
+    });
+}
+
+function initAscensionListUI() {
+    const container = document.getElementById("ascension-list");
+    if (!container) return;
+
+    container.innerHTML = "";
+
+    const chalBtn = document.createElement("button");
+    chalBtn.onclick = () => window.renderChallengeMenu();
+    chalBtn.style.width = "100%";
+    chalBtn.style.marginBottom = "10px";
+    chalBtn.style.background = "#8e44ad";
+    chalBtn.innerText = "⚔️ Challenge Modes";
+    container.appendChild(chalBtn);
+
+    const statusDiv = document.createElement("div");
+    statusDiv.id = "active-challenge-status";
+    statusDiv.style.background = "#c0392b";
+    statusDiv.style.padding = "5px";
+    statusDiv.style.marginBottom = "10px";
+    statusDiv.style.borderRadius = "4px";
+    statusDiv.style.display = "none";
+    statusDiv.innerText = "ACTIVE: None";
+    container.appendChild(statusDiv);
+
+    const treeBtn = document.createElement("button");
+    treeBtn.innerText = "Open Ascension Tree 🌌";
+    treeBtn.style.width = "100%";
+    treeBtn.style.background = "radial-gradient(circle, #8e44ad, #2c3e50)";
+    treeBtn.onclick = () => renderAscensionTree();
+    container.appendChild(treeBtn);
+
+    const starBtn = document.createElement("button");
+    starBtn.innerText = "Stellar Map ✨";
+    starBtn.style.width = "100%";
+    starBtn.style.marginTop = "5px";
+    starBtn.style.background = "#000";
+    starBtn.style.border = "1px solid #f1c40f";
+    starBtn.onclick = () => renderConstellationMenu();
+    container.appendChild(starBtn);
+}
+
+function updateAscensionListUI() {
+    const statusDiv = document.getElementById("active-challenge-status");
+    if (!statusDiv) return;
+
+    if (gameState.activeChallenge) {
+        if (statusDiv.style.display === "none") statusDiv.style.display = "block";
+        const c = CHALLENGES.find(x => x.id === gameState.activeChallenge);
+        const text = `ACTIVE: ${c ? c.name : 'Unknown'}`;
+        if (statusDiv.innerText !== text) statusDiv.innerText = text;
+    } else {
+        if (statusDiv.style.display !== "none") statusDiv.style.display = "none";
+    }
+}
+
 function updateUI() {
-    checkFeatureUnlocks(); // Update tab visibility
-    checkTutorials(gameState); // Check for FTUE triggers
+    checkFeatureUnlocks();
+    checkTutorials(gameState);
 
     const eraInfo = ERA_DATA.find(e => e.name === gameState.era) || ERA_DATA[0];
-    // Remove all era classes first to avoid buildup/conflict, but keep accessibility
-    ERA_DATA.forEach(e => document.body.classList.remove(e.className));
-    document.body.classList.add(eraInfo.className);
-
-    // Inject Building List if missing (replacing static HTML)
-    const buildingContainer = document.getElementById("buildings-container") || document.getElementById("main-area");
-    if (buildingContainer) {
-        let list = document.getElementById("building-list");
-        if (!list) {
-            // Clear hardcoded static buttons first if they exist
-            // This assumes buildings-container is the wrapper for them
-            // We want to replace the inner content with our dynamic list
-            // But main-area has other stuff.
-            // Let's look for a specific wrapper. In index.html usually there's a div.
-            // If we can't find it, we create one in main-area.
-            list = document.createElement("div");
-            list.id = "building-list";
-            list.style.width = "100%";
-            list.style.maxWidth = "600px";
-
-            // Insert after click button
-            const clickBtn = document.getElementById("click-btn");
-            if (clickBtn && clickBtn.parentNode) {
-                clickBtn.parentNode.insertBefore(list, clickBtn.nextSibling);
-            } else {
-                buildingContainer.appendChild(list);
-            }
-        }
-
-        // Render Buildings
-        renderBuildings(list);
+    if (!document.body.classList.contains(eraInfo.className)) {
+        ERA_DATA.forEach(e => document.body.classList.remove(e.className));
+        document.body.classList.add(eraInfo.className);
     }
+
+    updateBuildingsUI();
 
     document.getElementById("res-clicks").innerText = Math.floor(gameState.resources.clicks);
     document.getElementById("res-knowledge").innerText = Math.floor(gameState.resources.knowledge);
     document.getElementById("res-culture").innerText = Math.floor(gameState.resources.culture);
     document.getElementById("res-shards").innerText = gameState.resources.relicShards;
-
-    // Loot resources
-    const lootContainer = document.getElementById("loot-resources");
-    if (lootContainer) {
-        const resourceConfig = [
-            { key: "wood", icon: "🪵", era: "Stone Age" },
-            { key: "stone", icon: "🪨", era: "Stone Age" },
-            { key: "food", icon: "🍞", era: "Stone Age" },
-            { key: "iron", icon: "🔩", era: "Iron Age" },
-            { key: "steel", icon: "🏗️", era: "Industrial Age" },
-            { key: "oil", icon: "🛢️", era: "Industrial Age" },
-            { key: "uranium", icon: "☢️", era: "Modern Age" },
-            { key: "energy", icon: "⚡", era: "Modern Age" }
-        ];
-
-        // Helper to find era index
-        const getEraIndex = (name) => ERA_DATA.findIndex(e => e.name === name);
-        const currentEraIdx = getEraIndex(gameState.era);
-
-        let html = "";
-        resourceConfig.forEach(res => {
-            const unlockIdx = getEraIndex(res.era);
-            const hasResource = gameState.resources[res.key] > 0;
-
-            // Show if unlocked by Era OR if player has found some (e.g. from unique reward)
-            if (currentEraIdx >= unlockIdx || hasResource) {
-                html += `<span>${res.icon} ${Math.floor(gameState.resources[res.key])}</span> | `;
-            }
-        });
-
-        // Remove trailing separator
-        if (html.endsWith(" | ")) html = html.substring(0, html.length - 3);
-
-        lootContainer.innerHTML = html;
-    }
     document.getElementById("res-se").innerText = gameState.resources.symbolsOfEra;
+
+    updateLootUI();
 
     const prestigeBtn = document.getElementById("btn-prestige");
     if (prestigeBtn) {
         const gain = calculatePrestigeGain();
-        prestigeBtn.innerText = `Prestige (+${gain} 🏛️)`;
+        const text = `Prestige (+${gain} 🏛️)`;
+        if (prestigeBtn.innerText !== text) prestigeBtn.innerText = text;
     }
 
-    // Prestige: Challenges & Ascension Tree
-    const ascContainer = document.getElementById("ascension-list");
-    if (ascContainer) {
-        ascContainer.innerHTML = `<button onclick="renderChallengeMenu()" style="width:100%; margin-bottom:10px; background:#8e44ad;">⚔️ Challenge Modes</button>`;
+    updateAscensionListUI();
+    updateResearchUI();
+}
 
-        if (gameState.activeChallenge) {
-            const c = CHALLENGES.find(x => x.id === gameState.activeChallenge);
-            ascContainer.innerHTML += `<div style="background:#c0392b; padding:5px; margin-bottom:10px; border-radius:4px;">ACTIVE: ${c ? c.name : 'Unknown'}</div>`;
-        }
-
-        // Render Tree Button
-        const treeBtn = document.createElement("button");
-        treeBtn.innerText = "Open Ascension Tree 🌌";
-        treeBtn.style.width = "100%";
-        treeBtn.style.background = "radial-gradient(circle, #8e44ad, #2c3e50)";
-        treeBtn.onclick = () => renderAscensionTree();
-        ascContainer.appendChild(treeBtn);
-
-        // Constellations
-        const starBtn = document.createElement("button");
-        starBtn.innerText = "Stellar Map ✨";
-        starBtn.style.width = "100%";
-        starBtn.style.marginTop = "5px";
-        starBtn.style.background = "#000";
-        starBtn.style.border = "1px solid #f1c40f";
-        starBtn.onclick = () => renderConstellationMenu();
-        ascContainer.appendChild(starBtn);
-    }
+function initStaticUI() {
+    initBuildingsUI();
+    initLootUI();
+    initAscensionListUI();
+    initResearchUI();
 }
 
 window.renderAscensionTree = function() {
@@ -1655,7 +1728,7 @@ window.renderAscensionTree = function() {
     renderTrade();
     renderWonders();
     renderCrisis();
-    renderResearchTree();
+    updateResearchUI();
 }
 
 function renderGovernors() {
@@ -2961,21 +3034,19 @@ function renderQuests() {
     });
 }
 
-window.renderResearchTree = function() {
+function initResearchUI() {
     const container = document.getElementById("research-container");
     if (!container) return;
 
-    let svg = document.getElementById("tech-tree-svg");
-    if (!svg) {
-        svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        svg.id = "tech-tree-svg";
-        svg.style.width = "100%";
-        svg.style.height = "100%";
-        svg.style.position = "absolute";
-        svg.style.pointerEvents = "none";
-        container.appendChild(svg);
-    }
-    svg.innerHTML = "";
+    container.innerHTML = "";
+
+    let svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.id = "tech-tree-svg";
+    svg.style.width = "100%";
+    svg.style.height = "100%";
+    svg.style.position = "absolute";
+    svg.style.pointerEvents = "none";
+    container.appendChild(svg);
 
     const columns = {};
     allResearch.forEach(t => {
@@ -2986,11 +3057,6 @@ window.renderResearchTree = function() {
 
     const ERA_WIDTH = 250;
     const NODE_HEIGHT = 80;
-
-    Array.from(container.children).forEach(child => {
-        if (child.id !== "tech-tree-svg") container.removeChild(child);
-    });
-
     const positions = {};
     let maxX = 0;
     let maxY = 0;
@@ -3007,52 +3073,82 @@ window.renderResearchTree = function() {
 
             positions[tech.id] = {x, y};
 
-            const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
-            const isDone = gameState.researched.includes(tech.id);
-            const isAvailable = reqMet;
-            const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r));
-
-            if (isVisible) {
-                const div = document.createElement("div");
-                div.className = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
-                div.innerHTML = `<span style="font-size:16px">${tech.icon || '🔬'}</span><br>${tech.name}<br><small>(${tech.cost})</small>`;
-                div.style.left = `${x}px`;
-                div.style.top = `${y}px`;
-                div.onclick = () => window.buyResearch(tech.id);
-                container.appendChild(div);
-            }
+            const div = document.createElement("div");
+            div.id = `tech-node-${tech.id}`;
+            div.className = "tech-node locked";
+            div.innerHTML = `<span style="font-size:16px">${tech.icon || '🔬'}</span><br>${tech.name}<br><small>(${tech.cost})</small>`;
+            div.style.left = `${x}px`;
+            div.style.top = `${y}px`;
+            div.style.display = "none";
+            div.onclick = () => window.buyResearch(tech.id);
+            container.appendChild(div);
         });
         colIdx++;
     }
 
-    // Resize SVG to fit content
     svg.style.width = Math.max(container.clientWidth, maxX + 200) + "px";
     svg.style.height = Math.max(container.clientHeight, maxY + 200) + "px";
 
     allResearch.forEach(tech => {
         if (!positions[tech.id]) return;
 
-        const reqMet = tech.requirements.every(r => gameState.researched.includes(r));
+        tech.requirements.forEach(reqId => {
+            if (positions[reqId]) {
+                const start = positions[reqId];
+                const end = positions[tech.id];
+
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.id = `tech-line-${reqId}-${tech.id}`;
+                line.setAttribute("x1", start.x + 150);
+                line.setAttribute("y1", start.y + 30);
+                line.setAttribute("x2", end.x);
+                line.setAttribute("y2", end.y + 30);
+                line.setAttribute("class", "tech-line");
+                line.style.display = "none";
+                svg.appendChild(line);
+            }
+        });
+    });
+}
+
+function updateResearchUI() {
+    const container = document.getElementById("research-view");
+    if (!container || container.style.display === "none") return;
+
+    allResearch.forEach(tech => {
+        const node = document.getElementById(`tech-node-${tech.id}`);
+        if (!node) return;
+
+        const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
         const isDone = gameState.researched.includes(tech.id);
-        const isVisible = isDone || reqMet || tech.requirements.some(r => gameState.researched.includes(r));
+        const isAvailable = reqMet;
+        const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r));
 
         if (isVisible) {
-            tech.requirements.forEach(reqId => {
-                if (positions[reqId]) {
-                    const start = positions[reqId];
-                    const end = positions[tech.id];
-
-                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    line.setAttribute("x1", start.x + 150);
-                    line.setAttribute("y1", start.y + 30);
-                    line.setAttribute("x2", end.x);
-                    line.setAttribute("y2", end.y + 30);
-                    line.setAttribute("class", "tech-line");
-                    if (isDone) line.classList.add("active");
-                    svg.appendChild(line);
-                }
-            });
+            if (node.style.display === "none") node.style.display = "block";
+        } else {
+            if (node.style.display !== "none") node.style.display = "none";
         }
+
+        const newClass = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
+        if (node.className !== newClass) node.className = newClass;
+
+        tech.requirements.forEach(reqId => {
+             const line = document.getElementById(`tech-line-${reqId}-${tech.id}`);
+             if (line) {
+                 if (isVisible) {
+                     line.style.display = "";
+                 } else {
+                     line.style.display = "none";
+                 }
+
+                 if (isDone) {
+                     if (!line.classList.contains("active")) line.classList.add("active");
+                 } else {
+                     if (line.classList.contains("active")) line.classList.remove("active");
+                 }
+             }
+        });
     });
 }
 
