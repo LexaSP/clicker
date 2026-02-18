@@ -46,12 +46,19 @@ let gameState = {
         relicShards: 0,
         wood: 0,
         stone: 0,
-        food: 0,
+        food: 500, // Prevent immediate starvation
         iron: 0,
         steel: 0,
         oil: 0,
         uranium: 0,
         energy: 0
+    },
+    happiness: 100, // 0-100+
+    policies: {
+        taxRate: 1.0
+    },
+    modifiers: {
+        warWeariness: 0
     },
     inventory: [], // Relics
     activeResearch: [], // Currently researching
@@ -237,6 +244,97 @@ function startGameLoop() {
     setInterval(saveGame, 30000);
 }
 
+function calculateTargetHappiness(state) {
+    let target = 100;
+
+    // Tax Penalty (1.0 = base, > 1.0 = penalty)
+    // E.g. 1.2 -> 20% penalty -> -20 happiness
+    if (state.policies && state.policies.taxRate > 1.0) {
+        target -= (state.policies.taxRate - 1.0) * 100;
+    }
+
+    // War Weariness
+    if (state.modifiers && state.modifiers.warWeariness) {
+        target -= state.modifiers.warWeariness;
+    }
+
+    // Starvation
+    if (state.resources.food <= 0) {
+        target -= 50;
+    }
+
+    // Wonders Bonus (+5 per wonder)
+    if (state.wonders) {
+        target += state.wonders.length * 5;
+    }
+
+    // Relics Bonus (+1 per relic)
+    if (state.inventory) {
+        target += state.inventory.length * 1;
+    }
+
+    // Cap min? No, can go negative.
+    return target;
+}
+
+function updateHappiness(state, dt) {
+    const target = calculateTargetHappiness(state);
+
+    // Lerp towards target
+    // Factor: 0.1 * dt => moves 10% of diff per second
+    const diff = target - state.happiness;
+    if (Math.abs(diff) > 0.1) {
+        state.happiness += diff * 0.1 * dt;
+    } else {
+        state.happiness = target;
+    }
+
+    // War Weariness Logic
+    // Check for active wars
+    let atWar = false;
+    const diplo = getDiplomacyState(state);
+    for (let id in diplo) {
+        if (diplo[id].status === "War") {
+            atWar = true;
+            break;
+        }
+    }
+
+    if (!state.modifiers) state.modifiers = { warWeariness: 0 };
+
+    if (atWar) {
+        // Increase weariness
+        state.modifiers.warWeariness += 0.5 * dt; // +0.5 per sec during war
+        if (state.modifiers.warWeariness > 100) state.modifiers.warWeariness = 100;
+    } else {
+        // Decay
+        if (state.modifiers.warWeariness > 0) {
+            state.modifiers.warWeariness -= 0.5 * dt;
+            if (state.modifiers.warWeariness < 0) state.modifiers.warWeariness = 0;
+        }
+    }
+}
+
+function getHappinessMultiplier(state) {
+    // > 100: Bonus
+    if (state.happiness > 100) {
+        // e.g. 120 -> 20 surplus -> 1.1x (0.5% per point)
+        return 1.0 + ((state.happiness - 100) / 100) * 0.5;
+    }
+    // < 50: Penalty
+    if (state.happiness < 50) {
+        // e.g. 40 -> 10 deficit from 50 -> 0.9x?
+        // Or linear from 50 (1.0) to 0 (0.5)
+        // Lerp: (happiness / 50) * 0.5 + 0.5
+        // 50 -> 1.0, 0 -> 0.5
+        // < 0 -> < 0.5
+        let mult = (state.happiness / 50) * 0.5 + 0.5;
+        if (mult < 0.1) mult = 0.1; // Cap penalty
+        return mult;
+    }
+    return 1.0;
+}
+
 function calculateProduction(state) {
     let production = 0;
     // Iterate dynamically over ALL buildings that produce generic 'production' (clicks)
@@ -252,6 +350,11 @@ function calculateProduction(state) {
 
     // Apply Multipliers
     let prodMult = getGlobalMultiplier("production", "clicks");
+
+    // Happiness Penalty (Production < 50)
+    const hapMult = getHappinessMultiplier(state);
+    if (hapMult < 1.0) prodMult *= hapMult;
+
     if (state.tempMultiplier) prodMult *= state.tempMultiplier;
 
     return production * prodMult;
@@ -261,8 +364,14 @@ function tick(dt) {
     // Era Progress
     checkEraProgress();
 
+    // Happiness
+    updateHappiness(gameState, dt);
+
     // Production
     const currentProduction = calculateProduction(gameState);
+
+    // Happiness Multiplier
+    const hapMult = getHappinessMultiplier(gameState);
 
     // Knowledge (Lab + University + Supercomputer)
     let knowledgeProd = 0;
@@ -272,10 +381,16 @@ function tick(dt) {
 
     knowledgeProd *= getGlobalMultiplier("production_mult", "knowledge");
 
+    // Happiness affects Knowledge (Bonus AND Penalty)
+    knowledgeProd *= hapMult;
+
     // Money (Bank)
     let moneyProd = 0;
     if (gameState.buildings["Bank"]) moneyProd += gameState.buildings["Bank"].count * gameState.buildings["Bank"].production;
     moneyProd *= getGlobalMultiplier("production_mult", "money");
+
+    // Happiness affects Money (Penalty Only)
+    if (hapMult < 1.0) moneyProd *= hapMult;
 
     // Space Production
     const spaceProd = getSpaceProduction(gameState);
@@ -748,6 +863,12 @@ function spawnClickParticle(x, y, amount, isCrit) {
 }
 
 window.buyBuilding = function(name) {
+    // Riot Check
+    if (gameState.happiness < 20) {
+        alert("RIOTING: Construction halted! Increase Happiness above 20.");
+        return;
+    }
+
     // Challenge Constraint: Max 1 Building
     if (gameState.activeChallenge === "one_city") {
         if (gameState.buildings[name] && gameState.buildings[name].count >= 1) {
@@ -1524,6 +1645,23 @@ function updateUI() {
     }
     document.getElementById("res-se").innerText = gameState.resources.symbolsOfEra;
 
+    // Happiness UI
+    const hapEl = document.getElementById("happiness-indicator");
+    if (hapEl) {
+        const val = Math.floor(gameState.happiness);
+        hapEl.innerText = `Happiness: ${val}%`;
+        hapEl.className = ""; // Reset
+        if (val >= 100) hapEl.classList.add("happiness-high");
+        else if (val < 20) hapEl.classList.add("happiness-riot");
+        else if (val < 50) hapEl.classList.add("happiness-low");
+        else hapEl.classList.add("happiness-neutral");
+
+        // Show War Weariness if active
+        if (gameState.modifiers && gameState.modifiers.warWeariness > 0) {
+            hapEl.innerText += ` (War Weariness: -${Math.floor(gameState.modifiers.warWeariness)})`;
+        }
+    }
+
     const prestigeBtn = document.getElementById("btn-prestige");
     if (prestigeBtn) {
         const gain = calculatePrestigeGain();
@@ -1558,6 +1696,25 @@ function updateUI() {
         starBtn.onclick = () => renderConstellationMenu();
         ascContainer.appendChild(starBtn);
     }
+
+    // Render Dynamic Tabs
+    renderQuests();
+    renderInventory();
+    renderExpeditions();
+    renderCrafting();
+    renderAchievements();
+    renderWar();
+    renderSpace();
+    renderHeroes();
+    renderGovernment();
+    renderGovernors();
+    renderCabinet();
+    renderDiplomacy();
+    renderReligion();
+    renderTrade();
+    renderWonders();
+    renderCrisis();
+    renderResearchTree();
 }
 
 window.renderAscensionTree = function() {
@@ -2266,6 +2423,13 @@ function renderGovernment() {
     document.getElementById("gov-current").innerHTML = `
         ${dynastyHtml}
         Current Form: <strong>${currentGov.name}</strong><br><small>${currentGov.desc}</small>
+        <hr>
+        <div style="margin-top:5px;">
+            Tax Rate: <strong>${(gameState.policies.taxRate || 1.0).toFixed(1)}x</strong>
+            <button onclick="changeTax(-0.1)" style="padding:2px 8px;">-</button>
+            <button onclick="changeTax(0.1)" style="padding:2px 8px;">+</button>
+            <br><small>High Taxes reduce Happiness.</small>
+        </div>
     `;
 
     // Switch Gov
@@ -2302,6 +2466,17 @@ function renderGovernment() {
         polList.appendChild(div);
     });
 }
+
+window.changeTax = function(delta) {
+    if (!gameState.policies) gameState.policies = { taxRate: 1.0 };
+    // Floating point math fix
+    let current = gameState.policies.taxRate || 1.0;
+    let next = parseFloat((current + delta).toFixed(1));
+    if (next < 0.5) next = 0.5;
+    if (next > 3.0) next = 3.0; // Cap
+    gameState.policies.taxRate = next;
+    updateUI();
+};
 
 window.switchGov = function(id) {
     if (adoptGovernment(gameState, id)) {
@@ -2602,6 +2777,12 @@ window.retreat = function() {
 };
 
 window.trainUnit = function(unitKey) {
+    // Riot Check
+    if (gameState.happiness < 20) {
+        alert("RIOTING: Recruitment halted! Increase Happiness above 20.");
+        return;
+    }
+
     // Challenge Constraint: No War
     if (gameState.activeChallenge === "pacifist") {
         alert("Challenge Constraint: Cannot train military units!");
