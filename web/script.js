@@ -46,12 +46,19 @@ let gameState = {
         relicShards: 0,
         wood: 0,
         stone: 0,
-        food: 0,
+        food: 500, // Prevent immediate starvation
         iron: 0,
         steel: 0,
         oil: 0,
         uranium: 0,
         energy: 0
+    },
+    happiness: 100, // 0-100+
+    policies: {
+        taxRate: 1.0
+    },
+    modifiers: {
+        warWeariness: 0
     },
     inventory: [], // Relics
     activeResearch: [], // Currently researching
@@ -89,25 +96,25 @@ let gameState = {
     // Upgrades / Buildings (Expanded 3x Scale)
     buildings: {
         // Ancient
-        "AutoClicker": { count: 0, cost: 10, baseCost: 10, production: 1, icon: "👆", era: "Stone Age", priceRatio: 1.07, upkeep: {}, efficiency: 1 },
-        "Gatherer": { count: 0, cost: 25, baseCost: 25, production: 2, icon: "🧺", era: "Stone Age", priceRatio: 1.07, upkeep: {}, efficiency: 1 },
-        "Farm": { count: 0, cost: 50, baseCost: 50, production: 5, icon: "🌾", era: "Bronze Age", priceRatio: 1.07, upkeep: {}, efficiency: 1 },
-        "Mine": { count: 0, cost: 200, baseCost: 200, production: 20, icon: "⛏️", era: "Bronze Age", priceRatio: 1.12, upkeep: {}, efficiency: 1 },
-        "Workshop": { count: 0, cost: 500, baseCost: 500, production: 50, icon: "🔨", era: "Iron Age", priceRatio: 1.12, upkeep: {}, efficiency: 1 },
+        "AutoClicker": { count: 0, cost: 10, production: 1, icon: "👆", era: "Stone Age" },
+        "Gatherer": { count: 0, cost: 25, production: 2, icon: "🧺", era: "Stone Age" },
+        "Farm": { count: 0, cost: 50, production: 5, icon: "🌾", era: "Bronze Age" },
+        "Mine": { count: 0, cost: 200, production: 20, icon: "⛏️", era: "Bronze Age" },
+        "Workshop": { count: 0, cost: 500, production: 50, icon: "🔨", era: "Iron Age" },
 
         // Classical/Medieval
-        "Aqueduct": { count: 0, cost: 1500, baseCost: 1500, production: 80, icon: "💧", era: "Iron Age", priceRatio: 1.12, upkeep: {}, efficiency: 1 },
-        "University": { count: 0, cost: 5000, baseCost: 5000, production: 200, icon: "🎓", era: "Middle Ages", priceRatio: 1.12, upkeep: {}, efficiency: 1 }, // Knowledge
-        "Bank": { count: 0, cost: 10000, baseCost: 10000, production: 500, icon: "🏦", era: "Renaissance", priceRatio: 1.12, upkeep: {}, efficiency: 1 }, // Money
+        "Aqueduct": { count: 0, cost: 1500, production: 80, icon: "💧", era: "Iron Age" },
+        "University": { count: 0, cost: 5000, production: 200, icon: "🎓", era: "Middle Ages" }, // Knowledge
+        "Bank": { count: 0, cost: 10000, production: 500, icon: "🏦", era: "Renaissance" }, // Money
 
         // Industrial/Modern
-        "Factory": { count: 0, cost: 25000, baseCost: 25000, production: 1500, icon: "🏭", era: "Industrial Age", priceRatio: 1.12, upkeep: { iron: 1, energy: 5 }, efficiency: 1 },
-        "Lab": { count: 0, cost: 50000, baseCost: 50000, production: 3000, icon: "🔬", era: "Modern Age", priceRatio: 1.25, upkeep: {}, efficiency: 1 }, // Knowledge
-        "PowerPlant": { count: 0, cost: 150000, baseCost: 150000, production: 10000, icon: "⚡", era: "Modern Age", priceRatio: 1.25, upkeep: {}, efficiency: 1 },
+        "Factory": { count: 0, cost: 25000, production: 1500, icon: "🏭", era: "Industrial Age" },
+        "Lab": { count: 0, cost: 50000, production: 3000, icon: "🔬", era: "Modern Age" }, // Knowledge
+        "PowerPlant": { count: 0, cost: 150000, production: 10000, icon: "⚡", era: "Modern Age" },
 
         // Future
-        "Supercomputer": { count: 0, cost: 1000000, baseCost: 1000000, production: 50000, icon: "🖥️", era: "Information Age", priceRatio: 1.25, upkeep: {}, efficiency: 1 },
-        "FusionReactor": { count: 0, cost: 5000000, baseCost: 5000000, production: 250000, icon: "⚛️", era: "Future Age", priceRatio: 1.25, upkeep: {}, efficiency: 1 }
+        "Supercomputer": { count: 0, cost: 1000000, production: 50000, icon: "🖥️", era: "Information Age" },
+        "FusionReactor": { count: 0, cost: 5000000, production: 250000, icon: "⚛️", era: "Future Age" }
     },
 
     era: "Stone Age",
@@ -235,6 +242,97 @@ function startGameLoop() {
     setInterval(saveGame, 30000);
 }
 
+function calculateTargetHappiness(state) {
+    let target = 100;
+
+    // Tax Penalty (1.0 = base, > 1.0 = penalty)
+    // E.g. 1.2 -> 20% penalty -> -20 happiness
+    if (state.policies && state.policies.taxRate > 1.0) {
+        target -= (state.policies.taxRate - 1.0) * 100;
+    }
+
+    // War Weariness
+    if (state.modifiers && state.modifiers.warWeariness) {
+        target -= state.modifiers.warWeariness;
+    }
+
+    // Starvation
+    if (state.resources.food <= 0) {
+        target -= 50;
+    }
+
+    // Wonders Bonus (+5 per wonder)
+    if (state.wonders) {
+        target += state.wonders.length * 5;
+    }
+
+    // Relics Bonus (+1 per relic)
+    if (state.inventory) {
+        target += state.inventory.length * 1;
+    }
+
+    // Cap min? No, can go negative.
+    return target;
+}
+
+function updateHappiness(state, dt) {
+    const target = calculateTargetHappiness(state);
+
+    // Lerp towards target
+    // Factor: 0.1 * dt => moves 10% of diff per second
+    const diff = target - state.happiness;
+    if (Math.abs(diff) > 0.1) {
+        state.happiness += diff * 0.1 * dt;
+    } else {
+        state.happiness = target;
+    }
+
+    // War Weariness Logic
+    // Check for active wars
+    let atWar = false;
+    const diplo = getDiplomacyState(state);
+    for (let id in diplo) {
+        if (diplo[id].status === "War") {
+            atWar = true;
+            break;
+        }
+    }
+
+    if (!state.modifiers) state.modifiers = { warWeariness: 0 };
+
+    if (atWar) {
+        // Increase weariness
+        state.modifiers.warWeariness += 0.5 * dt; // +0.5 per sec during war
+        if (state.modifiers.warWeariness > 100) state.modifiers.warWeariness = 100;
+    } else {
+        // Decay
+        if (state.modifiers.warWeariness > 0) {
+            state.modifiers.warWeariness -= 0.5 * dt;
+            if (state.modifiers.warWeariness < 0) state.modifiers.warWeariness = 0;
+        }
+    }
+}
+
+function getHappinessMultiplier(state) {
+    // > 100: Bonus
+    if (state.happiness > 100) {
+        // e.g. 120 -> 20 surplus -> 1.1x (0.5% per point)
+        return 1.0 + ((state.happiness - 100) / 100) * 0.5;
+    }
+    // < 50: Penalty
+    if (state.happiness < 50) {
+        // e.g. 40 -> 10 deficit from 50 -> 0.9x?
+        // Or linear from 50 (1.0) to 0 (0.5)
+        // Lerp: (happiness / 50) * 0.5 + 0.5
+        // 50 -> 1.0, 0 -> 0.5
+        // < 0 -> < 0.5
+        let mult = (state.happiness / 50) * 0.5 + 0.5;
+        if (mult < 0.1) mult = 0.1; // Cap penalty
+        return mult;
+    }
+    return 1.0;
+}
+
 function calculateProduction(state) {
     let production = 0;
     // Iterate dynamically over ALL buildings that produce generic 'production' (clicks)
@@ -244,13 +342,17 @@ function calculateProduction(state) {
 
     clickProducers.forEach(key => {
         if (state.buildings[key]) {
-            const eff = state.buildings[key].efficiency !== undefined ? state.buildings[key].efficiency : 1;
-            production += state.buildings[key].count * state.buildings[key].production * eff;
+            production += state.buildings[key].count * state.buildings[key].production;
         }
     });
 
     // Apply Multipliers
     let prodMult = getGlobalMultiplier("production", "clicks");
+
+    // Happiness Penalty (Production < 50)
+    const hapMult = getHappinessMultiplier(state);
+    if (hapMult < 1.0) prodMult *= hapMult;
+
     if (state.tempMultiplier) prodMult *= state.tempMultiplier;
 
     return production * prodMult;
@@ -260,76 +362,33 @@ function tick(dt) {
     // Era Progress
     checkEraProgress();
 
-    // --- CONSUMPTION & UPKEEP ---
-    let totalUpkeep = {};
-    for (let key in gameState.buildings) {
-        const b = gameState.buildings[key];
-        if (b.count > 0 && b.upkeep) {
-            for (let res in b.upkeep) {
-                if (!totalUpkeep[res]) totalUpkeep[res] = 0;
-                totalUpkeep[res] += b.upkeep[res] * b.count;
-            }
-        }
-    }
-
-    let resourceEfficiency = {}; // resource -> 0..1
-    for (let res in totalUpkeep) {
-        const needed = totalUpkeep[res] * dt;
-        if (gameState.resources[res] >= needed) {
-            gameState.resources[res] -= needed;
-            resourceEfficiency[res] = 1.0;
-        } else {
-            const available = gameState.resources[res];
-            if (available > 0) {
-                 gameState.resources[res] = 0;
-                 resourceEfficiency[res] = available / needed;
-            } else {
-                 resourceEfficiency[res] = 0;
-            }
-        }
-    }
-
-    // Apply Efficiency
-    for (let key in gameState.buildings) {
-        const b = gameState.buildings[key];
-        b.efficiency = 1.0;
-        if (b.upkeep) {
-            for (let res in b.upkeep) {
-                if (resourceEfficiency[res] !== undefined) {
-                    b.efficiency = Math.min(b.efficiency, resourceEfficiency[res]);
-                }
-            }
-        }
-    }
+    // Happiness
+    updateHappiness(gameState, dt);
 
     // Production
     const currentProduction = calculateProduction(gameState);
-    gameState.netProduction = currentProduction; // For UI
+
+    // Happiness Multiplier
+    const hapMult = getHappinessMultiplier(gameState);
 
     // Knowledge (Lab + University + Supercomputer)
     let knowledgeProd = 0;
-    if (gameState.buildings["University"]) {
-         const eff = gameState.buildings["University"].efficiency !== undefined ? gameState.buildings["University"].efficiency : 1;
-         knowledgeProd += gameState.buildings["University"].count * gameState.buildings["University"].production * eff;
-    }
-    if (gameState.buildings["Lab"]) {
-         const eff = gameState.buildings["Lab"].efficiency !== undefined ? gameState.buildings["Lab"].efficiency : 1;
-         knowledgeProd += gameState.buildings["Lab"].count * gameState.buildings["Lab"].production * eff;
-    }
-    if (gameState.buildings["Supercomputer"]) {
-         const eff = gameState.buildings["Supercomputer"].efficiency !== undefined ? gameState.buildings["Supercomputer"].efficiency : 1;
-         knowledgeProd += gameState.buildings["Supercomputer"].count * gameState.buildings["Supercomputer"].production * eff;
-    }
+    if (gameState.buildings["University"]) knowledgeProd += gameState.buildings["University"].count * gameState.buildings["University"].production;
+    if (gameState.buildings["Lab"]) knowledgeProd += gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
+    if (gameState.buildings["Supercomputer"]) knowledgeProd += gameState.buildings["Supercomputer"].count * gameState.buildings["Supercomputer"].production;
 
     knowledgeProd *= getGlobalMultiplier("production_mult", "knowledge");
 
+    // Happiness affects Knowledge (Bonus AND Penalty)
+    knowledgeProd *= hapMult;
+
     // Money (Bank)
     let moneyProd = 0;
-    if (gameState.buildings["Bank"]) {
-        const eff = gameState.buildings["Bank"].efficiency !== undefined ? gameState.buildings["Bank"].efficiency : 1;
-        moneyProd += gameState.buildings["Bank"].count * gameState.buildings["Bank"].production * eff;
-    }
+    if (gameState.buildings["Bank"]) moneyProd += gameState.buildings["Bank"].count * gameState.buildings["Bank"].production;
     moneyProd *= getGlobalMultiplier("production_mult", "money");
+
+    // Happiness affects Money (Penalty Only)
+    if (hapMult < 1.0) moneyProd *= hapMult;
 
     // Space Production
     const spaceProd = getSpaceProduction(gameState);
@@ -797,6 +856,12 @@ function spawnClickParticle(x, y, amount, isCrit) {
 }
 
 window.buyBuilding = function(name) {
+    // Riot Check
+    if (gameState.happiness < 20) {
+        alert("RIOTING: Construction halted! Increase Happiness above 20.");
+        return;
+    }
+
     // Challenge Constraint: Max 1 Building
     if (gameState.activeChallenge === "one_city") {
         if (gameState.buildings[name] && gameState.buildings[name].count >= 1) {
@@ -825,8 +890,8 @@ window.buyBuilding = function(name) {
         if (!gameState.stats.buildingsBought) gameState.stats.buildingsBought = 0;
         gameState.stats.buildingsBought++;
 
-        // Update Cost for Next Purchase (Formula)
-        b.cost = Math.floor(b.baseCost * Math.pow(b.priceRatio, b.count));
+        // Update Cost for Next Purchase (Scale 1.15x)
+        b.cost = Math.floor(b.cost * 1.15);
 
         // Visuals
         if (window.mapEngine && b.icon) {
@@ -929,8 +994,8 @@ function calculateOfflineProgress(seconds) {
 
 // --- UI Updates ---
 function initUI() {
+    renderResearchTree();
     injectDynamicTabs();
-    initStaticUI();
 }
 
 function injectDynamicTabs() {
@@ -1351,19 +1416,19 @@ window.performPrestige = function(challengeId = null) {
     // we'll re-initialize specific buildings manually or use a helper.
     // Hard-resetting to known base values:
     gameState.buildings = {
-        "AutoClicker": { count: 0, cost: 10, baseCost: 10, production: 1, icon: "👆", era: "Stone Age", priceRatio: 1.07, upkeep: {}, efficiency: 1 },
-        "Gatherer": { count: 0, cost: 25, baseCost: 25, production: 2, icon: "🧺", era: "Stone Age", priceRatio: 1.07, upkeep: {}, efficiency: 1 },
-        "Farm": { count: 0, cost: 50, baseCost: 50, production: 5, icon: "🌾", era: "Bronze Age", priceRatio: 1.07, upkeep: {}, efficiency: 1 },
-        "Mine": { count: 0, cost: 200, baseCost: 200, production: 20, icon: "⛏️", era: "Bronze Age", priceRatio: 1.12, upkeep: {}, efficiency: 1 },
-        "Workshop": { count: 0, cost: 500, baseCost: 500, production: 50, icon: "🔨", era: "Iron Age", priceRatio: 1.12, upkeep: {}, efficiency: 1 },
-        "Aqueduct": { count: 0, cost: 1500, baseCost: 1500, production: 80, icon: "💧", era: "Iron Age", priceRatio: 1.12, upkeep: {}, efficiency: 1 },
-        "University": { count: 0, cost: 5000, baseCost: 5000, production: 200, icon: "🎓", era: "Middle Ages", priceRatio: 1.12, upkeep: {}, efficiency: 1 },
-        "Bank": { count: 0, cost: 10000, baseCost: 10000, production: 500, icon: "🏦", era: "Renaissance", priceRatio: 1.12, upkeep: {}, efficiency: 1 },
-        "Factory": { count: 0, cost: 25000, baseCost: 25000, production: 1500, icon: "🏭", era: "Industrial Age", priceRatio: 1.12, upkeep: { iron: 1, energy: 5 }, efficiency: 1 },
-        "Lab": { count: 0, cost: 50000, baseCost: 50000, production: 3000, icon: "🔬", era: "Modern Age", priceRatio: 1.25, upkeep: {}, efficiency: 1 },
-        "PowerPlant": { count: 0, cost: 150000, baseCost: 150000, production: 10000, icon: "⚡", era: "Modern Age", priceRatio: 1.25, upkeep: {}, efficiency: 1 },
-        "Supercomputer": { count: 0, cost: 1000000, baseCost: 1000000, production: 50000, icon: "🖥️", era: "Information Age", priceRatio: 1.25, upkeep: {}, efficiency: 1 },
-        "FusionReactor": { count: 0, cost: 5000000, baseCost: 5000000, production: 250000, icon: "⚛️", era: "Future Age", priceRatio: 1.25, upkeep: {}, efficiency: 1 }
+        "AutoClicker": { count: 0, cost: 10, production: 1, icon: "👆", era: "Stone Age" },
+        "Gatherer": { count: 0, cost: 25, production: 2, icon: "🧺", era: "Stone Age" },
+        "Farm": { count: 0, cost: 50, production: 5, icon: "🌾", era: "Bronze Age" },
+        "Mine": { count: 0, cost: 200, production: 20, icon: "⛏️", era: "Bronze Age" },
+        "Workshop": { count: 0, cost: 500, production: 50, icon: "🔨", era: "Iron Age" },
+        "Aqueduct": { count: 0, cost: 1500, production: 80, icon: "💧", era: "Iron Age" },
+        "University": { count: 0, cost: 5000, production: 200, icon: "🎓", era: "Middle Ages" },
+        "Bank": { count: 0, cost: 10000, production: 500, icon: "🏦", era: "Renaissance" },
+        "Factory": { count: 0, cost: 25000, production: 1500, icon: "🏭", era: "Industrial Age" },
+        "Lab": { count: 0, cost: 50000, production: 3000, icon: "🔬", era: "Modern Age" },
+        "PowerPlant": { count: 0, cost: 150000, production: 10000, icon: "⚡", era: "Modern Age" },
+        "Supercomputer": { count: 0, cost: 1000000, production: 50000, icon: "🖥️", era: "Information Age" },
+        "FusionReactor": { count: 0, cost: 5000000, production: 250000, icon: "⚛️", era: "Future Age" }
     };
 
     // Apply Ascension Start Bonuses
@@ -1452,38 +1517,24 @@ window.startChallenge = function(id) {
     }
 };
 
-function initBuildingsUI() {
-    let container = document.getElementById("building-list");
-
-    // Fallback creation logic if missing (defensive)
-    if (!container) {
-        const wrapper = document.getElementById("buildings-container") || document.getElementById("main-area");
-        if (wrapper) {
-            container = document.createElement("div");
-            container.id = "building-list";
-            container.style.width = "100%";
-            container.style.maxWidth = "600px";
-
-            const clickBtn = document.getElementById("click-btn");
-            if (clickBtn && clickBtn.parentNode === wrapper) {
-                 wrapper.insertBefore(container, clickBtn.nextSibling);
-            } else {
-                 wrapper.appendChild(container);
-            }
-        } else {
-            return;
-        }
-    }
-
+function renderBuildings(container) {
     container.innerHTML = "";
     const buildingKeys = Object.keys(gameState.buildings);
 
     buildingKeys.forEach(name => {
         const b = gameState.buildings[name];
+        // Show if unlocked (e.g. if we have 50% of base cost clicks ever?)
+        // For now show all or filter by era index logic if desired.
+        // Let's show all for simplicity of scaling.
+
+        const currentCost = b.cost;
+        let costMult = getGlobalMultiplier("cost", null);
+        const finalCost = Math.floor(currentCost * costMult);
 
         const btn = document.createElement("button");
-        btn.id = `btn-build-${name}`;
+        btn.id = `btn-${name}`;
         btn.className = "building-btn";
+        // Inline style for layout
         btn.style.width = "100%";
         btn.style.marginBottom = "5px";
         btn.style.padding = "10px";
@@ -1497,190 +1548,129 @@ function initBuildingsUI() {
             <div style="font-size:24px;">${b.icon}</div>
             <div>
                 <strong>Buy ${name}</strong><br>
-                <small>Cost: <span id="cost-${name}">${b.cost}</span></small> | <small>Owned: <span id="count-${name}">${b.count}</span></small><br>
+                <small>Cost: ${finalCost}</small> | <small>Owned: ${b.count}</small><br>
                 <small>Prod: ${b.production}</small>
             </div>
         `;
         btn.onclick = () => window.buyBuilding(name);
+        btn.disabled = gameState.resources.clicks < finalCost;
+
         container.appendChild(btn);
     });
 }
 
-function updateBuildingsUI() {
-    const buildingKeys = Object.keys(gameState.buildings);
-    const costMult = getGlobalMultiplier("cost", null);
-
-    buildingKeys.forEach(name => {
-        const b = gameState.buildings[name];
-        const btn = document.getElementById(`btn-build-${name}`);
-        if (!btn) return;
-
-        const currentCost = b.cost;
-        const finalCost = Math.floor(currentCost * costMult);
-
-        const costEl = document.getElementById(`cost-${name}`);
-        if (costEl && costEl.innerText != finalCost) costEl.innerText = finalCost;
-
-        const countEl = document.getElementById(`count-${name}`);
-        if (countEl && countEl.innerText != b.count) countEl.innerText = b.count;
-
-        const canAfford = gameState.resources.clicks >= finalCost;
-        if (btn.disabled === canAfford) btn.disabled = !canAfford;
-    });
-}
-
-function initLootUI() {
-    const container = document.getElementById("loot-resources");
-    if (!container) return;
-
-    container.innerHTML = "";
-    const resourceConfig = [
-        { key: "wood", icon: "🪵", era: "Stone Age" },
-        { key: "stone", icon: "🪨", era: "Stone Age" },
-        { key: "food", icon: "🍞", era: "Stone Age" },
-        { key: "iron", icon: "🔩", era: "Iron Age" },
-        { key: "steel", icon: "🏗️", era: "Industrial Age" },
-        { key: "oil", icon: "🛢️", era: "Industrial Age" },
-        { key: "uranium", icon: "☢️", era: "Modern Age" },
-        { key: "energy", icon: "⚡", era: "Modern Age" }
-    ];
-
-    resourceConfig.forEach(res => {
-        const span = document.createElement("span");
-        span.id = `loot-res-${res.key}`;
-        span.style.display = "none";
-        span.style.marginRight = "5px";
-        span.innerHTML = `${res.icon} <span id="loot-val-${res.key}">0</span> |`;
-        container.appendChild(span);
-    });
-}
-
-function updateLootUI() {
-    const resourceConfig = [
-        { key: "wood", icon: "🪵", era: "Stone Age" },
-        { key: "stone", icon: "🪨", era: "Stone Age" },
-        { key: "food", icon: "🍞", era: "Stone Age" },
-        { key: "iron", icon: "🔩", era: "Iron Age" },
-        { key: "steel", icon: "🏗️", era: "Industrial Age" },
-        { key: "oil", icon: "🛢️", era: "Industrial Age" },
-        { key: "uranium", icon: "☢️", era: "Modern Age" },
-        { key: "energy", icon: "⚡", era: "Modern Age" }
-    ];
-
-    const getEraIndex = (name) => ERA_DATA.findIndex(e => e.name === name);
-    const currentEraIdx = getEraIndex(gameState.era);
-
-    resourceConfig.forEach(res => {
-        const span = document.getElementById(`loot-res-${res.key}`);
-        if (!span) return;
-
-        const valSpan = document.getElementById(`loot-val-${res.key}`);
-
-        const unlockIdx = getEraIndex(res.era);
-        const hasResource = gameState.resources[res.key] > 0;
-        const isVisible = currentEraIdx >= unlockIdx || hasResource;
-
-        if (isVisible) {
-            if (span.style.display === "none") span.style.display = "inline";
-            if (valSpan) valSpan.innerText = Math.floor(gameState.resources[res.key]);
-        } else {
-            if (span.style.display !== "none") span.style.display = "none";
-        }
-    });
-}
-
-function initAscensionListUI() {
-    const container = document.getElementById("ascension-list");
-    if (!container) return;
-
-    container.innerHTML = "";
-
-    const chalBtn = document.createElement("button");
-    chalBtn.onclick = () => window.renderChallengeMenu();
-    chalBtn.style.width = "100%";
-    chalBtn.style.marginBottom = "10px";
-    chalBtn.style.background = "#8e44ad";
-    chalBtn.innerText = "⚔️ Challenge Modes";
-    container.appendChild(chalBtn);
-
-    const statusDiv = document.createElement("div");
-    statusDiv.id = "active-challenge-status";
-    statusDiv.style.background = "#c0392b";
-    statusDiv.style.padding = "5px";
-    statusDiv.style.marginBottom = "10px";
-    statusDiv.style.borderRadius = "4px";
-    statusDiv.style.display = "none";
-    statusDiv.innerText = "ACTIVE: None";
-    container.appendChild(statusDiv);
-
-    const treeBtn = document.createElement("button");
-    treeBtn.innerText = "Open Ascension Tree 🌌";
-    treeBtn.style.width = "100%";
-    treeBtn.style.background = "radial-gradient(circle, #8e44ad, #2c3e50)";
-    treeBtn.onclick = () => renderAscensionTree();
-    container.appendChild(treeBtn);
-
-    const starBtn = document.createElement("button");
-    starBtn.innerText = "Stellar Map ✨";
-    starBtn.style.width = "100%";
-    starBtn.style.marginTop = "5px";
-    starBtn.style.background = "#000";
-    starBtn.style.border = "1px solid #f1c40f";
-    starBtn.onclick = () => renderConstellationMenu();
-    container.appendChild(starBtn);
-}
-
-function updateAscensionListUI() {
-    const statusDiv = document.getElementById("active-challenge-status");
-    if (!statusDiv) return;
-
-    if (gameState.activeChallenge) {
-        if (statusDiv.style.display === "none") statusDiv.style.display = "block";
-        const c = CHALLENGES.find(x => x.id === gameState.activeChallenge);
-        const text = `ACTIVE: ${c ? c.name : 'Unknown'}`;
-        if (statusDiv.innerText !== text) statusDiv.innerText = text;
-    } else {
-        if (statusDiv.style.display !== "none") statusDiv.style.display = "none";
-    }
-}
-
 function updateUI() {
-    checkFeatureUnlocks();
-    checkTutorials(gameState);
+    checkFeatureUnlocks(); // Update tab visibility
+    checkTutorials(gameState); // Check for FTUE triggers
 
     const eraInfo = ERA_DATA.find(e => e.name === gameState.era) || ERA_DATA[0];
-    if (!document.body.classList.contains(eraInfo.className)) {
-        ERA_DATA.forEach(e => document.body.classList.remove(e.className));
-        document.body.classList.add(eraInfo.className);
+    // Remove all era classes first to avoid buildup/conflict, but keep accessibility
+    ERA_DATA.forEach(e => document.body.classList.remove(e.className));
+    document.body.classList.add(eraInfo.className);
+
+    // Inject Building List if missing (replacing static HTML)
+    const buildingContainer = document.getElementById("buildings-container") || document.getElementById("main-area");
+    if (buildingContainer) {
+        let list = document.getElementById("building-list");
+        if (!list) {
+            // Clear hardcoded static buttons first if they exist
+            // This assumes buildings-container is the wrapper for them
+            // We want to replace the inner content with our dynamic list
+            // But main-area has other stuff.
+            // Let's look for a specific wrapper. In index.html usually there's a div.
+            // If we can't find it, we create one in main-area.
+            list = document.createElement("div");
+            list.id = "building-list";
+            list.style.width = "100%";
+            list.style.maxWidth = "600px";
+
+            // Insert after click button
+            const clickBtn = document.getElementById("click-btn");
+            if (clickBtn && clickBtn.parentNode) {
+                clickBtn.parentNode.insertBefore(list, clickBtn.nextSibling);
+            } else {
+                buildingContainer.appendChild(list);
+            }
+        }
+
+        // Render Buildings
+        renderBuildings(list);
     }
 
-    updateBuildingsUI();
-
     document.getElementById("res-clicks").innerText = Math.floor(gameState.resources.clicks);
-    document.getElementById("res-net-production").innerText = (gameState.netProduction || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
     document.getElementById("res-knowledge").innerText = Math.floor(gameState.resources.knowledge);
     document.getElementById("res-culture").innerText = Math.floor(gameState.resources.culture);
     document.getElementById("res-shards").innerText = gameState.resources.relicShards;
+
+    // Loot resources
+    const lootContainer = document.getElementById("loot-resources");
+    if (lootContainer) {
+        const resourceConfig = [
+            { key: "wood", icon: "🪵", era: "Stone Age" },
+            { key: "stone", icon: "🪨", era: "Stone Age" },
+            { key: "food", icon: "🍞", era: "Stone Age" },
+            { key: "iron", icon: "🔩", era: "Iron Age" },
+            { key: "steel", icon: "🏗️", era: "Industrial Age" },
+            { key: "oil", icon: "🛢️", era: "Industrial Age" },
+            { key: "uranium", icon: "☢️", era: "Modern Age" },
+            { key: "energy", icon: "⚡", era: "Modern Age" }
+        ];
+
+        // Helper to find era index
+        const getEraIndex = (name) => ERA_DATA.findIndex(e => e.name === name);
+        const currentEraIdx = getEraIndex(gameState.era);
+
+        let html = "";
+        resourceConfig.forEach(res => {
+            const unlockIdx = getEraIndex(res.era);
+            const hasResource = gameState.resources[res.key] > 0;
+
+            // Show if unlocked by Era OR if player has found some (e.g. from unique reward)
+            if (currentEraIdx >= unlockIdx || hasResource) {
+                html += `<span>${res.icon} ${Math.floor(gameState.resources[res.key])}</span> | `;
+            }
+        });
+
+        // Remove trailing separator
+        if (html.endsWith(" | ")) html = html.substring(0, html.length - 3);
+
+        lootContainer.innerHTML = html;
+    }
     document.getElementById("res-se").innerText = gameState.resources.symbolsOfEra;
 
-    updateLootUI();
+    // Happiness UI
+    const hapEl = document.getElementById("happiness-indicator");
+    if (hapEl) {
+        const val = Math.floor(gameState.happiness);
+        hapEl.innerText = `Happiness: ${val}%`;
+        hapEl.className = ""; // Reset
+        if (val >= 100) hapEl.classList.add("happiness-high");
+        else if (val < 20) hapEl.classList.add("happiness-riot");
+        else if (val < 50) hapEl.classList.add("happiness-low");
+        else hapEl.classList.add("happiness-neutral");
+
+        // Show War Weariness if active
+        if (gameState.modifiers && gameState.modifiers.warWeariness > 0) {
+            hapEl.innerText += ` (War Weariness: -${Math.floor(gameState.modifiers.warWeariness)})`;
+        }
+    }
 
     const prestigeBtn = document.getElementById("btn-prestige");
     if (prestigeBtn) {
         const gain = calculatePrestigeGain();
-        const text = `Prestige (+${gain} 🏛️)`;
-        if (prestigeBtn.innerText !== text) prestigeBtn.innerText = text;
+        prestigeBtn.innerText = `Prestige (+${gain} 🏛️)`;
     }
 
-    updateAscensionListUI();
-    updateResearchUI();
-}
+    // Prestige: Challenges & Ascension Tree
+    const ascContainer = document.getElementById("ascension-list");
+    if (ascContainer) {
+        ascContainer.innerHTML = `<button onclick="renderChallengeMenu()" style="width:100%; margin-bottom:10px; background:#8e44ad;">⚔️ Challenge Modes</button>`;
 
-function initStaticUI() {
-    initBuildingsUI();
-    initLootUI();
-    initAscensionListUI();
-    initResearchUI();
+        if (gameState.activeChallenge) {
+            const c = CHALLENGES.find(x => x.id === gameState.activeChallenge);
+            ascContainer.innerHTML += `<div style="background:#c0392b; padding:5px; margin-bottom:10px; border-radius:4px;">ACTIVE: ${c ? c.name : 'Unknown'}</div>`;
+        }
+
         // Render Tree Button
         const treeBtn = document.createElement("button");
         treeBtn.innerText = "Open Ascension Tree 🌌";
@@ -1700,6 +1690,7 @@ function initStaticUI() {
         ascContainer.appendChild(starBtn);
     }
 
+    // Render Dynamic Tabs
     renderQuests();
     renderInventory();
     renderExpeditions();
@@ -1821,7 +1812,7 @@ window.renderAscensionTree = function() {
     renderTrade();
     renderWonders();
     renderCrisis();
-    updateResearchUI();
+    renderResearchTree();
 }
 
 function renderGovernors() {
@@ -2425,6 +2416,13 @@ function renderGovernment() {
     document.getElementById("gov-current").innerHTML = `
         ${dynastyHtml}
         Current Form: <strong>${currentGov.name}</strong><br><small>${currentGov.desc}</small>
+        <hr>
+        <div style="margin-top:5px;">
+            Tax Rate: <strong>${(gameState.policies.taxRate || 1.0).toFixed(1)}x</strong>
+            <button onclick="changeTax(-0.1)" style="padding:2px 8px;">-</button>
+            <button onclick="changeTax(0.1)" style="padding:2px 8px;">+</button>
+            <br><small>High Taxes reduce Happiness.</small>
+        </div>
     `;
 
     // Switch Gov
@@ -2461,6 +2459,17 @@ function renderGovernment() {
         polList.appendChild(div);
     });
 }
+
+window.changeTax = function(delta) {
+    if (!gameState.policies) gameState.policies = { taxRate: 1.0 };
+    // Floating point math fix
+    let current = gameState.policies.taxRate || 1.0;
+    let next = parseFloat((current + delta).toFixed(1));
+    if (next < 0.5) next = 0.5;
+    if (next > 3.0) next = 3.0; // Cap
+    gameState.policies.taxRate = next;
+    updateUI();
+};
 
 window.switchGov = function(id) {
     if (adoptGovernment(gameState, id)) {
@@ -2679,6 +2688,12 @@ function renderWar() {
 }
 
 window.trainUnit = function(unitKey) {
+    // Riot Check
+    if (gameState.happiness < 20) {
+        alert("RIOTING: Recruitment halted! Increase Happiness above 20.");
+        return;
+    }
+
     // Challenge Constraint: No War
     if (gameState.activeChallenge === "pacifist") {
         alert("Challenge Constraint: Cannot train military units!");
@@ -3127,19 +3142,21 @@ function renderQuests() {
     });
 }
 
-function initResearchUI() {
+window.renderResearchTree = function() {
     const container = document.getElementById("research-container");
     if (!container) return;
 
-    container.innerHTML = "";
-
-    let svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.id = "tech-tree-svg";
-    svg.style.width = "100%";
-    svg.style.height = "100%";
-    svg.style.position = "absolute";
-    svg.style.pointerEvents = "none";
-    container.appendChild(svg);
+    let svg = document.getElementById("tech-tree-svg");
+    if (!svg) {
+        svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.id = "tech-tree-svg";
+        svg.style.width = "100%";
+        svg.style.height = "100%";
+        svg.style.position = "absolute";
+        svg.style.pointerEvents = "none";
+        container.appendChild(svg);
+    }
+    svg.innerHTML = "";
 
     const columns = {};
     allResearch.forEach(t => {
@@ -3150,6 +3167,11 @@ function initResearchUI() {
 
     const ERA_WIDTH = 250;
     const NODE_HEIGHT = 80;
+
+    Array.from(container.children).forEach(child => {
+        if (child.id !== "tech-tree-svg") container.removeChild(child);
+    });
+
     const positions = {};
     let maxX = 0;
     let maxY = 0;
@@ -3166,82 +3188,52 @@ function initResearchUI() {
 
             positions[tech.id] = {x, y};
 
-            const div = document.createElement("div");
-            div.id = `tech-node-${tech.id}`;
-            div.className = "tech-node locked";
-            div.innerHTML = `<span style="font-size:16px">${tech.icon || '🔬'}</span><br>${tech.name}<br><small>(${tech.cost})</small>`;
-            div.style.left = `${x}px`;
-            div.style.top = `${y}px`;
-            div.style.display = "none";
-            div.onclick = () => window.buyResearch(tech.id);
-            container.appendChild(div);
+            const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
+            const isDone = gameState.researched.includes(tech.id);
+            const isAvailable = reqMet;
+            const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r));
+
+            if (isVisible) {
+                const div = document.createElement("div");
+                div.className = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
+                div.innerHTML = `<span style="font-size:16px">${tech.icon || '🔬'}</span><br>${tech.name}<br><small>(${tech.cost})</small>`;
+                div.style.left = `${x}px`;
+                div.style.top = `${y}px`;
+                div.onclick = () => window.buyResearch(tech.id);
+                container.appendChild(div);
+            }
         });
         colIdx++;
     }
 
+    // Resize SVG to fit content
     svg.style.width = Math.max(container.clientWidth, maxX + 200) + "px";
     svg.style.height = Math.max(container.clientHeight, maxY + 200) + "px";
 
     allResearch.forEach(tech => {
         if (!positions[tech.id]) return;
 
-        tech.requirements.forEach(reqId => {
-            if (positions[reqId]) {
-                const start = positions[reqId];
-                const end = positions[tech.id];
-
-                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                line.id = `tech-line-${reqId}-${tech.id}`;
-                line.setAttribute("x1", start.x + 150);
-                line.setAttribute("y1", start.y + 30);
-                line.setAttribute("x2", end.x);
-                line.setAttribute("y2", end.y + 30);
-                line.setAttribute("class", "tech-line");
-                line.style.display = "none";
-                svg.appendChild(line);
-            }
-        });
-    });
-}
-
-function updateResearchUI() {
-    const container = document.getElementById("research-view");
-    if (!container || container.style.display === "none") return;
-
-    allResearch.forEach(tech => {
-        const node = document.getElementById(`tech-node-${tech.id}`);
-        if (!node) return;
-
-        const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
+        const reqMet = tech.requirements.every(r => gameState.researched.includes(r));
         const isDone = gameState.researched.includes(tech.id);
-        const isAvailable = reqMet;
-        const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r));
+        const isVisible = isDone || reqMet || tech.requirements.some(r => gameState.researched.includes(r));
 
         if (isVisible) {
-            if (node.style.display === "none") node.style.display = "block";
-        } else {
-            if (node.style.display !== "none") node.style.display = "none";
+            tech.requirements.forEach(reqId => {
+                if (positions[reqId]) {
+                    const start = positions[reqId];
+                    const end = positions[tech.id];
+
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", start.x + 150);
+                    line.setAttribute("y1", start.y + 30);
+                    line.setAttribute("x2", end.x);
+                    line.setAttribute("y2", end.y + 30);
+                    line.setAttribute("class", "tech-line");
+                    if (isDone) line.classList.add("active");
+                    svg.appendChild(line);
+                }
+            });
         }
-
-        const newClass = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
-        if (node.className !== newClass) node.className = newClass;
-
-        tech.requirements.forEach(reqId => {
-             const line = document.getElementById(`tech-line-${reqId}-${tech.id}`);
-             if (line) {
-                 if (isVisible) {
-                     line.style.display = "";
-                 } else {
-                     line.style.display = "none";
-                 }
-
-                 if (isDone) {
-                     if (!line.classList.contains("active")) line.classList.add("active");
-                 } else {
-                     if (line.classList.contains("active")) line.classList.remove("active");
-                 }
-             }
-        });
     });
 }
 
