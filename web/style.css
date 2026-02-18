@@ -305,19 +305,12 @@ body {
     display: none; /* Hidden on desktop */
 }
 
-/* Era Themes - Smooth Transitions */
+/* Era Themes - Smooth Transitions (Transparent for Map Engine) */
 #main-area {
     transition: background 2s ease-in-out;
+    background: rgba(0, 0, 0, 0.5); /* Semi-transparent overlay */
 }
-.era-stone #main-area { background: radial-gradient(circle, #5d4037 0%, #212121 100%); }
-.era-bronze #main-area { background: radial-gradient(circle, #d35400 0%, #212121 100%); }
-.era-iron #main-area { background: radial-gradient(circle, #95a5a6 0%, #2c3e50 100%); }
-.era-middle #main-area { background: radial-gradient(circle, #27ae60 0%, #2c3e50 100%); }
-.era-renaissance #main-area { background: radial-gradient(circle, #f39c12 0%, #5d4037 100%); }
-.era-industrial #main-area { background: radial-gradient(circle, #7f8c8d 0%, #000000 100%); }
-.era-modern #main-area { background: radial-gradient(circle, #3498db 0%, #2c3e50 100%); }
-.era-info #main-area { background: radial-gradient(circle, #1abc9c 0%, #000000 100%); }
-.era-future #main-area { background: radial-gradient(circle, #8e44ad 0%, #000000 100%); }
+/* Era classes on body allow map engine to check state, but main-area stays see-through */
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -345,4 +338,12 @@ body {
         color: white;
         font-size: 20px;
     }
+}
+
+
+/* Accessibility */
+body.accessibility-mode {
+    font-size: 1.1em !important;
+    filter: contrast(1.2) saturate(1.2);
+    line-height: 1.6;
 }

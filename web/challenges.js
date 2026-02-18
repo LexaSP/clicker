@@ -47,12 +47,50 @@ export const CHALLENGES = [
     }
 ];
 
+export function getWeeklyChallenge() {
+    // Generate based on current week number
+    const now = new Date();
+    const start = new Date(now.getFullYear(), 0, 0);
+    const diff = (now - start) + ((start.getTimezoneOffset() - now.getTimezoneOffset()) * 60 * 1000);
+    const oneDay = 1000 * 60 * 60 * 24;
+    const day = Math.floor(diff / oneDay);
+    const week = Math.floor(day / 7);
+
+    // Seeded Random
+    const seed = week + now.getFullYear();
+    const pseudoRandom = (x) => { return ((x * 9301 + 49297) % 233280) / 233280; };
+    const rand = pseudoRandom(seed);
+
+    // Pick base challenge and add modifier
+    const base = CHALLENGES[Math.floor(rand * CHALLENGES.length)];
+
+    return {
+        id: `weekly_${week}_${now.getFullYear()}`,
+        name: `Weekly Challenge #${week}: ${base.name} EX`,
+        description: `WEEKLY EVENT: ${base.description} (Harder Difficulty)`,
+        conditionDesc: `${base.conditionDesc} + 50% Higher Costs`,
+        constraints: base.constraints,
+        goal: base.goal,
+        reward: { name: "Weekly Trophy", desc: "+100% Production for 7 Days", type: "production_mult", value: 2.0 },
+        isWeekly: true
+    };
+}
+
 export function getChallengeRewardMult(gameState, type) {
     let mult = 1.0;
     if (!gameState.completedChallenges) return mult;
 
     gameState.completedChallenges.forEach(cId => {
-        const chal = CHALLENGES.find(c => c.id === cId);
+        let chal = CHALLENGES.find(c => c.id === cId);
+
+        // Check if it's a weekly one stored
+        if (!chal && cId.startsWith("weekly_")) {
+            // Reconstruct logic? Or assume we store reward data.
+            // For simplicity, if we completed a weekly, we just give a generic bonus if we can't find it.
+            // Or better, we assume the reward logic is generic.
+            chal = { reward: { type: "production_mult", value: 1.05 } }; // Small perma bonus for weekly
+        }
+
         if (chal && chal.reward.type === type) {
             if (type === "production_mult") mult *= chal.reward.value;
             // Add other types as needed
@@ -69,7 +107,13 @@ export function getChallengeRewardMult(gameState, type) {
 export function checkChallengeVictory(gameState) {
     if (!gameState.activeChallenge) return null;
 
-    const chal = CHALLENGES.find(c => c.id === gameState.activeChallenge);
+    let chal = CHALLENGES.find(c => c.id === gameState.activeChallenge);
+    // Check Weekly
+    if (!chal && gameState.activeChallenge.startsWith("weekly_")) {
+        chal = getWeeklyChallenge(); // Re-generate to check goal
+        if (gameState.activeChallenge !== chal.id) chal = null; // Stale weekly?
+    }
+
     if (!chal) return null;
 
     if (chal.goal(gameState)) {
