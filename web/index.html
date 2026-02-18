@@ -176,7 +176,7 @@
             <button onclick="showStats()">View Statistics 📊</button>
             <button onclick="downloadSave()">Save to File 💾</button>
             <button onclick="document.getElementById('save-file-input').click()">Load from File 📂</button>
-            <button onclick="renderModdingMenu()">Mods 🛠️</button>
+            <button onclick="renderModdingMenu(window.gameState)">Mods 🛠️</button>
             <input type="file" id="save-file-input" style="display:none" onchange="uploadSave(this)">
 
             <hr>

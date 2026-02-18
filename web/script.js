@@ -24,9 +24,13 @@ import { getDynastyMultiplier, updateDynasty, succession } from './dynasty.js';
 import { initEspionage, trainSpy, startMission, updateEspionage, SPY_MISSIONS } from './espionage.js';
 import { initStockMarket, updateStockMarket, buyStock, sellStock, COMPANIES } from './stock_market.js';
 import { initCongress, updateCongress, vote, getCongressMultiplier, RESOLUTIONS } from './congress.js';
-import { renderLeaderboardModal } from './leaderboard.js';
+import { renderLeaderboardModal, checkLeaderboardRewards, submitScore } from './leaderboard.js';
 import { initMuseum, getMuseumMultiplier, renderMuseum } from './museum.js';
 import { renderModdingMenu } from './modding.js';
+
+// Expose to window for HTML onClick
+window.renderLeaderboardModal = renderLeaderboardModal;
+window.renderModdingMenu = renderModdingMenu;
 import { initConstellations, getConstellationMultiplier, renderConstellationMenu } from './constellations.js';
 
 // --- Game State ---
@@ -314,6 +318,9 @@ function tick(dt) {
     if (gameState.activeResearch.length > 0) {
         // ...
     }
+
+    // Leaderboard Rewards
+    checkLeaderboardRewards(gameState);
 
     // Golden Relic Spawner
     let goldenChance = 0.005;
@@ -640,6 +647,12 @@ window.manualClick = function(event) {
 
     // Base Click Value + Synergy (10% of CpS)
     const cps = calculateProduction(gameState);
+
+    // Track Max Production for Leaderboard
+    if (!gameState.stats.maxProduction || cps > gameState.stats.maxProduction) {
+        gameState.stats.maxProduction = cps;
+    }
+
     let clickValue = 1 + (gameState.inventory.length * 0.1) + (cps * 0.1);
 
     clickValue *= getGlobalMultiplier("click", "clicks");
