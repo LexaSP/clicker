@@ -4,14 +4,14 @@ import { AudioController } from './audio.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { RANDOM_EVENTS } from './events.js';
 import { PARADOXES, checkParadoxes, getParadoxMultiplier } from './paradox.js';
-import { UNITS, RIVALS, calculateArmyPower, resolveCombat } from './combat.js';
+import { UNITS, RIVALS, calculateArmyPower, resolveCombat, TACTICS } from './combat.js';
 import { generatePlanets, colonizePlanet, getSpaceProduction, terraformPlanet } from './space.js';
 import { generateGPP, recruitHero, getHeroMultiplier } from './heroes.js';
 import { GOVERNMENTS, POLICIES, adoptGovernment, togglePolicy, getGovernmentMultiplier } from './government.js';
 import { checkCrisis, fightCrisis, CRISIS_STAGES } from './crisis.js';
 import { CIVILIZATIONS, getCivMultiplier } from './civilizations.js';
 import { WONDERS, getWonderMultiplier, buildWonder } from './wonders.js';
-import { CHALLENGES, getChallengeRewardMult, checkChallengeVictory } from './challenges.js';
+import { CHALLENGES, getChallengeRewardMult, checkChallengeVictory, getWeeklyChallenge } from './challenges.js';
 import { GOVERNORS, hireGovernor, processAutomation, toggleGovernor } from './automation.js';
 import { TRADE_RATES, tradeResource } from './trade.js';
 import { MapEngine } from './map_engine.js';
@@ -24,6 +24,10 @@ import { getDynastyMultiplier, updateDynasty, succession } from './dynasty.js';
 import { initEspionage, trainSpy, startMission, updateEspionage, SPY_MISSIONS } from './espionage.js';
 import { initStockMarket, updateStockMarket, buyStock, sellStock, COMPANIES } from './stock_market.js';
 import { initCongress, updateCongress, vote, getCongressMultiplier, RESOLUTIONS } from './congress.js';
+import { renderLeaderboardModal } from './leaderboard.js';
+import { initMuseum, getMuseumMultiplier, renderMuseum } from './museum.js';
+import { renderModdingMenu } from './modding.js';
+import { initConstellations, getConstellationMultiplier, renderConstellationMenu } from './constellations.js';
 
 // --- Game State ---
 let gameState = {
@@ -600,6 +604,12 @@ function getGlobalMultiplier(type, resource = null) {
     // Congress Check
     mult *= getCongressMultiplier(gameState, type);
 
+    // Museum Check
+    mult *= getMuseumMultiplier(gameState, type);
+
+    // Constellation Check
+    mult *= getConstellationMultiplier(gameState, type);
+
     if (type === "cost") {
         // resource arg maps to target (building, tech, wonder)
         const target = resource === "knowledge" ? "tech" : (resource === "wonder" ? "wonder" : "building");
@@ -932,7 +942,7 @@ function injectDynamicTabs() {
         view.id = "religion-view";
         view.className = "tab-view";
         view.style.display = "none";
-        view.innerHTML = `<h3>Faith & Dogmas</h3><div id="religion-ui"></div>`;
+        view.innerHTML = `<h3>Faith & Dogmas</h3><div id="religion-ui"></div><hr><h3>Museum 🎨</h3><div id="museum-list"></div>`;
         content.appendChild(view);
     }
 
@@ -1340,6 +1350,10 @@ window.renderChallengeMenu = function() {
     modal.id = "challenge-modal";
     modal.className = "modal-overlay";
 
+    // Mix Weekly
+    const weekly = getWeeklyChallenge();
+    const allChallenges = [weekly, ...CHALLENGES];
+
     let html = `
         <div class="modal-content">
             <h2>Challenge Modes</h2>
@@ -1347,12 +1361,13 @@ window.renderChallengeMenu = function() {
             <div style="display:flex; flex-direction:column; gap:10px;">
     `;
 
-    CHALLENGES.forEach(c => {
+    allChallenges.forEach(c => {
         const completed = gameState.completedChallenges && gameState.completedChallenges.includes(c.id);
         const active = gameState.activeChallenge === c.id;
+        const isWeekly = c.id.startsWith("weekly");
 
         html += `
-            <div style="border: 1px solid #7f8c8d; padding: 10px; background: ${active ? '#2980b9' : (completed ? '#27ae60' : 'rgba(0,0,0,0.2)')}; text-align:left;">
+            <div style="border: ${isWeekly ? '2px solid #8e44ad' : '1px solid #7f8c8d'}; padding: 10px; background: ${active ? '#2980b9' : (completed ? '#27ae60' : 'rgba(0,0,0,0.2)')}; text-align:left;">
                 <div style="display:flex; justify-content:space-between;">
                     <strong>${c.name}</strong>
                     <span>${completed ? '✅ Completed' : (active ? '🔄 Active' : '')}</span>
@@ -1521,6 +1536,16 @@ function updateUI() {
         treeBtn.style.background = "radial-gradient(circle, #8e44ad, #2c3e50)";
         treeBtn.onclick = () => renderAscensionTree();
         ascContainer.appendChild(treeBtn);
+
+        // Constellations
+        const starBtn = document.createElement("button");
+        starBtn.innerText = "Stellar Map ✨";
+        starBtn.style.width = "100%";
+        starBtn.style.marginTop = "5px";
+        starBtn.style.background = "#000";
+        starBtn.style.border = "1px solid #f1c40f";
+        starBtn.onclick = () => renderConstellationMenu();
+        ascContainer.appendChild(starBtn);
     }
 }
 
@@ -1846,6 +1871,8 @@ function renderReligion() {
     const container = document.getElementById("religion-view");
     if (!container || container.style.display === "none") return;
 
+    renderMuseum(gameState); // Inject Museum here
+
     const rel = getReligionState(gameState);
     let ui = document.getElementById("religion-ui");
     if (!ui) {
@@ -1899,6 +1926,10 @@ window.adoptDog = function(id) {
     alert(res.msg);
     updateUI();
 };
+
+// Hook renderMuseum into renderReligion or separate?
+// Let's call it from updateUI or inside renderReligion if we group them.
+// Actually, let's group it inside renderReligion for simplicity as "Culture" tab equivalent.
 
 function renderCabinet() {
     const container = document.getElementById("cabinet-view");
@@ -2450,7 +2481,28 @@ function renderWar() {
         rivalList.appendChild(div);
     });
 
-    let power = calculateArmyPower(gameState.army || {});
+    // Tactics Selector
+    let tacticSel = document.getElementById("tactic-select");
+    if (!tacticSel) {
+        tacticSel = document.createElement("select");
+        tacticSel.id = "tactic-select";
+        tacticSel.onchange = () => updateUI(); // Recalc power
+        TACTICS.forEach(t => {
+            const opt = document.createElement("option");
+            opt.value = t.id;
+            opt.innerText = t.name;
+            tacticSel.appendChild(opt);
+        });
+        // Insert before rivals
+        document.getElementById("rival-list").parentNode.insertBefore(tacticSel, document.getElementById("rival-list"));
+        // Label
+        const label = document.createElement("div");
+        label.innerText = "Select Tactic:";
+        tacticSel.parentNode.insertBefore(label, tacticSel);
+    }
+
+    const selectedTactic = tacticSel.value;
+    let power = calculateArmyPower(gameState.army || {}, selectedTactic);
     const armyMult = getGlobalMultiplier("army_power", null);
     power = Math.floor(power * armyMult);
     document.getElementById("army-power").innerText = `Army Power: ${power}`;
@@ -2490,16 +2542,9 @@ window.attackRival = function(idx) {
     if (!gameState.army) gameState.army = {};
     const rival = RIVALS[idx];
 
-    // Convert army object to format for resolveCombat if needed (current structure matches)
-    // We pass gameState.army directly which is { "Warrior": 5 }
-    // Note: resolveCombat modifies playerArmy in place for losses.
-
-    // Deep copy army to avoid modifying state before we know results/apply losses?
-    // Actually resolveCombat applies losses to the passed object.
-    // This is fine as long as we save/updateUI after.
-
+    const tactic = document.getElementById("tactic-select") ? document.getElementById("tactic-select").value : null;
     const armyMult = getGlobalMultiplier("army_power", null);
-    const result = resolveCombat(gameState.army, rival, armyMult);
+    const result = resolveCombat(gameState.army, rival, armyMult, tactic);
 
     let msg = result.win ? `VICTORY against ${rival.name}!` : `DEFEAT against ${rival.name}!`;
     msg += `\nYour Power: ${result.playerPower} vs Enemy: ${result.rivalPower}`;

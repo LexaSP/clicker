@@ -1,108 +1,118 @@
+// audio.js
+
 export class AudioController {
     constructor() {
         this.enabled = true;
         this.ctx = null;
-        this.init();
+        this.bgmOscs = [];
+        this.isPlaying = false;
+
+        // simple synths
+        this.scales = {
+            "Stone Age": [261.63, 293.66, 329.63, 392.00, 440.00], // C Pentatonic
+            "Bronze Age": [261.63, 277.18, 311.13, 349.23, 392.00], // C Phrygian Dominant ish
+            "Future Age": [261.63, 311.13, 329.63, 369.99, 415.30, 440.00] // Whole tone / Augmented
+        };
+
+        this.sequencerTimer = null;
     }
 
     init() {
-        try {
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            this.ctx = new AudioContext();
-        } catch (e) {
-            console.warn("Web Audio API not supported", e);
-            this.enabled = false;
-        }
-    }
-
-    resume() {
-        if (this.ctx && this.ctx.state === 'suspended') {
-            this.ctx.resume();
+        if (!this.ctx) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
         }
     }
 
     toggle() {
         this.enabled = !this.enabled;
+        if (this.enabled) {
+            this.init();
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+            this.startMusic();
+        } else {
+            this.stopMusic();
+        }
         return this.enabled;
     }
 
-    playTone(freq, type, duration, volume = 0.1) {
-        if (!this.enabled || !this.ctx) return;
-        this.resume();
-
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-
-        gain.gain.setValueAtTime(volume, this.ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
-
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-
-        osc.start();
-        osc.stop(this.ctx.currentTime + duration);
-    }
-
     playClick() {
-        // High pitch short blip
-        this.playTone(800, 'sine', 0.1, 0.05);
+        if (!this.enabled || !this.ctx) return;
+        this.playTone(440 + Math.random()*100, "square", 0.1);
     }
 
     playBuy() {
-        // Ascending chime
         if (!this.enabled || !this.ctx) return;
-        this.resume();
-
-        const now = this.ctx.currentTime;
-        this.scheduleTone(440, 'sine', now, 0.1);
-        this.scheduleTone(554, 'sine', now + 0.1, 0.1); // C#
-        this.scheduleTone(659, 'sine', now + 0.2, 0.2); // E
+        this.playTone(600, "sine", 0.1);
+        setTimeout(() => this.playTone(800, "sine", 0.1), 100);
     }
 
     playUnlock() {
-        // Fanfare chord
         if (!this.enabled || !this.ctx) return;
-        this.resume();
-
-        const now = this.ctx.currentTime;
-        this.scheduleTone(523.25, 'triangle', now, 0.3); // C
-        this.scheduleTone(659.25, 'triangle', now, 0.3); // E
-        this.scheduleTone(783.99, 'triangle', now, 0.3); // G
-        this.scheduleTone(1046.50, 'triangle', now + 0.1, 0.5); // High C
+        this.playTone(400, "triangle", 0.2);
+        setTimeout(() => this.playTone(500, "triangle", 0.2), 100);
+        setTimeout(() => this.playTone(600, "triangle", 0.4), 200);
     }
 
     playEvent() {
-        // Positive notification
         if (!this.enabled || !this.ctx) return;
-        this.resume();
-
-        const now = this.ctx.currentTime;
-        this.scheduleTone(880, 'sine', now, 0.15);
-        this.scheduleTone(1760, 'sine', now + 0.1, 0.3);
+        this.playTone(200, "sawtooth", 0.5);
     }
 
     playError() {
-        // Low buzz
-        this.playTone(150, 'sawtooth', 0.2, 0.05);
+        if (!this.enabled || !this.ctx) return;
+        this.playTone(100, "sawtooth", 0.3);
+        setTimeout(() => this.playTone(80, "sawtooth", 0.3), 100);
     }
 
-    scheduleTone(freq, type, startTime, duration, volume = 0.1) {
+    playTone(freq, type, duration) {
+        if (this.ctx.state === 'suspended') this.ctx.resume();
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
 
         osc.type = type;
         osc.frequency.value = freq;
 
-        gain.gain.setValueAtTime(volume, startTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-
         osc.connect(gain);
         gain.connect(this.ctx.destination);
 
-        osc.start(startTime);
-        osc.stop(startTime + duration);
+        gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+
+        osc.start();
+        osc.stop(this.ctx.currentTime + duration);
+    }
+
+    // Procedural Music
+    startMusic() {
+        if (this.isPlaying) return;
+        this.isPlaying = true;
+        this.scheduleNextNote();
+    }
+
+    stopMusic() {
+        this.isPlaying = false;
+        if (this.sequencerTimer) clearTimeout(this.sequencerTimer);
+    }
+
+    scheduleNextNote() {
+        if (!this.enabled || !this.isPlaying) return;
+
+        const state = window.gameState;
+        const era = state ? state.era : "Stone Age";
+        const scale = this.scales[era] || this.scales["Stone Age"];
+
+        // Random note from scale
+        const note = scale[Math.floor(Math.random() * scale.length)];
+        // Random octave
+        const oct = Math.pow(2, Math.floor(Math.random() * 3) - 1); // 0.5, 1, 2
+
+        const freq = note * oct;
+
+        // Play soft ambient note
+        this.playTone(freq, "sine", 2.0); // Long duration
+
+        // Next note delay (tempo)
+        const delay = 1000 + Math.random() * 2000;
+        this.sequencerTimer = setTimeout(() => this.scheduleNextNote(), delay);
     }
 }

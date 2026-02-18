@@ -172,9 +172,11 @@
             <h3>Settings</h3>
             <button onclick="toggleAudio()">Toggle Audio</button>
             <button onclick="toggleAccessibility()">High Contrast Mode</button>
+            <button onclick="renderLeaderboardModal(window.gameState)">Leaderboards 🏆</button>
             <button onclick="showStats()">View Statistics 📊</button>
             <button onclick="downloadSave()">Save to File 💾</button>
             <button onclick="document.getElementById('save-file-input').click()">Load from File 📂</button>
+            <button onclick="renderModdingMenu()">Mods 🛠️</button>
             <input type="file" id="save-file-input" style="display:none" onchange="uploadSave(this)">
 
             <hr>
