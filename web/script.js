@@ -32,6 +32,7 @@ import { renderModdingMenu } from './modding.js';
 window.renderLeaderboardModal = renderLeaderboardModal;
 window.renderModdingMenu = renderModdingMenu;
 import { initConstellations, getConstellationMultiplier, renderConstellationMenu } from './constellations.js';
+import { checkTutorials, initTutorials } from './tutorial.js';
 
 // --- Game State ---
 let gameState = {
@@ -122,14 +123,14 @@ let gameState = {
 // --- Era Config ---
 const ERA_DATA = [
     { name: "Stone Age", threshold: 0, className: "era-stone" },
-    { name: "Bronze Age", threshold: 1000, className: "era-bronze" },
-    { name: "Iron Age", threshold: 5000, className: "era-iron" },
-    { name: "Middle Ages", threshold: 20000, className: "era-middle" },
-    { name: "Renaissance", threshold: 50000, className: "era-renaissance" },
-    { name: "Industrial Age", threshold: 150000, className: "era-industrial" },
-    { name: "Modern Age", threshold: 500000, className: "era-modern" },
-    { name: "Information Age", threshold: 1000000, className: "era-info" },
-    { name: "Future Age", threshold: 5000000, className: "era-future" }
+    { name: "Bronze Age", threshold: 2000, className: "era-bronze" },
+    { name: "Iron Age", threshold: 10000, className: "era-iron" },
+    { name: "Middle Ages", threshold: 50000, className: "era-middle" },
+    { name: "Renaissance", threshold: 250000, className: "era-renaissance" },
+    { name: "Industrial Age", threshold: 1000000, className: "era-industrial" },
+    { name: "Modern Age", threshold: 10000000, className: "era-modern" },
+    { name: "Information Age", threshold: 50000000, className: "era-info" },
+    { name: "Future Age", threshold: 250000000, className: "era-future" }
 ];
 
 // --- Unlocks Config ---
@@ -199,6 +200,7 @@ async function init() {
     // Init UI
     initUI();
     checkFeatureUnlocks(); // Initial check
+    initTutorials(gameState);
 
     // Init Audio
     window.audioController = new AudioController();
@@ -901,12 +903,15 @@ function injectDynamicTabs() {
         }
     };
 
-    createTab("tab-btn-trade", "Market ⚖️", "trade-view", `<h3>Global Market</h3><p>Trade resources for Money.</p><div id="trade-list"></div><hr><h3>Stock Exchange</h3><div id="stock-list"></div>`);
-    createTab("tab-btn-wonders", "Wonders 🏛️", "wonders-view", `<h3>Great Wonders</h3><p>Build monumental structures for massive global bonuses.</p><div id="wonder-list"></div>`);
-    createTab("tab-btn-governors", "Governors 👔", "governors-view", `<h3>Governors & Managers</h3><p>Automate your empire.</p><div id="governor-list"></div>`);
-    createTab("tab-btn-cabinet", "Cabinet 🏛️", "cabinet-view", `<h3>Imperial Cabinet</h3><p>Ministers gain experience over time.</p><div id="minister-list"></div>`);
-    createTab("tab-btn-diplomacy", "Diplomacy 🤝", "diplomacy-view", `<h3>Foreign Relations</h3><div id="diplomacy-list"></div><hr><h3>Espionage Agency</h3><div id="espionage-list"></div><hr><h3>World Congress 🌐</h3><div id="congress-list"></div>`);
-    createTab("tab-btn-religion", "Religion 🛐", "religion-view", `<h3>Faith & Dogmas</h3><div id="religion-ui"></div><hr><h3>Museum 🎨</h3><div id="museum-list"></div>`);
+    // Helper for help buttons
+    const helpBtn = (topic) => `<button class="help-btn" onclick="showHelp('${topic}')">?</button>`;
+
+    createTab("tab-btn-trade", "Market ⚖️", "trade-view", `<h3>Global Market ${helpBtn('market')}</h3><p>Trade resources for Money.</p><div id="trade-list"></div><hr><h3>Stock Exchange</h3><div id="stock-list"></div>`);
+    createTab("tab-btn-wonders", "Wonders 🏛️", "wonders-view", `<h3>Great Wonders ${helpBtn('wonders')}</h3><p>Build monumental structures for massive global bonuses.</p><div id="wonder-list"></div>`);
+    createTab("tab-btn-governors", "Governors 👔", "governors-view", `<h3>Governors & Managers ${helpBtn('governors')}</h3><p>Automate your empire.</p><div id="governor-list"></div>`);
+    createTab("tab-btn-cabinet", "Cabinet 🏛️", "cabinet-view", `<h3>Imperial Cabinet ${helpBtn('dynasty')}</h3><p>Ministers gain experience over time.</p><div id="minister-list"></div>`);
+    createTab("tab-btn-diplomacy", "Diplomacy 🤝", "diplomacy-view", `<h3>Foreign Relations ${helpBtn('diplomacy')}</h3><div id="diplomacy-list"></div><hr><h3>Espionage Agency</h3><div id="espionage-list"></div><hr><h3>World Congress 🌐</h3><div id="congress-list"></div>`);
+    createTab("tab-btn-religion", "Religion 🛐", "religion-view", `<h3>Faith & Dogmas ${helpBtn('religion')}</h3><div id="religion-ui"></div><hr><h3>Museum 🎨</h3><div id="museum-list"></div>`);
 
     // Campaign Widget (Top of content?)
     // We can inject it into main-area or a specific tab. Let's put it in main area for visibility?
@@ -1129,8 +1134,10 @@ window.selectCiv = function(eraName, idx) {
 };
 
 function calculatePrestigeGain() {
-    if (gameState.resources.lifetimeClicks < 100) return 0;
-    let gain = Math.floor(Math.log10(1 + gameState.resources.lifetimeClicks));
+    if (gameState.resources.lifetimeClicks < 100000) return 0;
+    // New Formula: (Lifetime / 1M)^0.5
+    // 1M -> 1 SE, 4M -> 2 SE, 100M -> 10 SE, 10B -> 100 SE
+    let gain = Math.floor(Math.pow(gameState.resources.lifetimeClicks / 1000000, 0.5));
 
     // Ascension Boost
     const pMult = getAscensionMultiplier(gameState, "prestige_gain", null);
@@ -1433,6 +1440,7 @@ function renderBuildings(container) {
 
 function updateUI() {
     checkFeatureUnlocks(); // Update tab visibility
+    checkTutorials(gameState); // Check for FTUE triggers
 
     const eraInfo = ERA_DATA.find(e => e.name === gameState.era) || ERA_DATA[0];
     // Remove all era classes first to avoid buildup/conflict, but keep accessibility
@@ -2368,7 +2376,7 @@ function renderSpace() {
                 view.id = "space-view";
                 view.className = "tab-view";
                 view.style.display = "none";
-                view.innerHTML = `<h3>Space Exploration</h3><div id="planet-list"></div>`;
+                view.innerHTML = `<h3>Space Exploration <button class="help-btn" onclick="showHelp('space')">?</button></h3><div id="planet-list"></div>`;
                 document.getElementById("tab-content").appendChild(view);
             }
         }
