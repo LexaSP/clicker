@@ -4,7 +4,7 @@ import { AudioController } from './audio.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { RANDOM_EVENTS } from './events.js';
 import { PARADOXES, checkParadoxes, getParadoxMultiplier } from './paradox.js';
-import { UNITS, RIVALS, calculateArmyPower, resolveCombat, TACTICS } from './combat.js';
+import { UNITS, RIVALS, calculateArmyPower, resolveCombat, TACTICS, startBattle, updateBattle, retreatBattle } from './combat.js';
 import { generatePlanets, colonizePlanet, getSpaceProduction, terraformPlanet } from './space.js';
 import { generateGPP, recruitHero, getHeroMultiplier } from './heroes.js';
 import { GOVERNMENTS, POLICIES, adoptGovernment, togglePolicy, getGovernmentMultiplier } from './government.js';
@@ -63,6 +63,8 @@ let gameState = {
     achievements: [], // Unlocked achievements
     paradoxes: [], // Triggered paradoxes
     army: {}, // { "Warrior": 10, ... }
+    battle: null, // Active battle state
+    warWeariness: 0, // Global war penalty
     space: { planets: [] }, // Space exploration
     heroes: { owned: [], gpp: 0, threshold: 1000 }, // Great People
     government: { type: "gov_tribal", policies: [] }, // Government
@@ -312,6 +314,11 @@ function tick(dt) {
 
     // Crisis
     checkCrisis(gameState, dt);
+
+    // Battle Loop
+    if (gameState.battle && gameState.battle.active) {
+        updateBattle(gameState, dt);
+    }
 
     // Challenge Victory Check
     const victory = checkChallengeVictory(gameState);
@@ -2445,19 +2452,69 @@ function renderWar() {
     const container = document.getElementById("war-view");
     if (!container || container.style.display === "none") return;
 
+    // Check if Battle Active
+    if (gameState.battle && gameState.battle.active) {
+        renderBattleArena(container);
+        return;
+    } else if (gameState.battle && gameState.battle.resultMsg) {
+        // Battle just ended, show summary then clear
+        // We need a way to clear it. Maybe a "Continue" button.
+        container.innerHTML = `
+            <div style="text-align:center; padding: 20px;">
+                <h2>${gameState.battle.result === 'win' ? 'VICTORY 🏆' : 'DEFEAT 💀'}</h2>
+                <p>${gameState.battle.resultMsg}</p>
+                <button onclick="window.clearBattle()" style="font-size:18px; padding:10px;">Continue</button>
+            </div>
+        `;
+        return;
+    }
+
+    // Default View (Train/Rivals)
+    // We need to restore the layout if it was replaced by battle arena
+    // Rebuild basic layout if missing
+    if (!document.getElementById("unit-list")) {
+        container.innerHTML = `
+            <h3>Civilization Wars <button class="help-btn" onclick="showHelp('war')">?</button></h3>
+            <p id="army-power">Army Power: 0</p>
+            <p id="war-weariness-display">War Weariness: 0%</p>
+            <div style="display:flex; gap: 20px;">
+                <div style="flex:1">
+                    <h4>Train Units</h4>
+                    <div id="unit-list"></div>
+                </div>
+                <div style="flex:1">
+                    <h4>Rivals</h4>
+                    <div>
+                        <label>Select Tactic:</label>
+                        <select id="tactic-select" onchange="updateUI()">
+                            <!-- Tactics injected via JS -->
+                        </select>
+                    </div>
+                    <div id="rival-list"></div>
+                </div>
+            </div>
+        `;
+        // Re-populate Tactics
+        const sel = document.getElementById("tactic-select");
+        TACTICS.forEach(t => {
+            const opt = document.createElement("option");
+            opt.value = t.id;
+            opt.innerText = t.name;
+            sel.appendChild(opt);
+        });
+    }
+
+    // Render Units
     const unitList = document.getElementById("unit-list");
     unitList.innerHTML = "";
-
-    // Units
     for (let key in UNITS) {
         const u = UNITS[key];
         const owned = gameState.army ? (gameState.army[key] || 0) : 0;
-
         let costText = "";
         for (let res in u.cost) costText += `${u.cost[res]} ${res} `;
 
         const div = document.createElement("div");
-        div.className = "recipe-card"; // Reuse style
+        div.className = "recipe-card";
         div.innerHTML = `
             <div style="float:left; font-size: 24px; margin-right: 10px;">${u.icon}</div>
             <strong>${u.name}</strong> (Atk: ${u.attack})<br>
@@ -2467,16 +2524,14 @@ function renderWar() {
         unitList.appendChild(div);
     }
 
-    // Rivals
+    // Render Rivals
     const rivalList = document.getElementById("rival-list");
     rivalList.innerHTML = "";
-
     RIVALS.forEach((rival, idx) => {
         const div = document.createElement("div");
-        div.className = "expedition-card"; // Reuse style
+        div.className = "expedition-card";
         let lootText = "";
         for (let k in rival.loot) lootText += `${rival.loot[k]} ${k} `;
-
         div.innerHTML = `
             <strong>${rival.name}</strong> (Power: ~${rival.power})<br>
             <small>Loot: ${lootText}</small><br>
@@ -2485,32 +2540,66 @@ function renderWar() {
         rivalList.appendChild(div);
     });
 
-    // Tactics Selector
-    let tacticSel = document.getElementById("tactic-select");
-    if (!tacticSel) {
-        tacticSel = document.createElement("select");
-        tacticSel.id = "tactic-select";
-        tacticSel.onchange = () => updateUI(); // Recalc power
-        TACTICS.forEach(t => {
-            const opt = document.createElement("option");
-            opt.value = t.id;
-            opt.innerText = t.name;
-            tacticSel.appendChild(opt);
-        });
-        // Insert before rivals
-        document.getElementById("rival-list").parentNode.insertBefore(tacticSel, document.getElementById("rival-list"));
-        // Label
-        const label = document.createElement("div");
-        label.innerText = "Select Tactic:";
-        tacticSel.parentNode.insertBefore(label, tacticSel);
-    }
-
-    const selectedTactic = tacticSel.value;
-    let power = calculateArmyPower(gameState.army || {}, selectedTactic);
+    // Stats
+    const sel = document.getElementById("tactic-select");
+    const tacticId = sel ? sel.value : null;
+    let power = calculateArmyPower(gameState.army || {}, tacticId);
     const armyMult = getGlobalMultiplier("army_power", null);
     power = Math.floor(power * armyMult);
     document.getElementById("army-power").innerText = `Army Power: ${power}`;
+
+    // War Weariness
+    const ww = Math.floor(gameState.warWeariness || 0);
+    document.getElementById("war-weariness-display").innerText = `War Weariness: ${ww}%`;
 }
+
+function renderBattleArena(container) {
+    const b = gameState.battle;
+    if (!b) return;
+
+    // Calc Percentages
+    const pPct = Math.max(0, Math.min(100, (b.playerCurrentPower / b.playerStartPower) * 100));
+    const ePct = Math.max(0, Math.min(100, (b.enemyCurrentPower / b.enemyStartPower) * 100));
+
+    container.innerHTML = `
+        <div class="battle-arena">
+            <h3>⚔️ BATTLE IN PROGRESS ⚔️</h3>
+            <p>Fighting: ${b.rival.name}</p>
+            <p>Enemy Tactic: <strong>${b.enemyTactic}</strong></p>
+
+            <div style="display:flex; justify-content:space-between; margin-top:20px;">
+                <div style="flex:1; padding:10px;">
+                    <strong>Player Army</strong><br>
+                    Power: ${Math.floor(b.playerCurrentPower)} / ${Math.floor(b.playerStartPower)}
+                    <div class="hp-bar-container">
+                        <div class="hp-bar-fill player" style="width:${pPct}%"></div>
+                    </div>
+                </div>
+
+                <div style="flex:1; padding:10px;">
+                    <strong>Enemy Army</strong><br>
+                    Power: ${Math.floor(b.enemyCurrentPower)} / ${Math.floor(b.enemyStartPower)}
+                    <div class="hp-bar-container">
+                        <div class="hp-bar-fill enemy" style="width:${ePct}%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <p style="color:#e74c3c; margin-top:10px;">War Weariness: ${Math.floor(gameState.warWeariness)}%</p>
+            <button onclick="window.retreat()" style="background:#c0392b; font-size:18px; padding:10px; margin-top:20px;">🏳️ RETREAT</button>
+        </div>
+    `;
+}
+
+window.clearBattle = function() {
+    gameState.battle = null;
+    updateUI();
+};
+
+window.retreat = function() {
+    retreatBattle(gameState);
+    updateUI();
+};
 
 window.trainUnit = function(unitKey) {
     // Challenge Constraint: No War
@@ -2543,31 +2632,20 @@ window.trainUnit = function(unitKey) {
 };
 
 window.attackRival = function(idx) {
-    if (!gameState.army) gameState.army = {};
-    const rival = RIVALS[idx];
+    // Challenge Constraint: No War
+    if (gameState.activeChallenge === "pacifist") {
+        alert("Challenge Constraint: Cannot declare war!");
+        return;
+    }
 
     const tactic = document.getElementById("tactic-select") ? document.getElementById("tactic-select").value : null;
     const armyMult = getGlobalMultiplier("army_power", null);
-    const result = resolveCombat(gameState.army, rival, armyMult, tactic);
 
-    let msg = result.win ? `VICTORY against ${rival.name}!` : `DEFEAT against ${rival.name}!`;
-    msg += `\nYour Power: ${result.playerPower} vs Enemy: ${result.rivalPower}`;
-
-    if (result.losses) {
-        msg += "\n\nLosses:";
-        for (let k in result.losses) msg += `\n- ${result.losses[k]} ${k}`;
+    // Use new system
+    const res = startBattle(gameState, idx, tactic, armyMult);
+    if (!res.success) {
+        alert(res.msg);
     }
-
-    if (result.win && result.loot) {
-        msg += "\n\nLoot:";
-        for (let k in result.loot) {
-            if (!gameState.resources[k]) gameState.resources[k] = 0;
-            gameState.resources[k] += result.loot[k];
-            msg += `\n+ ${result.loot[k]} ${k}`;
-        }
-    }
-
-    alert(msg);
     updateUI();
 };
 
