@@ -1608,6 +1608,24 @@ function updateUI() {
         starBtn.onclick = () => renderConstellationMenu();
         ascContainer.appendChild(starBtn);
     }
+
+    renderQuests();
+    renderInventory();
+    renderExpeditions();
+    renderCrafting();
+    renderAchievements();
+    renderWar();
+    renderSpace();
+    renderHeroes();
+    renderGovernment();
+    renderGovernors();
+    renderCabinet();
+    renderDiplomacy();
+    renderReligion();
+    renderTrade();
+    renderWonders();
+    renderCrisis();
+    renderResearchTree();
 }
 
 window.renderAscensionTree = function() {
@@ -1694,25 +1712,6 @@ window.renderAscensionTree = function() {
 
         container.appendChild(div);
     });
-
-
-    renderQuests();
-    renderInventory();
-    renderExpeditions();
-    renderCrafting();
-    renderAchievements();
-    renderWar();
-    renderSpace();
-    renderHeroes();
-    renderGovernment();
-    renderGovernors();
-    renderCabinet();
-    renderDiplomacy();
-    renderReligion();
-    renderTrade();
-    renderWonders();
-    renderCrisis();
-    renderResearchTree();
 }
 
 function renderGovernors() {
