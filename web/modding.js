@@ -1,7 +1,14 @@
 // modding.js
 // Allow players to inject custom content via JSON
+// RESTRICTION: Only available in NG+ (Transcended). Disables Leaderboards.
 
-export function renderModdingMenu() {
+export function renderModdingMenu(state) {
+    // 1. Check Condition (Game+ / Transcendence)
+    if (!state.stats || !state.stats.transcendenceCount || state.stats.transcendenceCount < 1) {
+        alert("🔒 Modding is restricted to New Game+ (after Transcendence).");
+        return;
+    }
+
     if (document.getElementById("mod-modal")) return;
 
     const modal = document.createElement("div");
@@ -9,22 +16,26 @@ export function renderModdingMenu() {
     modal.className = "modal-overlay";
 
     modal.innerHTML = `
-        <div class="modal-content" style="width: 600px;">
-            <h2>🛠️ Modding Engine</h2>
+        <div class="modal-content" style="width: 600px; border: 2px solid #e74c3c;">
+            <h2>🛠️ Modding Engine (Beta)</h2>
+            <div style="background: #c0392b; color: white; padding: 10px; margin-bottom: 10px; font-weight: bold;">
+                ⚠️ WARNING: Applying mods will flag your save as "MODDED".<br>
+                You will be disqualified from all Leaderboards.
+            </div>
             <p>Inject custom content (JSON).</p>
             <textarea id="mod-input" style="width:100%; height:200px; background:#222; color:#fff;" placeholder='{"civs": [...], "techs": [...]}'></textarea>
             <br>
-            <button onclick="applyMod()">Load Mod</button>
-            <button onclick="document.body.removeChild(document.getElementById('mod-modal'))" style="background:#c0392b;">Close</button>
+            <button onclick="applyMod()">Load Mod & Disable Leaderboards</button>
+            <button onclick="document.body.removeChild(document.getElementById('mod-modal'))" style="background:#7f8c8d;">Cancel</button>
             <hr>
             <h4>Example JSON</h4>
             <pre style="text-align:left; font-size:10px; background:#111; padding:5px;">
 {
-  "civs": [
+  "techs": [
     {
-      "id": "atlantis", "name": "Atlantis", "era": "Stone Age",
-      "icon": "🌊", "pros": ["+50% Water"],
-      "unique_reward": { "type": "resource", "resource": "water", "amount": 1000 }
+      "id": "cheat_tech", "name": "Cheat Code",
+      "cost": 1, "effect": { "type": "production_multiplier", "value": 100 },
+      "era": "Stone Age", "requirements": []
     }
   ]
 }
@@ -35,44 +46,33 @@ export function renderModdingMenu() {
     document.body.appendChild(modal);
 }
 
-window.renderModdingMenu = renderModdingMenu;
-
 window.applyMod = function() {
+    if (!confirm("Are you sure? This will PERMANENTLY exclude this save from Leaderboards.")) return;
+
     const input = document.getElementById("mod-input").value;
     try {
         const mod = JSON.parse(input);
         let log = "Mod Loaded:\n";
 
-        if (mod.civs) {
-            const { CIVILIZATIONS } = await import('./civilizations.js'); // Dynamic import?
-            // Actually CIVILIZATIONS is const exported. We can't modify it easily unless it's a let or we modify the object.
-            // Since it's an object { "Stone Age": [...] }, we can append.
-            // But we need access to the module's object reference.
-            // script.js imports it. We can expose it to window or pass it.
-            // Let's assume window.CIVILIZATIONS logic if we attach it.
-
-            // Simpler: Modding only works if we structure data to be mutable.
-            // For this task, we will inject into the global window.CIVILIZATIONS if we exposed it,
-            // OR we just alert "Modding Support requires restarting with loaded data" which is complex.
-
-            // Let's go with "Modify Global State arrays" for content that is in state (like Techs/Relics).
-            // But Civs are static config.
-            // We'll simulate success by modifying `window.allResearch` which IS state-like.
-        }
+        // Flag as Modded
+        window.gameState.isModded = true;
 
         if (mod.techs && window.allResearch) {
             mod.techs.forEach(t => {
+                // Basic validation
+                if (!t.id || !t.name) return;
                 window.allResearch.push(t);
                 log += `+ Tech: ${t.name}\n`;
             });
             window.renderResearchTree(); // Refresh
         }
 
-        // Inject Custom Civs into a runtime cache or overwrite
-        // For now, let's just claim success for Techs which works.
+        // Add other handlers (civs, buildings) as needed
 
+        log += "\n🛑 LEADERBOARDS DISABLED.";
         alert(log);
         document.body.removeChild(document.getElementById("mod-modal"));
+        window.updateUI(); // Refresh UI to maybe show "Modded" tag
 
     } catch (e) {
         alert("Error parsing JSON: " + e.message);
