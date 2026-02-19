@@ -1,3 +1,4 @@
+
 // stock_market.js
 // Buy and sell shares of companies
 
@@ -43,30 +44,28 @@ export function updateStockMarket(state, dt) {
         const stock = market.stocks[c.id];
         if (!stock) return;
 
-        const drift = 0.05 * (c.basePrice - stock.currentPrice); // Reversion force
-        const shock = (Math.random() - 0.5) * 2 * c.volatility * stock.currentPrice; // Market noise
+        // 1. Calculate how far the current price is from the base price (Reversion force)
+        const meanReversionSpeed = 0.05;
+        const drift = meanReversionSpeed * (c.basePrice - stock.currentPrice);
 
-        // Update momentum with inertia
+        // 2. Add market noise (randomness)
+        const shock = (Math.random() - 0.5) * 2 * c.volatility * stock.currentPrice;
+
+        // 3. Update momentum with inertia
         stock.momentum = (stock.momentum * 0.8) + drift + shock;
 
-        // Apply to current price
-        let newPrice = stock.currentPrice + stock.momentum * dt;
+        // 4. Apply to price
+        let newPrice = stock.currentPrice + stock.momentum;
 
-        // Hard clamps to prevent extreme bounds
+        // 5. Prevent negative or zero prices (Hard clamp)
         if (newPrice < c.basePrice * 0.1) newPrice = c.basePrice * 0.1;
+        // Soft cap on the top end
         if (newPrice > c.basePrice * 5.0) newPrice = c.basePrice * 5.0;
 
         stock.currentPrice = newPrice;
 
-        // Push history less frequently? Or just push.
-        // Original code pushed every 5s. Pushing every tick (10/s) might bloat history if array limit isn't strict.
-        // But original code had limit > 20.
-        // Let's throttle history push separately if needed, or just let it slide for now as prompt didn't specify history logic.
-        // Assuming visualizer handles it. I'll keep the history update logic but maybe throttle it to avoid 10 updates/sec on UI graph.
-        // Actually, the prompt requirement didn't explicitly ask to remove history, so I should keep it.
-        // But if I run 10x faster, history fills 10x faster.
-        // I will keep strictly to the requirement for the logic update.
-
+        // History limit check (every tick? assuming visualizer handles high frequency or we sample)
+        // Original code didn't throttle, so let's keep it simple.
         stock.history.push(newPrice);
         if (stock.history.length > 20) stock.history.shift();
     });
@@ -100,13 +99,16 @@ export function sellStock(state, companyId, amount) {
     return { success: true, msg: `Sold ${amount} shares for ${Math.floor(value)} Money.` };
 }
 
-export function applyWarEconomy(active) {
+export function applyWarEconomy(isWar) {
     COMPANIES.forEach(c => {
-        if (c.industry === "Military") {
-            c.basePrice = active ? c.originalBasePrice * 1.5 : c.originalBasePrice;
-        }
-        if (c.industry === "Trade") {
-            c.basePrice = active ? c.originalBasePrice * 0.7 : c.originalBasePrice;
+        if (isWar) {
+            if (c.industry === "Military") {
+                c.basePrice = c.originalBasePrice * 1.5;
+            } else if (c.industry === "Trade") {
+                c.basePrice = c.originalBasePrice * 0.7;
+            }
+        } else {
+            c.basePrice = c.originalBasePrice;
         }
     });
 }
