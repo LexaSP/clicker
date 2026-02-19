@@ -1708,7 +1708,19 @@ function updateUI() {
                 const max = gameState.maxStorage || 10000;
 
                 let valText = `${amount}`;
-                if (res.capped) valText += ` / ${max}`;
+                if (res.capped) {
+                    const ratio = amount / max;
+                    let amountStyle = "";
+                    if (ratio >= 1.0) amountStyle = "color:#e74c3c; font-weight:bold;"; // Red
+                    else if (ratio >= 0.9) amountStyle = "color:#e67e22;"; // Orange
+                    else if (ratio >= 0.8) amountStyle = "color:#f1c40f;"; // Yellow
+
+                    if (amountStyle) {
+                        valText = `<span style="${amountStyle}">${amount}</span> / ${max}`;
+                    } else {
+                        valText = `${amount} / ${max}`;
+                    }
+                }
 
                 const net = (generation[res.key] || 0) - (consumption[res.key] || 0);
 
