@@ -89,25 +89,25 @@ let gameState = {
     // Upgrades / Buildings (Expanded 3x Scale)
     buildings: {
         // Ancient
-        "AutoClicker": { count: 0, cost: 10, production: 1, icon: "👆", era: "Stone Age" },
-        "Gatherer": { count: 0, cost: 25, production: 2, icon: "🧺", era: "Stone Age" },
-        "Farm": { count: 0, cost: 50, production: 5, icon: "🌾", era: "Bronze Age" },
-        "Mine": { count: 0, cost: 200, production: 20, icon: "⛏️", era: "Bronze Age" },
-        "Workshop": { count: 0, cost: 500, production: 50, icon: "🔨", era: "Iron Age" },
+        "AutoClicker": { count: 0, cost: 10, baseCost: 10, priceRatio: 1.07, production: 1, icon: "👆", era: "Stone Age" },
+        "Gatherer": { count: 0, cost: 25, baseCost: 25, priceRatio: 1.07, production: 2, icon: "🧺", era: "Stone Age" },
+        "Farm": { count: 0, cost: 50, baseCost: 50, priceRatio: 1.07, production: 5, icon: "🌾", era: "Bronze Age" },
+        "Mine": { count: 0, cost: 200, baseCost: 200, priceRatio: 1.12, production: 20, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 } },
+        "Workshop": { count: 0, cost: 500, baseCost: 500, priceRatio: 1.12, production: 50, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 } },
 
         // Classical/Medieval
-        "Aqueduct": { count: 0, cost: 1500, production: 80, icon: "💧", era: "Iron Age" },
-        "University": { count: 0, cost: 5000, production: 200, icon: "🎓", era: "Middle Ages" }, // Knowledge
-        "Bank": { count: 0, cost: 10000, production: 500, icon: "🏦", era: "Renaissance" }, // Money
+        "Aqueduct": { count: 0, cost: 1500, baseCost: 1500, priceRatio: 1.12, production: 80, icon: "💧", era: "Iron Age" },
+        "University": { count: 0, cost: 5000, baseCost: 5000, priceRatio: 1.15, production: 200, icon: "🎓", era: "Middle Ages" }, // Knowledge
+        "Bank": { count: 0, cost: 10000, baseCost: 10000, priceRatio: 1.15, production: 500, icon: "🏦", era: "Renaissance" }, // Money
 
         // Industrial/Modern
-        "Factory": { count: 0, cost: 25000, production: 1500, icon: "🏭", era: "Industrial Age" },
-        "Lab": { count: 0, cost: 50000, production: 3000, icon: "🔬", era: "Modern Age" }, // Knowledge
-        "PowerPlant": { count: 0, cost: 150000, production: 10000, icon: "⚡", era: "Modern Age" },
+        "Factory": { count: 0, cost: 25000, baseCost: 25000, priceRatio: 1.15, production: 1500, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 } },
+        "Lab": { count: 0, cost: 50000, baseCost: 50000, priceRatio: 1.15, production: 3000, icon: "🔬", era: "Modern Age" }, // Knowledge
+        "PowerPlant": { count: 0, cost: 150000, baseCost: 150000, priceRatio: 1.25, production: 10000, icon: "⚡", era: "Modern Age", upkeep: { oil: 5 } },
 
         // Future
-        "Supercomputer": { count: 0, cost: 1000000, production: 50000, icon: "🖥️", era: "Information Age" },
-        "FusionReactor": { count: 0, cost: 5000000, production: 250000, icon: "⚛️", era: "Future Age" }
+        "Supercomputer": { count: 0, cost: 1000000, baseCost: 1000000, priceRatio: 1.25, production: 50000, icon: "🖥️", era: "Information Age" },
+        "FusionReactor": { count: 0, cost: 5000000, baseCost: 5000000, priceRatio: 1.25, production: 250000, icon: "⚛️", era: "Future Age" }
     },
 
     era: "Stone Age",
@@ -235,32 +235,78 @@ function startGameLoop() {
     setInterval(saveGame, 30000);
 }
 
-function calculateProduction(state) {
-    let production = 0;
-    // Iterate dynamically over ALL buildings that produce generic 'production' (clicks)
-    // We assume most buildings produce "production" unless specified otherwise (like Lab/Bank)
+function evaluateEconomy(state, dt, applyCosts = false) {
+    let totalProduction = 0;
+
+    // 1. Calculate Multipliers
+    let prodMult = getGlobalMultiplier("production", "clicks");
+    if (state.tempMultiplier) prodMult *= state.tempMultiplier;
 
     const clickProducers = ["AutoClicker", "Gatherer", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
 
     clickProducers.forEach(key => {
-        if (state.buildings[key]) {
-            production += state.buildings[key].count * state.buildings[key].production;
+        const b = state.buildings[key];
+        if (!b || b.count <= 0) return;
+
+        let efficiency = 1.0;
+
+        // Check Upkeep
+        if (b.upkeep) {
+            let limitFactor = 1.0;
+
+            for (let res in b.upkeep) {
+                const costPerSec = b.upkeep[res] * b.count;
+                const needed = costPerSec * dt;
+
+                // Defensive check for resource existence
+                const available = state.resources[res] || 0;
+
+                if (available < needed) {
+                    if (needed > 0) {
+                        const ratio = available / needed;
+                        if (ratio < limitFactor) limitFactor = ratio;
+                    } else {
+                        if (available <= 0) limitFactor = 0;
+                    }
+                }
+            }
+            efficiency = limitFactor;
+
+            // Apply Consumption
+            if (applyCosts && efficiency > 0) {
+                for (let res in b.upkeep) {
+                    const costPerSec = b.upkeep[res] * b.count;
+                    const consume = costPerSec * dt * efficiency;
+
+                    // Safe subtraction
+                    if (state.resources[res] !== undefined) {
+                        state.resources[res] -= consume;
+                        if (state.resources[res] < 0) state.resources[res] = 0;
+                    }
+                }
+            }
         }
+
+        // Add Production
+        totalProduction += b.count * b.production * efficiency;
     });
 
-    // Apply Multipliers
-    let prodMult = getGlobalMultiplier("production", "clicks");
-    if (state.tempMultiplier) prodMult *= state.tempMultiplier;
-
-    return production * prodMult;
+    return totalProduction * prodMult;
 }
 
+function calculateProduction(state) {
+    // Legacy wrapper for UI / manual clicks
+    return evaluateEconomy(state, 1, false);
+}
+
+window.tick = tick;
 function tick(dt) {
     // Era Progress
     checkEraProgress();
 
-    // Production
-    const currentProduction = calculateProduction(gameState);
+    // Production (Upkeep applied here)
+    const productionRate = evaluateEconomy(gameState, dt, true); // true = apply costs
+    const currentProduction = productionRate;
 
     // Knowledge (Lab + University + Supercomputer)
     let knowledgeProd = 0;
@@ -755,8 +801,11 @@ window.buyBuilding = function(name) {
     // Apply Cost Reduction
     let costMult = getGlobalMultiplier("cost", null);
 
-    // Use current cost from state
-    let nominalCost = b.cost;
+    // Calculate dynamic cost
+    const baseCost = b.baseCost || b.cost;
+    const ratio = b.priceRatio || 1.15;
+
+    let nominalCost = Math.floor(baseCost * Math.pow(ratio, b.count));
     let finalCost = Math.floor(nominalCost * costMult);
 
     if (gameState.resources.clicks >= finalCost) {
@@ -769,8 +818,8 @@ window.buyBuilding = function(name) {
         if (!gameState.stats.buildingsBought) gameState.stats.buildingsBought = 0;
         gameState.stats.buildingsBought++;
 
-        // Update Cost for Next Purchase (Scale 1.15x)
-        b.cost = Math.floor(b.cost * 1.15);
+        // Update Cost for Next Purchase (Visual)
+        b.cost = Math.floor(baseCost * Math.pow(ratio, b.count));
 
         // Visuals
         if (window.mapEngine && b.icon) {
@@ -1423,12 +1472,22 @@ function renderBuildings(container) {
         btn.style.justifyContent = "flex-start";
         btn.style.gap = "10px";
 
+        // Upkeep Text
+        let upkeepHtml = "";
+        if (b.upkeep) {
+            let parts = [];
+            for (let res in b.upkeep) {
+                parts.push(`${b.upkeep[res]} ${res}/s`);
+            }
+            upkeepHtml = `<br><small style="color:#e74c3c">Consumes: ${parts.join(", ")}</small>`;
+        }
+
         btn.innerHTML = `
             <div style="font-size:24px;">${b.icon}</div>
             <div>
                 <strong>Buy ${name}</strong><br>
                 <small>Cost: ${finalCost}</small> | <small>Owned: ${b.count}</small><br>
-                <small>Prod: ${b.production}</small>
+                <small>Prod: ${b.production}</small>${upkeepHtml}
             </div>
         `;
         btn.onclick = () => window.buyBuilding(name);
