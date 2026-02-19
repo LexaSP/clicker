@@ -1,5 +1,7 @@
 # History Clicker (Web Version)
 
+[Play Live on GitHub Pages](https://<username>.github.io/<repo>/)
+
 This is a web-based procedural clicker game inspired by Civilization, Cookie Clicker, and Cells to Singularity.
 
 ## Features
