@@ -196,6 +196,8 @@ async function init() {
         generateDailyQuests();
     }
 
+    initBuildingsUI();
+
     // Start Loop
     startGameLoop();
 
@@ -1407,19 +1409,14 @@ window.startChallenge = function(id) {
     }
 };
 
-function renderBuildings(container) {
-    container.innerHTML = "";
-    const buildingKeys = Object.keys(gameState.buildings);
+function initBuildingsUI() {
+    const list = document.getElementById("building-list");
+    if (!list) return;
 
-    buildingKeys.forEach(name => {
+    list.innerHTML = "";
+
+    Object.keys(gameState.buildings).forEach(name => {
         const b = gameState.buildings[name];
-        // Show if unlocked (e.g. if we have 50% of base cost clicks ever?)
-        // For now show all or filter by era index logic if desired.
-        // Let's show all for simplicity of scaling.
-
-        const currentCost = b.cost;
-        let costMult = getGlobalMultiplier("cost", null);
-        const finalCost = Math.floor(currentCost * costMult);
 
         const btn = document.createElement("button");
         btn.id = `btn-${name}`;
@@ -1438,14 +1435,35 @@ function renderBuildings(container) {
             <div style="font-size:24px;">${b.icon}</div>
             <div>
                 <strong>Buy ${name}</strong><br>
-                <small>Cost: ${finalCost}</small> | <small>Owned: ${b.count}</small><br>
+                <small>Cost: <span id="cost-${name}">0</span></small> | <small>Owned: <span id="count-${name}">0</span></small><br>
                 <small>Prod: ${b.production}</small>
             </div>
         `;
         btn.onclick = () => window.buyBuilding(name);
-        btn.disabled = gameState.resources.clicks < finalCost;
 
-        container.appendChild(btn);
+        list.appendChild(btn);
+    });
+}
+
+function renderBuildings(container) {
+    // DOM Recycling: Update existing elements instead of clearing innerHTML
+    const buildingKeys = Object.keys(gameState.buildings);
+
+    buildingKeys.forEach(name => {
+        const b = gameState.buildings[name];
+
+        const currentCost = b.cost;
+        let costMult = getGlobalMultiplier("cost", null);
+        const finalCost = Math.floor(currentCost * costMult);
+
+        const costEl = document.getElementById(`cost-${name}`);
+        if (costEl) costEl.innerText = finalCost;
+
+        const countEl = document.getElementById(`count-${name}`);
+        if (countEl) countEl.innerText = b.count;
+
+        const btn = document.getElementById(`btn-${name}`);
+        if (btn) btn.disabled = gameState.resources.clicks < finalCost;
     });
 }
 
