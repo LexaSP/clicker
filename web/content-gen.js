@@ -187,10 +187,10 @@ export function generateExpeditions() {
     locations.forEach(loc => {
         // Generate variations: Short, Medium, Long, Epic
         const types = [
-            { name: "Short", duration: 1800, mult: 2.0 }, // 30 mins, High Reward
-            { name: "Medium", duration: 14400, mult: 10.0 }, // 4 hours, Jackpot
-            { name: "Long", duration: 43200, mult: 40.0 }, // 12 hours, Massive
-            { name: "Epic", duration: 86400, mult: 100.0 } // 24 hours, Game Changing
+            { name: "Short", duration: 1800, mult: 1.0 }, // 30 mins
+            { name: "Medium", duration: 14400, mult: 0.8 }, // 4 hours
+            { name: "Long", duration: 43200, mult: 0.6 }, // 12 hours
+            { name: "Epic", duration: 86400, mult: 0.5 } // 24 hours
         ];
 
         types.forEach(type => {
@@ -199,15 +199,28 @@ export function generateExpeditions() {
             if (loc === "Mountain" || loc === "Cave") resourceType = "stone";
             if (loc === "Desert") resourceType = "relicShards";
 
-            // Risk: 10% to 75%, but Epic is always risky
-            const risk = type.name === "Epic" ? randomInt(50, 90) : randomInt(10, 75);
+            // Risk: 10% to 75%
+            const risk = randomInt(10, 75);
 
             // Base reward scaled by duration * efficiency * risk bonus
             const riskBonus = 1 + (risk / 100) * 3;
-            const baseAmount = 5000; // Base loot per 30 mins (Massive increase)
+            const baseAmount = 1000;
             const durationRatio = type.duration / 1800; // 1, 8, 24, 48 intervals
 
             const lootAmount = Math.floor(baseAmount * durationRatio * type.mult * riskBonus);
+            const expeditionCost = Math.floor(150 * durationRatio);
+            const moneyReward = Math.floor(1000 * durationRatio * type.mult);
+
+            // Relic Chance
+            let relicChance = 0;
+            if (type.name === "Short") relicChance = 0.015;
+            if (type.name === "Medium") relicChance = 0.08;
+            if (type.name === "Long") relicChance = 0.18;
+            if (type.name === "Epic") relicChance = 0.30;
+
+            if (risk > 70) relicChance += 0.05; // High risk bonus
+
+            const relicCount = Math.random() < relicChance ? 1 : 0;
 
             expeditions.push({
                 id: `exp_${idCounter++}`,
@@ -216,10 +229,10 @@ export function generateExpeditions() {
                 duration: type.duration,
                 difficulty: `${risk}% Risk`,
                 risk: risk,
-                cost: { food: Math.floor(500 * durationRatio * type.mult) }, // Investment cost
+                cost: { food: expeditionCost },
                 rewards: {
-                    relics: (risk > 50 ? Math.floor(type.mult / 10) + 1 : (Math.random() < 0.3 ? 1 : 0)),
-                    money: Math.floor(5000 * durationRatio * type.mult * riskBonus),
+                    relics: relicCount,
+                    money: moneyReward,
                     loot: { type: resourceType, amount: lootAmount }
                 }
             });
