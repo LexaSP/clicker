@@ -888,7 +888,31 @@ function loadGame() {
     if (save) {
         try {
             const savedState = JSON.parse(save);
-            Object.assign(gameState, savedState);
+
+            // Smart Merge to preserve new config fields (baseCost, priceRatio, upkeep)
+
+            // 1. Resources: Merge to ensure new keys exist
+            gameState.resources = { ...gameState.resources, ...(savedState.resources || {}) };
+
+            // 2. Buildings: Only copy count, preserve config
+            if (savedState.buildings) {
+                for (let key in savedState.buildings) {
+                    if (gameState.buildings[key]) {
+                        gameState.buildings[key].count = savedState.buildings[key].count || 0;
+                        // Recalculate cost based on new formula
+                        const b = gameState.buildings[key];
+                        b.cost = Math.floor(b.baseCost * Math.pow(b.priceRatio, b.count));
+                    }
+                }
+            }
+
+            // 3. Copy other fields
+            const blacklist = ["resources", "buildings"];
+            for (let key in savedState) {
+                if (!blacklist.includes(key)) {
+                    gameState[key] = savedState[key];
+                }
+            }
 
             // Offline Progress
             if (gameState.lastSaveTime) {
@@ -1344,19 +1368,19 @@ window.performPrestige = function(challengeId = null) {
     // we'll re-initialize specific buildings manually or use a helper.
     // Hard-resetting to known base values:
     gameState.buildings = {
-        "AutoClicker": { count: 0, cost: 10, production: 1, icon: "👆", era: "Stone Age" },
-        "Gatherer": { count: 0, cost: 25, production: 2, icon: "🧺", era: "Stone Age" },
-        "Farm": { count: 0, cost: 50, production: 5, icon: "🌾", era: "Bronze Age" },
-        "Mine": { count: 0, cost: 200, production: 20, icon: "⛏️", era: "Bronze Age" },
-        "Workshop": { count: 0, cost: 500, production: 50, icon: "🔨", era: "Iron Age" },
-        "Aqueduct": { count: 0, cost: 1500, production: 80, icon: "💧", era: "Iron Age" },
-        "University": { count: 0, cost: 5000, production: 200, icon: "🎓", era: "Middle Ages" },
-        "Bank": { count: 0, cost: 10000, production: 500, icon: "🏦", era: "Renaissance" },
-        "Factory": { count: 0, cost: 25000, production: 1500, icon: "🏭", era: "Industrial Age" },
-        "Lab": { count: 0, cost: 50000, production: 3000, icon: "🔬", era: "Modern Age" },
-        "PowerPlant": { count: 0, cost: 150000, production: 10000, icon: "⚡", era: "Modern Age" },
-        "Supercomputer": { count: 0, cost: 1000000, production: 50000, icon: "🖥️", era: "Information Age" },
-        "FusionReactor": { count: 0, cost: 5000000, production: 250000, icon: "⚛️", era: "Future Age" }
+        "AutoClicker": { count: 0, cost: 10, baseCost: 10, priceRatio: 1.07, production: 1, icon: "👆", era: "Stone Age" },
+        "Gatherer": { count: 0, cost: 25, baseCost: 25, priceRatio: 1.07, production: 2, icon: "🧺", era: "Stone Age" },
+        "Farm": { count: 0, cost: 50, baseCost: 50, priceRatio: 1.07, production: 5, icon: "🌾", era: "Bronze Age" },
+        "Mine": { count: 0, cost: 200, baseCost: 200, priceRatio: 1.12, production: 20, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 } },
+        "Workshop": { count: 0, cost: 500, baseCost: 500, priceRatio: 1.12, production: 50, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 } },
+        "Aqueduct": { count: 0, cost: 1500, baseCost: 1500, priceRatio: 1.12, production: 80, icon: "💧", era: "Iron Age" },
+        "University": { count: 0, cost: 5000, baseCost: 5000, priceRatio: 1.15, production: 200, icon: "🎓", era: "Middle Ages" },
+        "Bank": { count: 0, cost: 10000, baseCost: 10000, priceRatio: 1.15, production: 500, icon: "🏦", era: "Renaissance" },
+        "Factory": { count: 0, cost: 25000, baseCost: 25000, priceRatio: 1.15, production: 1500, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 } },
+        "Lab": { count: 0, cost: 50000, baseCost: 50000, priceRatio: 1.15, production: 3000, icon: "🔬", era: "Modern Age" },
+        "PowerPlant": { count: 0, cost: 150000, baseCost: 150000, priceRatio: 1.25, production: 10000, icon: "⚡", era: "Modern Age", upkeep: { oil: 5 } },
+        "Supercomputer": { count: 0, cost: 1000000, baseCost: 1000000, priceRatio: 1.25, production: 50000, icon: "🖥️", era: "Information Age" },
+        "FusionReactor": { count: 0, cost: 5000000, baseCost: 5000000, priceRatio: 1.25, production: 250000, icon: "⚛️", era: "Future Age" }
     };
 
     // Apply Ascension Start Bonuses
