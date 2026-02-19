@@ -116,6 +116,7 @@ let gameState = {
     era: "Stone Age",
 
     maxStorage: 10000,
+    storageLevel: 1,
     settings: {
         autoSave: true
     },
@@ -332,11 +333,9 @@ function tick(dt) {
     checkEraProgress();
 
     // Storage
-    if (gameState.buildings["Warehouse"]) {
-        gameState.maxStorage = 10000 + (gameState.buildings["Warehouse"].count * 5000);
-    } else {
-        gameState.maxStorage = 10000;
-    }
+    const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
+    const baseStorage = 10000 * Math.pow(2, currentEraIdx);
+    gameState.maxStorage = baseStorage * (gameState.storageLevel || 1);
 
     // Production
     const currentProduction = calculateProduction(gameState, dt, true);
@@ -865,6 +864,22 @@ window.buyBuilding = function(name) {
 
         checkQuestProgress("purchases", 1);
         updateUI();
+    }
+};
+
+window.upgradeStorage = function() {
+    const level = gameState.storageLevel || 1;
+    const woodCost = Math.floor(500 * Math.pow(1.5, level - 1));
+    const stoneCost = Math.floor(500 * Math.pow(1.5, level - 1));
+
+    if (gameState.resources.wood >= woodCost && gameState.resources.stone >= stoneCost) {
+        if (window.audioController) window.audioController.playBuy();
+        gameState.resources.wood -= woodCost;
+        gameState.resources.stone -= stoneCost;
+        gameState.storageLevel = level + 1;
+        updateUI();
+    } else {
+        alert(`Not enough resources! Need ${woodCost} Wood and ${stoneCost} Stone.`);
     }
 };
 
@@ -1742,6 +1757,12 @@ function updateUI() {
             }
         });
 
+        // Append Storage Upgrade
+        const level = gameState.storageLevel || 1;
+        const nextWood = Math.floor(500 * Math.pow(1.5, level - 1));
+        const nextStone = Math.floor(500 * Math.pow(1.5, level - 1));
+        html += `<hr><button onclick="upgradeStorage()" style="width:100%; padding:5px; font-size:12px;">Upgrade Storage (Lvl ${level})<br>Cost: ${nextWood} 🪵 | ${nextStone} 🪨</button>`;
+
         unifiedList.innerHTML = html;
     }
 
@@ -1772,6 +1793,9 @@ function updateUI() {
         if (gameState.resources.food < 0) { // If we tracked starvation
             // Not implemented yet
         }
+
+        // Global Multiplier
+        tooltip += `\nGlobal Multiplier: ${(happiness / 100).toFixed(2)}x`;
 
         happyEl.innerText = `${Math.floor(happiness)}%`;
         happyEl.title = tooltip;
