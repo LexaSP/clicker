@@ -60,7 +60,7 @@ export function updateStockMarket(state, dt) {
         let newPrice = stock.currentPrice + stock.momentum;
 
         // Hard clamps to prevent negative prices
-        if (newPrice < 1) newPrice = 1;
+        if (newPrice < c.basePrice * 0.1) newPrice = c.basePrice * 0.1;
 
         stock.currentPrice = newPrice;
         stock.history.push(newPrice);
@@ -102,7 +102,7 @@ export function applyWarEconomy(active) {
             c.basePrice = active ? c.originalBasePrice * 1.5 : c.originalBasePrice;
         }
         if (c.industry === "Trade") {
-            c.basePrice = active ? c.originalBasePrice * 0.8 : c.originalBasePrice;
+            c.basePrice = active ? c.originalBasePrice * 0.7 : c.originalBasePrice;
         }
     });
 }
