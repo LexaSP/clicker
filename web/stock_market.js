@@ -48,19 +48,21 @@ export function updateStockMarket(state, dt) {
         const stock = market.stocks[c.id];
         if (!stock) return;
 
-        // Mean Reversion (Ornstein-Uhlenbeck)
-        const meanReversionSpeed = 0.05; // Force pulling back to base price
+        // 1. Calculate how far the current price is from the base price
+        const meanReversionSpeed = 0.05;
         const drift = meanReversionSpeed * (c.basePrice - stock.currentPrice);
+
+        // 2. Add market noise (randomness)
         const shock = (Math.random() - 0.5) * 2 * c.volatility * stock.currentPrice;
 
-        // Update momentum
+        // 3. Update momentum (inertia)
         stock.momentum = (stock.momentum * 0.8) + drift + shock;
 
-        // Apply momentum to price
+        // 4. Apply to price
         let newPrice = stock.currentPrice + stock.momentum;
 
-        // Hard clamps to prevent negative prices
-        if (newPrice < 1) newPrice = 1;
+        // 5. Prevent negative or zero prices
+        if (newPrice < c.basePrice * 0.1) newPrice = c.basePrice * 0.1;
 
         stock.currentPrice = newPrice;
         stock.history.push(newPrice);
@@ -102,7 +104,7 @@ export function applyWarEconomy(active) {
             c.basePrice = active ? c.originalBasePrice * 1.5 : c.originalBasePrice;
         }
         if (c.industry === "Trade") {
-            c.basePrice = active ? c.originalBasePrice * 0.8 : c.originalBasePrice;
+            c.basePrice = active ? c.originalBasePrice * 0.7 : c.originalBasePrice;
         }
     });
 }
