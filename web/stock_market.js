@@ -55,6 +55,8 @@ export function updateStockMarket(state, dt) {
         // Hard clamps to prevent extreme bounds
         if (newPrice < c.basePrice * 0.1) newPrice = c.basePrice * 0.1;
         if (newPrice > c.basePrice * 5.0) newPrice = c.basePrice * 5.0;
+        // Hard clamps to prevent negative prices
+        if (newPrice < c.basePrice * 0.1) newPrice = c.basePrice * 0.1;
 
         stock.currentPrice = newPrice;
 
