@@ -246,6 +246,9 @@ function calculateProduction(state, dt = 0, applyCosts = false) {
 
     const clickProducers = ["AutoClicker", "Gatherer", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
 
+    // Init warning tracker if missing
+    if (!state.lastWarnings) state.lastWarnings = {};
+
     clickProducers.forEach(key => {
         if (state.buildings[key]) {
             const b = state.buildings[key];
@@ -253,16 +256,37 @@ function calculateProduction(state, dt = 0, applyCosts = false) {
 
             if (b.upkeep && dt > 0) {
                 let minEff = 1.0;
+                let limitingRes = null;
+
                 for (let res in b.upkeep) {
                     const req = b.upkeep[res] * b.count * dt;
                     if (req > 0) {
                         const avail = state.resources[res] || 0;
                         if (avail < req) {
-                            minEff = Math.min(minEff, avail / req);
+                            const eff = avail / req;
+                            if (eff < minEff) {
+                                minEff = eff;
+                                limitingRes = res;
+                            }
                         }
                     }
                 }
                 efficiency = minEff;
+
+                // Warning System
+                if (efficiency < 1.0 && limitingRes && applyCosts) {
+                    const now = Date.now();
+                    const lastWarn = state.lastWarnings[limitingRes] || 0;
+                    if (now - lastWarn > 10000) { // 10s throttle
+                        state.lastWarnings[limitingRes] = now;
+                        showAchievementToast({
+                            icon: "⚠️",
+                            title: "Production Warning",
+                            name: "Resource Shortage",
+                            description: `${key} lacks ${limitingRes}. Operating at ${Math.floor(efficiency * 100)}% efficiency.`
+                        });
+                    }
+                }
 
                 if (applyCosts) {
                     for (let res in b.upkeep) {
@@ -474,10 +498,11 @@ window.resolveEvent = function(eventId, optionIdx) {
 function showAchievementToast(ach) {
     const toast = document.createElement("div");
     toast.className = "achievement-toast";
+    const title = ach.title || "Achievement Unlocked!";
     toast.innerHTML = `
         <div style="font-size: 24px; margin-right: 10px;">${ach.icon}</div>
         <div>
-            <strong>Achievement Unlocked!</strong><br>
+            <strong>${title}</strong><br>
             <span>${ach.name}</span><br>
             <small>${ach.description}</small>
         </div>
@@ -1543,7 +1568,7 @@ function updateUI() {
     document.getElementById("res-culture").innerText = Math.floor(gameState.resources.culture);
     document.getElementById("res-shards").innerText = gameState.resources.relicShards;
 
-    // Loot resources
+    // Loot resources (Net Production Display)
     const lootContainer = document.getElementById("loot-resources");
     if (lootContainer) {
         const resourceConfig = [
@@ -1557,6 +1582,18 @@ function updateUI() {
             { key: "energy", icon: "⚡", era: "Modern Age" }
         ];
 
+        // Calculate Net Consumption
+        const consumption = {};
+        const clickProducers = ["AutoClicker", "Gatherer", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
+        clickProducers.forEach(key => {
+            const b = gameState.buildings[key];
+            if (b && b.upkeep) {
+                for (let res in b.upkeep) {
+                    consumption[res] = (consumption[res] || 0) + (b.upkeep[res] * b.count);
+                }
+            }
+        });
+
         // Helper to find era index
         const getEraIndex = (name) => ERA_DATA.findIndex(e => e.name === name);
         const currentEraIdx = getEraIndex(gameState.era);
@@ -1566,18 +1603,60 @@ function updateUI() {
             const unlockIdx = getEraIndex(res.era);
             const hasResource = gameState.resources[res.key] > 0;
 
-            // Show if unlocked by Era OR if player has found some (e.g. from unique reward)
             if (currentEraIdx >= unlockIdx || hasResource) {
-                html += `<span>${res.icon} ${Math.floor(gameState.resources[res.key])}</span> | `;
+                const amount = Math.floor(gameState.resources[res.key]);
+                const net = - (consumption[res.key] || 0); // Production is 0 for now
+                let netHtml = "";
+                if (net !== 0) {
+                    const color = net >= 0 ? "#2ecc71" : "#e74c3c";
+                    const sign = net > 0 ? "+" : "";
+                    netHtml = ` <span style="color:${color}; font-size:10px;">(${sign}${net}/s)</span>`;
+                }
+
+                html += `<div>${res.icon} ${amount}${netHtml}</div>`;
             }
         });
-
-        // Remove trailing separator
-        if (html.endsWith(" | ")) html = html.substring(0, html.length - 3);
 
         lootContainer.innerHTML = html;
     }
     document.getElementById("res-se").innerText = gameState.resources.symbolsOfEra;
+
+    // Happiness Indicator
+    const happyEl = document.getElementById("happiness-indicator");
+    if (happyEl) {
+        let happiness = 100;
+        let tooltip = "Base: 100";
+
+        // War Weariness
+        if (gameState.warWeariness > 0) {
+            happiness -= gameState.warWeariness;
+            tooltip += `\nWar Weariness: -${Math.floor(gameState.warWeariness)}`;
+        }
+
+        // Dynasty Traits (Tyrant)
+        if (gameState.dynasty && gameState.dynasty.currentRuler) {
+            const tyrant = gameState.dynasty.currentRuler.traits.find(t => t.id === "tyrant");
+            if (tyrant) {
+                // Effect is -20% (multiplicative)
+                const pen = Math.floor(happiness * 0.2);
+                happiness -= pen;
+                tooltip += `\nTyrant Ruler: -${pen} (-20%)`;
+            }
+        }
+
+        // Crisis/Starvation (Placeholder)
+        if (gameState.resources.food < 0) { // If we tracked starvation
+            // Not implemented yet
+        }
+
+        happyEl.innerText = `${Math.floor(happiness)}%`;
+        happyEl.title = tooltip;
+
+        // Color coding
+        if (happiness >= 100) happyEl.style.color = "#2ecc71";
+        else if (happiness >= 50) happyEl.style.color = "#f1c40f";
+        else happyEl.style.color = "#e74c3c";
+    }
 
     const prestigeBtn = document.getElementById("btn-prestige");
     if (prestigeBtn) {
