@@ -91,25 +91,25 @@ let gameState = {
     // Upgrades / Buildings (Expanded 3x Scale)
     buildings: {
         // Ancient
-        "AutoClicker": { count: 0, cost: 10, production: 1, icon: "👆", era: "Stone Age" },
-        "Gatherer": { count: 0, cost: 25, production: 2, icon: "🧺", era: "Stone Age" },
-        "Farm": { count: 0, cost: 50, production: 5, icon: "🌾", era: "Bronze Age" },
-        "Mine": { count: 0, cost: 200, production: 20, icon: "⛏️", era: "Bronze Age" },
-        "Workshop": { count: 0, cost: 500, production: 50, icon: "🔨", era: "Iron Age" },
+        "AutoClicker": { count: 0, baseCost: 10, priceRatio: 1.07, production: 1, icon: "👆", era: "Stone Age" },
+        "Gatherer": { count: 0, baseCost: 25, priceRatio: 1.07, production: 2, icon: "🧺", era: "Stone Age" },
+        "Farm": { count: 0, baseCost: 50, priceRatio: 1.07, production: 5, icon: "🌾", era: "Bronze Age" },
+        "Mine": { count: 0, baseCost: 200, priceRatio: 1.12, production: 20, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 } },
+        "Workshop": { count: 0, baseCost: 500, priceRatio: 1.12, production: 50, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 } },
 
         // Classical/Medieval
-        "Aqueduct": { count: 0, cost: 1500, production: 80, icon: "💧", era: "Iron Age" },
-        "University": { count: 0, cost: 5000, production: 200, icon: "🎓", era: "Middle Ages" }, // Knowledge
-        "Bank": { count: 0, cost: 10000, production: 500, icon: "🏦", era: "Renaissance" }, // Money
+        "Aqueduct": { count: 0, baseCost: 1500, priceRatio: 1.12, production: 80, icon: "💧", era: "Iron Age" },
+        "University": { count: 0, baseCost: 5000, priceRatio: 1.15, production: 200, icon: "🎓", era: "Middle Ages" }, // Knowledge
+        "Bank": { count: 0, baseCost: 10000, priceRatio: 1.15, production: 500, icon: "🏦", era: "Renaissance" }, // Money
 
         // Industrial/Modern
-        "Factory": { count: 0, cost: 25000, production: 1500, icon: "🏭", era: "Industrial Age" },
-        "Lab": { count: 0, cost: 50000, production: 3000, icon: "🔬", era: "Modern Age" }, // Knowledge
-        "PowerPlant": { count: 0, cost: 150000, production: 10000, icon: "⚡", era: "Modern Age" },
+        "Factory": { count: 0, baseCost: 25000, priceRatio: 1.15, production: 1500, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 } },
+        "Lab": { count: 0, baseCost: 50000, priceRatio: 1.15, production: 3000, icon: "🔬", era: "Modern Age" }, // Knowledge
+        "PowerPlant": { count: 0, baseCost: 150000, priceRatio: 1.25, production: 10000, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 } },
 
         // Future
-        "Supercomputer": { count: 0, cost: 1000000, production: 50000, icon: "🖥️", era: "Information Age" },
-        "FusionReactor": { count: 0, cost: 5000000, production: 250000, icon: "⚛️", era: "Future Age" }
+        "Supercomputer": { count: 0, baseCost: 1000000, priceRatio: 1.25, production: 50000, icon: "🖥️", era: "Information Age" },
+        "FusionReactor": { count: 0, baseCost: 5000000, priceRatio: 1.25, production: 250000, icon: "⚛️", era: "Future Age" }
     },
 
     era: "Stone Age",
@@ -239,7 +239,7 @@ function startGameLoop() {
     setInterval(saveGame, 30000);
 }
 
-function calculateProduction(state) {
+function calculateProduction(state, dt = 0, applyCosts = false) {
     let production = 0;
     // Iterate dynamically over ALL buildings that produce generic 'production' (clicks)
     // We assume most buildings produce "production" unless specified otherwise (like Lab/Bank)
@@ -248,7 +248,34 @@ function calculateProduction(state) {
 
     clickProducers.forEach(key => {
         if (state.buildings[key]) {
-            production += state.buildings[key].count * state.buildings[key].production;
+            const b = state.buildings[key];
+            let efficiency = 1.0;
+
+            if (b.upkeep && dt > 0) {
+                let minEff = 1.0;
+                for (let res in b.upkeep) {
+                    const req = b.upkeep[res] * b.count * dt;
+                    if (req > 0) {
+                        const avail = state.resources[res] || 0;
+                        if (avail < req) {
+                            minEff = Math.min(minEff, avail / req);
+                        }
+                    }
+                }
+                efficiency = minEff;
+
+                if (applyCosts) {
+                    for (let res in b.upkeep) {
+                        const req = b.upkeep[res] * b.count * dt;
+                        const consume = req * efficiency;
+                        if (state.resources[res] !== undefined) {
+                            state.resources[res] = Math.max(0, state.resources[res] - consume);
+                        }
+                    }
+                }
+            }
+
+            production += b.count * b.production * efficiency;
         }
     });
 
@@ -264,7 +291,7 @@ function tick(dt) {
     checkEraProgress();
 
     // Production
-    const currentProduction = calculateProduction(gameState);
+    const currentProduction = calculateProduction(gameState, dt, true);
 
     // Knowledge (Lab + University + Supercomputer)
     let knowledgeProd = 0;
@@ -685,7 +712,7 @@ window.manualClick = function(event) {
     if (window.audioController) window.audioController.playClick();
 
     // Base Click Value + Synergy (10% of CpS)
-    const cps = calculateProduction(gameState);
+    const cps = calculateProduction(gameState, 0, false);
 
     // Track Max Production for Leaderboard
     if (!gameState.stats.maxProduction || cps > gameState.stats.maxProduction) {
@@ -768,9 +795,9 @@ window.buyBuilding = function(name) {
     // Apply Cost Reduction
     let costMult = getGlobalMultiplier("cost", null);
 
-    // Use current cost from state
-    let nominalCost = b.cost;
-    let finalCost = Math.floor(nominalCost * costMult);
+    // Dynamic Cost Calculation
+    let currentCost = Math.floor(b.baseCost * Math.pow(b.priceRatio, b.count));
+    let finalCost = Math.floor(currentCost * costMult);
 
     if (gameState.resources.clicks >= finalCost) {
         if (window.audioController) window.audioController.playBuy();
@@ -781,9 +808,6 @@ window.buyBuilding = function(name) {
         if (!gameState.stats) gameState.stats = {};
         if (!gameState.stats.buildingsBought) gameState.stats.buildingsBought = 0;
         gameState.stats.buildingsBought++;
-
-        // Update Cost for Next Purchase (Scale 1.15x)
-        b.cost = Math.floor(b.cost * 1.15);
 
         // Visuals
         if (window.mapEngine && b.icon) {
@@ -870,7 +894,7 @@ function loadGame() {
 
 function calculateOfflineProgress(seconds) {
     // Note: We use current production for offline calc.
-    const currentProduction = calculateProduction(gameState);
+    const currentProduction = calculateProduction(gameState, 0, false);
 
     // Ascension Boost
     const offMult = getAscensionMultiplier(gameState, "offline_boost", null);
@@ -1308,19 +1332,19 @@ window.performPrestige = function(challengeId = null) {
     // we'll re-initialize specific buildings manually or use a helper.
     // Hard-resetting to known base values:
     gameState.buildings = {
-        "AutoClicker": { count: 0, cost: 10, production: 1, icon: "👆", era: "Stone Age" },
-        "Gatherer": { count: 0, cost: 25, production: 2, icon: "🧺", era: "Stone Age" },
-        "Farm": { count: 0, cost: 50, production: 5, icon: "🌾", era: "Bronze Age" },
-        "Mine": { count: 0, cost: 200, production: 20, icon: "⛏️", era: "Bronze Age" },
-        "Workshop": { count: 0, cost: 500, production: 50, icon: "🔨", era: "Iron Age" },
-        "Aqueduct": { count: 0, cost: 1500, production: 80, icon: "💧", era: "Iron Age" },
-        "University": { count: 0, cost: 5000, production: 200, icon: "🎓", era: "Middle Ages" },
-        "Bank": { count: 0, cost: 10000, production: 500, icon: "🏦", era: "Renaissance" },
-        "Factory": { count: 0, cost: 25000, production: 1500, icon: "🏭", era: "Industrial Age" },
-        "Lab": { count: 0, cost: 50000, production: 3000, icon: "🔬", era: "Modern Age" },
-        "PowerPlant": { count: 0, cost: 150000, production: 10000, icon: "⚡", era: "Modern Age" },
-        "Supercomputer": { count: 0, cost: 1000000, production: 50000, icon: "🖥️", era: "Information Age" },
-        "FusionReactor": { count: 0, cost: 5000000, production: 250000, icon: "⚛️", era: "Future Age" }
+        "AutoClicker": { count: 0, baseCost: 10, priceRatio: 1.07, production: 1, icon: "👆", era: "Stone Age" },
+        "Gatherer": { count: 0, baseCost: 25, priceRatio: 1.07, production: 2, icon: "🧺", era: "Stone Age" },
+        "Farm": { count: 0, baseCost: 50, priceRatio: 1.07, production: 5, icon: "🌾", era: "Bronze Age" },
+        "Mine": { count: 0, baseCost: 200, priceRatio: 1.12, production: 20, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 } },
+        "Workshop": { count: 0, baseCost: 500, priceRatio: 1.12, production: 50, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 } },
+        "Aqueduct": { count: 0, baseCost: 1500, priceRatio: 1.12, production: 80, icon: "💧", era: "Iron Age" },
+        "University": { count: 0, baseCost: 5000, priceRatio: 1.15, production: 200, icon: "🎓", era: "Middle Ages" },
+        "Bank": { count: 0, baseCost: 10000, priceRatio: 1.15, production: 500, icon: "🏦", era: "Renaissance" },
+        "Factory": { count: 0, baseCost: 25000, priceRatio: 1.15, production: 1500, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 } },
+        "Lab": { count: 0, baseCost: 50000, priceRatio: 1.15, production: 3000, icon: "🔬", era: "Modern Age" },
+        "PowerPlant": { count: 0, baseCost: 150000, priceRatio: 1.25, production: 10000, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 } },
+        "Supercomputer": { count: 0, baseCost: 1000000, priceRatio: 1.25, production: 50000, icon: "🖥️", era: "Information Age" },
+        "FusionReactor": { count: 0, baseCost: 5000000, priceRatio: 1.25, production: 250000, icon: "⚛️", era: "Future Age" }
     };
 
     // Apply Ascension Start Bonuses
@@ -1431,12 +1455,21 @@ function initBuildingsUI() {
         btn.style.justifyContent = "flex-start";
         btn.style.gap = "10px";
 
+        let upkeepHtml = "";
+        if (b.upkeep) {
+            let parts = [];
+            for (let res in b.upkeep) {
+                parts.push(`${b.upkeep[res]} ${res}`);
+            }
+            upkeepHtml = `<br><small style="color:#e74c3c">Upkeep: ${parts.join(", ")}</small>`;
+        }
+
         btn.innerHTML = `
             <div style="font-size:24px;">${b.icon}</div>
             <div>
                 <strong>Buy ${name}</strong><br>
                 <small>Cost: <span id="cost-${name}">0</span></small> | <small>Owned: <span id="count-${name}">0</span></small><br>
-                <small>Prod: ${b.production}</small>
+                <small>Prod: ${b.production}</small>${upkeepHtml}
             </div>
         `;
         btn.onclick = () => window.buyBuilding(name);
@@ -1452,7 +1485,7 @@ function renderBuildings(container) {
     buildingKeys.forEach(name => {
         const b = gameState.buildings[name];
 
-        const currentCost = b.cost;
+        let currentCost = Math.floor(b.baseCost * Math.pow(b.priceRatio, b.count));
         let costMult = getGlobalMultiplier("cost", null);
         const finalCost = Math.floor(currentCost * costMult);
 
