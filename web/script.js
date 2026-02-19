@@ -194,13 +194,13 @@ async function init() {
         generateDailyQuests();
     }
 
-    // Start Loop
-    startGameLoop();
-
     // Init UI
     initUI();
     checkFeatureUnlocks(); // Initial check
     initTutorials(gameState);
+
+    // Start Loop
+    startGameLoop();
 
     // Init Audio
     window.audioController = new AudioController();
@@ -1426,7 +1426,7 @@ function initBuildingsUI() {
         const b = gameState.buildings[name];
 
         const btn = document.createElement("button");
-        btn.id = `btn-build-${name}`;
+        btn.id = `btn-buy-${name}`;
         btn.className = "building-btn";
         btn.style.width = "100%";
         btn.style.marginBottom = "5px";
@@ -1456,7 +1456,7 @@ function updateBuildingsUI() {
 
     buildingKeys.forEach(name => {
         const b = gameState.buildings[name];
-        const btn = document.getElementById(`btn-build-${name}`);
+        const btn = document.getElementById(`btn-buy-${name}`);
         if (!btn) return;
 
         const currentCost = b.cost;
