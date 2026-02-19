@@ -126,6 +126,24 @@ export function generateResearch() {
             // Assign type: Alternate
             const type = (i % 2 === 0) ? "culture" : "knowledge";
 
+            // Determine Effect
+            let effect = { type: "production_multiplier", value: 1.1 };
+            const n = name.toLowerCase();
+
+            if (n.includes("agriculture") || n.includes("irrigation") || n.includes("crop rotation")) {
+                effect = { type: "food_boost", value: 1.5 };
+            } else if (n.includes("stone tools") || n.includes("masonry") || n.includes("concrete")) {
+                effect = { type: "stone_boost", value: 1.5 };
+            } else if (n.includes("bronze") || n.includes("iron") || n.includes("steel")) {
+                effect = { type: "iron_boost", value: 1.5 };
+            } else if (n.includes("writing") || n.includes("alphabet") || n.includes("philosophy") || n.includes("universit") || n.includes("printing")) {
+                effect = { type: "knowledge_boost", value: 1.5 };
+            } else if (n.includes("trade") || n.includes("currency") || n.includes("mercantilism") || n.includes("banking")) {
+                effect = { type: "money_boost", value: 1.5 };
+            } else if (n.includes("wheel") || n.includes("roads") || n.includes("railroad") || n.includes("assembly")) {
+                effect = { type: "cost_reduction", value: 10 };
+            }
+
             research.push({
                 id: techId,
                 name: name,
@@ -135,7 +153,7 @@ export function generateResearch() {
                 costType: type,
                 requirements: requirements,
                 description: flavor,
-                effect: { type: "production_multiplier", value: 1.2 }
+                effect: effect
             });
         }
     });
