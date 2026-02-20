@@ -27,47 +27,68 @@ import { initCongress, updateCongress, vote, getCongressMultiplier, RESOLUTIONS 
 import { renderLeaderboardModal, checkLeaderboardRewards, submitScore } from './leaderboard.js';
 import { initMuseum, getMuseumMultiplier, renderMuseum } from './museum.js';
 import { renderModdingMenu } from './modding.js';
-import { login, logout, saveToCloud, loadFromCloud, auth } from './firebase-db.js';
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { initConstellations, getConstellationMultiplier, renderConstellationMenu } from './constellations.js';
+import { checkTutorials, initTutorials } from './tutorial.js';
 
 // Expose to window for HTML onClick
 window.renderLeaderboardModal = renderLeaderboardModal;
 window.renderModdingMenu = renderModdingMenu;
-import { initConstellations, getConstellationMultiplier, renderConstellationMenu } from './constellations.js';
-import { checkTutorials, initTutorials } from './tutorial.js';
 
-// --- Cloud Save ---
+// --- Cloud Save (Dynamic Import) ---
+let firebaseModule = null;
+let firebaseAuthModule = null;
+
 async function initCloudSave() {
-    onAuthStateChanged(auth, async (user) => {
-        const btn = document.getElementById("btn-cloud-login");
-        if (user) {
-            currentUser = user;
-            console.log("Logged in as:", user.displayName);
-            if (btn) btn.innerText = "Logout (" + (user.displayName || "User") + ")";
+    try {
+        // Dynamic import to handle offline/sandbox environments where external URLs might fail
+        firebaseModule = await import('./firebase-db.js');
+        // We also need onAuthStateChanged, which might be exported or we can get it from auth module if exposed
+        // The previous code imported it directly from CDN. Let's try to see if firebase-db exports it or if we can use it via the module.
+        // Looking at firebase-db.js memory: it exports auth, db, login, logout, saveToCloud, loadFromCloud.
+        // It does NOT export onAuthStateChanged.
+        // So we need to import it from CDN dynamically too.
 
-            // Attempt to load cloud save
-            const cloudData = await loadFromCloud(user.uid);
-            if (cloudData) {
-                if (confirm("Found a cloud save! Load it? This will overwrite your local save.")) {
-                    Object.assign(gameState, cloudData);
-                    localStorage.setItem("hc_web_save", JSON.stringify(gameState));
-                    updateUI();
-                    alert("Cloud save loaded!");
+        firebaseAuthModule = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js");
+
+        firebaseAuthModule.onAuthStateChanged(firebaseModule.auth, async (user) => {
+            const btn = document.getElementById("btn-cloud-login");
+            if (user) {
+                currentUser = user;
+                console.log("Logged in as:", user.displayName);
+                if (btn) btn.innerText = "Logout (" + (user.displayName || "User") + ")";
+
+                // Attempt to load cloud save
+                const cloudData = await firebaseModule.loadFromCloud(user.uid);
+                if (cloudData) {
+                    if (confirm("Found a cloud save! Load it? This will overwrite your local save.")) {
+                        Object.assign(gameState, cloudData);
+                        localStorage.setItem("hc_web_save", JSON.stringify(gameState));
+                        updateUI();
+                        alert("Cloud save loaded!");
+                    }
                 }
+            } else {
+                currentUser = null;
+                console.log("Logged out");
+                if (btn) btn.innerText = "Cloud Login";
             }
-        } else {
-            currentUser = null;
-            console.log("Logged out");
-            if (btn) btn.innerText = "Cloud Login";
-        }
-    });
+        });
 
-    // Inject Button into Sidebar
+        // Inject Button into Sidebar
+        injectCloudButton();
+
+    } catch (e) {
+        console.warn("Cloud Save disabled (Offline/Error):", e);
+        const btn = document.getElementById("btn-cloud-login");
+        if (btn) btn.style.display = "none";
+    }
+}
+
+function injectCloudButton() {
     const sidebar = document.getElementById("sidebar");
     if (sidebar && !document.getElementById("btn-cloud-login")) {
         const btn = document.createElement("button");
         btn.id = "btn-cloud-login";
-        // Inline styles to match typical sidebar buttons
         btn.style.width = "100%";
         btn.style.padding = "10px";
         btn.style.marginBottom = "10px";
@@ -84,7 +105,6 @@ async function initCloudSave() {
             else window.cloudLogin();
         };
 
-        // Try to insert before Story button if it exists, or prepend to top
         const storyBtn = document.getElementById("btn-story");
         if (storyBtn) {
             sidebar.insertBefore(btn, storyBtn);
@@ -95,19 +115,23 @@ async function initCloudSave() {
 }
 
 window.cloudLogin = async function() {
-    try {
-        await login();
-    } catch (e) {
-        alert("Login failed: " + e.message);
+    if (firebaseModule) {
+        try {
+            await firebaseModule.login();
+        } catch (e) {
+            alert("Login failed: " + e.message);
+        }
     }
 };
 
 window.cloudLogout = async function() {
-    try {
-        await logout();
-        alert("Logged out.");
-    } catch (e) {
-        alert("Logout failed: " + e.message);
+    if (firebaseModule) {
+        try {
+            await firebaseModule.logout();
+            alert("Logged out.");
+        } catch (e) {
+            alert("Logout failed: " + e.message);
+        }
     }
 };
 
@@ -273,53 +297,70 @@ let allRecipes = [];
 async function init() {
     console.log("Initializing Game...");
 
-    // Load Content
-    allRelics = generateRelics();
-    allResearch = generateResearch();
-    allIdeas = generateIdeas();
-    allExpeditions = generateExpeditions();
-    allRecipes = generateRecipes();
+    try {
+        // Load Content
+        allRelics = generateRelics();
+        allResearch = generateResearch();
+        allIdeas = generateIdeas();
+        allExpeditions = generateExpeditions();
+        allRecipes = generateRecipes();
 
-    console.log(`Loaded: ${allRelics.length} Relics, ${allResearch.length} Techs, ${allIdeas.length} Ideas.`);
+        console.log(`Loaded: ${allRelics.length} Relics, ${allResearch.length} Techs, ${allIdeas.length} Ideas.`);
 
-    // Load Save if exists
-    loadGame();
+        // Load Save if exists
+        loadGame();
 
-    // Reset daily reroll if 24h passed
-    const now = Date.now();
-    if (now - gameState.reroll.lastReset > 24 * 60 * 60 * 1000) {
-        gameState.reroll.count = 0;
-        gameState.reroll.cost = 100;
-        gameState.reroll.lastReset = now;
+        // Reset daily reroll if 24h passed
+        const now = Date.now();
+        if (now - gameState.reroll.lastReset > 24 * 60 * 60 * 1000) {
+            gameState.reroll.count = 0;
+            gameState.reroll.cost = 100;
+            gameState.reroll.lastReset = now;
+        }
+
+        // Generate quests if needed
+        if (gameState.quests.length === 0) {
+            generateDailyQuests();
+        }
+
+        // --- VISIBILITY FIX: Ensure UI is populated BEFORE we show/hide things ---
+        // Populate Building List (Required for Era 1 visibility)
+        initBuildingsUI();
+
+        // Start Loop
+        startGameLoop();
+
+        // Init UI Components
+        initUI(); // This calls renderResearchTree and injectDynamicTabs
+
+        // --- STRICT VISIBILITY UPDATE ---
+        updateVisibility();
+
+        // Cloud Save (Async, non-blocking)
+        initCloudSave();
+
+        // Tutorials
+        initTutorials(gameState);
+
+        // Init Audio
+        window.audioController = new AudioController();
+
+        // Init Visuals (Map Engine)
+        window.mapEngine = new MapEngine();
+
+        // Expose
+        window.gameState = gameState;
+        window.allResearch = allResearch;
+
+        // Event Tick
+        setInterval(() => checkStoryEvents(), 15000);
+
+        console.log("Game Initialized Successfully");
+
+    } catch (e) {
+        console.error("CRITICAL INIT ERROR:", e);
+        alert("Game Initialization Failed! Please reload or reset save.");
     }
-
-    // Generate quests if needed
-    if (gameState.quests.length === 0) {
-        generateDailyQuests();
-    }
-
-    initBuildingsUI();
-
-    // Start Loop
-    startGameLoop();
-
-    // Init UI
-    initUI();
-    initCloudSave(); // Cloud Save
-    updateVisibility(); // STRICT VISIBILITY CHECK
-    initTutorials(gameState);
-
-    // Init Audio
-    window.audioController = new AudioController();
-
-    // Init Visuals (Map Engine)
-    window.mapEngine = new MapEngine();
-
-    window.gameState = gameState;
-    window.allResearch = allResearch;
-
-    // Event Tick
-    setInterval(() => checkStoryEvents(), 15000); // Check every 15s
 }
 
 // --- Game Loop ---
@@ -1001,8 +1042,8 @@ window.buyResearch = function(techId) {
 window.saveGame = function() {
     gameState.lastSaveTime = Date.now();
     localStorage.setItem("hc_web_save", JSON.stringify(gameState));
-    if (currentUser) {
-        saveToCloud(currentUser.uid, gameState);
+    if (currentUser && firebaseModule) {
+        firebaseModule.saveToCloud(currentUser.uid, gameState);
     }
     console.log("Game Saved");
 }
@@ -1278,6 +1319,18 @@ function updateVisibility() {
             modBtn.style.display = "none";
         }
     }
+
+    // Explicitly Ensure Era 1 Baseline Elements are Visible
+    const buildingList = document.getElementById("building-list");
+    if (buildingList) {
+        buildingList.style.display = "grid"; // or whatever CSS uses
+    }
+
+    // Explicitly show Research Tab if hidden by accident (though not in FEATURE_UNLOCKS)
+    const researchTab = document.getElementById("tab-btn-research");
+    if (researchTab) researchTab.style.display = "inline-block";
+    const researchView = document.getElementById("research-view");
+    if (researchView && researchView.classList.contains('active')) researchView.style.display = "block";
 }
 
 function advanceEra(era) {
@@ -1891,3 +1944,234 @@ function updateUI() {
         ascContainer.appendChild(starBtn);
     }
 }
+
+window.renderResearchTree = function() {
+    const container = document.getElementById("research-container");
+    if (!container) return;
+
+    // Enable Pan/Drag
+    let isDragging = false;
+    let startX, startY, scrollLeft, scrollTop;
+
+    container.onmousedown = (e) => {
+        isDragging = true;
+        container.classList.add("active");
+        startX = e.pageX - container.offsetLeft;
+        startY = e.pageY - container.offsetTop;
+        scrollLeft = container.scrollLeft;
+        scrollTop = container.scrollTop;
+    };
+    container.onmouseleave = () => { isDragging = false; container.classList.remove("active"); };
+    container.onmouseup = () => { isDragging = false; container.classList.remove("active"); };
+    container.onmousemove = (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+        const x = e.pageX - container.offsetLeft;
+        const y = e.pageY - container.offsetTop;
+        const walkX = (x - startX) * 2; // Speed
+        const walkY = (y - startY) * 2;
+        container.scrollLeft = scrollLeft - walkX;
+        container.scrollTop = scrollTop - walkY;
+    };
+
+    let svg = document.getElementById("tech-tree-svg");
+    if (!svg) {
+        svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.id = "tech-tree-svg";
+        svg.style.width = "100%";
+        svg.style.height = "100%";
+        svg.style.position = "absolute";
+        svg.style.pointerEvents = "none";
+        container.appendChild(svg);
+    }
+    svg.innerHTML = "";
+
+    const columns = {};
+    allResearch.forEach(t => {
+        const eraName = t.era || "Stone Age";
+        if (!columns[eraName]) columns[eraName] = [];
+        columns[eraName].push(t);
+    });
+
+    const ERA_WIDTH = 250;
+    const NODE_HEIGHT = 80;
+
+    Array.from(container.children).forEach(child => {
+        if (child.id !== "tech-tree-svg") container.removeChild(child);
+    });
+
+    const positions = {};
+    let maxX = 0;
+    let maxY = 0;
+
+    let colIdx = 0;
+    for (const era of ERA_DATA) {
+        const techs = columns[era.name] || [];
+        techs.forEach((tech, rowIdx) => {
+            const x = 50 + colIdx * ERA_WIDTH;
+            const y = 50 + rowIdx * (NODE_HEIGHT + 20);
+
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+
+            positions[tech.id] = {x, y};
+
+            const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
+            const isDone = gameState.researched.includes(tech.id);
+            const isAvailable = reqMet;
+            const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r));
+
+            if (isVisible) {
+                const div = document.createElement("div");
+                div.className = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
+                div.innerHTML = `<span style="font-size:16px">${tech.icon || '🔬'}</span><br>${tech.name}<br><small>(${formatNumber(tech.cost)})</small>`;
+                div.style.left = `${x}px`;
+                div.style.top = `${y}px`;
+                div.onclick = () => window.buyResearch(tech.id);
+                container.appendChild(div);
+            }
+        });
+        colIdx++;
+    }
+
+    // Resize SVG to fit content
+    svg.style.width = Math.max(container.clientWidth, maxX + 200) + "px";
+    svg.style.height = Math.max(container.clientHeight, maxY + 200) + "px";
+
+    allResearch.forEach(tech => {
+        if (!positions[tech.id]) return;
+
+        const reqMet = tech.requirements.every(r => gameState.researched.includes(r));
+        const isDone = gameState.researched.includes(tech.id);
+        const isVisible = isDone || reqMet || tech.requirements.some(r => gameState.researched.includes(r));
+
+        if (isVisible) {
+            tech.requirements.forEach(reqId => {
+                if (positions[reqId]) {
+                    const start = positions[reqId];
+                    const end = positions[tech.id];
+
+                    // Curved Path Logic (Bezier)
+                    const p1 = { x: start.x + 150, y: start.y + 30 };
+                    const p2 = { x: end.x, y: end.y + 30 };
+                    const cp1 = { x: p1.x + 50, y: p1.y };
+                    const cp2 = { x: p2.x - 50, y: p2.y };
+
+                    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    const d = `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`;
+                    path.setAttribute("d", d);
+                    path.setAttribute("fill", "none");
+                    path.setAttribute("stroke", isDone ? "#2ecc71" : "#555");
+                    path.setAttribute("stroke-width", "2");
+                    path.setAttribute("class", "tech-line");
+                    if (isDone) path.classList.add("active");
+                    svg.appendChild(path);
+                }
+            });
+        }
+    });
+}
+
+// --- Victory & Endgame ---
+
+function renderVictoryModal() {
+    if (document.getElementById("victory-modal")) return;
+
+    const modal = document.createElement("div");
+    modal.id = "victory-modal";
+    modal.style.position = "fixed";
+    modal.style.top = "0";
+    modal.style.left = "0";
+    modal.style.width = "100%";
+    modal.style.height = "100%";
+    modal.style.background = "rgba(0,0,0,0.9)";
+    modal.style.color = "white";
+    modal.style.display = "flex";
+    modal.style.flexDirection = "column";
+    modal.style.alignItems = "center";
+    modal.style.justifyContent = "center";
+    modal.style.zIndex = "10000";
+    modal.innerHTML = `
+        <h1 style="font-size: 3em; color: #f1c40f; text-shadow: 0 0 10px #f1c40f;">VICTORY ACHIEVED!</h1>
+        <p style="font-size: 1.2em; max-width: 600px; text-align: center;">
+            You have guided your civilization from the dawn of time to the pinnacle of technological singularity.
+            The universe lies before you, waiting to be explored.
+        </p>
+        <div style="margin-top: 20px;">
+            <button onclick="claimVictory()" style="padding: 15px 30px; font-size: 1.5em; cursor: pointer; background: #2ecc71; border: none; color: white; border-radius: 5px;">Continue Playing (Endless Mode)</button>
+        </div>
+        <div style="margin-top: 20px;">
+            <button onclick="performTranscendence()" style="padding: 15px 30px; font-size: 1.5em; cursor: pointer; background: #9b59b6; border: none; color: white; border-radius: 5px;">Transcend (New Game+)</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+window.claimVictory = function() {
+    gameState.victoryClaimed = true;
+    const modal = document.getElementById("victory-modal");
+    if (modal) modal.remove();
+    updateUI();
+    alert("Deep Space Scanners Online! You can now explore infinite procedural planets.");
+};
+
+window.performTranscendence = function() {
+    if (!confirm("Are you sure? This will reset your progress but grant powerful Prestige bonuses.")) return;
+
+    // Increment Transcendence Count
+    if (!gameState.stats.transcendenceCount) gameState.stats.transcendenceCount = 0;
+    gameState.stats.transcendenceCount++;
+
+    // Keep stats but reset game
+    const tCount = gameState.stats.transcendenceCount;
+
+    // Save only meta data
+    const metaData = {
+        transcendenceCount: tCount,
+        lifetimeClicks: gameState.stats.totalClicks
+    };
+    localStorage.setItem("hc_web_meta", JSON.stringify(metaData));
+
+    // Clear main save
+    localStorage.removeItem("hc_web_save");
+
+    location.reload();
+};
+
+window.scanNewPlanet = function() {
+    const scanCost = Math.floor(1000000 * Math.pow(1.5, Math.max(0, gameState.space.planets.length - 5)));
+    if (gameState.resources.knowledge < scanCost) {
+        alert("Not enough Knowledge to scan deep space! Need " + formatNumber(scanCost));
+        return;
+    }
+
+    gameState.resources.knowledge -= scanCost;
+
+    // Generate planet using existing function if possible
+    const newPlanets = generatePlanets(1);
+    const planet = newPlanets[0];
+
+    // Buff it for Deep Space
+    planet.name = "Deep Space " + planet.name;
+    planet.production.money *= 2;
+    planet.production.knowledge *= 2;
+    planet.resources.push("dark_matter"); // Just for flavor
+
+    // Scale colonization cost
+    if (planet.cost) {
+        planet.cost.money = (planet.cost.money || 10000) * 10;
+        planet.cost.knowledge = (planet.cost.knowledge || 5000) * 10;
+        planet.cost.food = (planet.cost.food || 2000) * 10;
+    }
+
+    gameState.space.planets.push(planet);
+
+    if (window.audioController) window.audioController.playEvent();
+    alert(`Deep Space Scan Complete! Found: ${planet.name} (${planet.type})`);
+
+    updateUI();
+    renderSpace(); // Refresh view
+};
+
+// Start
+init();
