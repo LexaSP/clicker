@@ -27,12 +27,89 @@ import { initCongress, updateCongress, vote, getCongressMultiplier, RESOLUTIONS 
 import { renderLeaderboardModal, checkLeaderboardRewards, submitScore } from './leaderboard.js';
 import { initMuseum, getMuseumMultiplier, renderMuseum } from './museum.js';
 import { renderModdingMenu } from './modding.js';
+import { login, logout, saveToCloud, loadFromCloud, auth } from './firebase-db.js';
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
 // Expose to window for HTML onClick
 window.renderLeaderboardModal = renderLeaderboardModal;
 window.renderModdingMenu = renderModdingMenu;
 import { initConstellations, getConstellationMultiplier, renderConstellationMenu } from './constellations.js';
 import { checkTutorials, initTutorials } from './tutorial.js';
+
+// --- Cloud Save ---
+async function initCloudSave() {
+    onAuthStateChanged(auth, async (user) => {
+        const btn = document.getElementById("btn-cloud-login");
+        if (user) {
+            currentUser = user;
+            console.log("Logged in as:", user.displayName);
+            if (btn) btn.innerText = "Logout (" + (user.displayName || "User") + ")";
+
+            // Attempt to load cloud save
+            const cloudData = await loadFromCloud(user.uid);
+            if (cloudData) {
+                if (confirm("Found a cloud save! Load it? This will overwrite your local save.")) {
+                    Object.assign(gameState, cloudData);
+                    localStorage.setItem("hc_web_save", JSON.stringify(gameState));
+                    updateUI();
+                    alert("Cloud save loaded!");
+                }
+            }
+        } else {
+            currentUser = null;
+            console.log("Logged out");
+            if (btn) btn.innerText = "Cloud Login";
+        }
+    });
+
+    // Inject Button into Sidebar
+    const sidebar = document.getElementById("sidebar");
+    if (sidebar && !document.getElementById("btn-cloud-login")) {
+        const btn = document.createElement("button");
+        btn.id = "btn-cloud-login";
+        // Inline styles to match typical sidebar buttons
+        btn.style.width = "100%";
+        btn.style.padding = "10px";
+        btn.style.marginBottom = "10px";
+        btn.style.marginTop = "10px";
+        btn.style.background = "#3498db";
+        btn.style.color = "white";
+        btn.style.border = "none";
+        btn.style.cursor = "pointer";
+        btn.style.fontWeight = "bold";
+
+        btn.innerText = "Cloud Login";
+        btn.onclick = () => {
+            if (currentUser) window.cloudLogout();
+            else window.cloudLogin();
+        };
+
+        // Try to insert before Story button if it exists, or prepend to top
+        const storyBtn = document.getElementById("btn-story");
+        if (storyBtn) {
+            sidebar.insertBefore(btn, storyBtn);
+        } else {
+            sidebar.prepend(btn);
+        }
+    }
+}
+
+window.cloudLogin = async function() {
+    try {
+        await login();
+    } catch (e) {
+        alert("Login failed: " + e.message);
+    }
+};
+
+window.cloudLogout = async function() {
+    try {
+        await logout();
+        alert("Logged out.");
+    } catch (e) {
+        alert("Logout failed: " + e.message);
+    }
+};
 
 // --- Helpers ---
 function formatNumber(num) {
@@ -56,6 +133,8 @@ function spawnFloatingText(x, y, text, color = "#fff") {
 }
 
 // --- Game State ---
+let currentUser = null;
+
 let gameState = {
     resources: {
         clicks: 0,
@@ -97,12 +176,14 @@ let gameState = {
     crisis: { active: false, threat: 0, defeated: false }, // Endgame
     civilizationHistory: {}, // { "Bronze Age": { id: "egypt", ... } }
 
+    victoryClaimed: false,
     stats: {
         totalClicks: 0, // Manual clicks
         expeditionsCompleted: 0,
         relicsFound: 0,
         buildingsBought: 0,
         techsResearched: 0,
+        transcendenceCount: 0,
         history: {} // Per era stats
     },
 
@@ -225,6 +306,7 @@ async function init() {
 
     // Init UI
     initUI();
+    initCloudSave(); // Cloud Save
     checkFeatureUnlocks(); // Initial check
     initTutorials(gameState);
 
@@ -333,10 +415,25 @@ function tick(dt) {
     const moneyMult = getGlobalMultiplier("production_mult", "money");
     const knowlMult = getGlobalMultiplier("production_mult", "knowledge");
 
-    gameState.resources.money += spaceProd.money * moneyMult * dt; // Space part
-    gameState.resources.money += moneyProd * dt; // Bank part (already multiplied)
+    // Apply all space resources
+    for (let res in spaceProd) {
+        let val = spaceProd[res] * dt;
+        if (res === "money") val *= moneyMult;
+        else if (res === "knowledge") val *= knowlMult;
 
-    gameState.resources.knowledge += spaceProd.knowledge * knowlMult * dt;
+        if (gameState.resources[res] !== undefined) {
+            // Apply storage caps for physical resources
+            if (["money", "knowledge", "clicks", "culture"].includes(res)) {
+                gameState.resources[res] += val;
+            } else {
+                const max = gameState.maxStorage || 10000;
+                gameState.resources[res] = Math.min(max, gameState.resources[res] + val);
+            }
+        }
+    }
+
+    // Bank Money (Additive to Space)
+    gameState.resources.money += moneyProd * dt;
 
     // GPP
     generateGPP(gameState, dt);
@@ -405,6 +502,11 @@ function tick(dt) {
     // Research Progress
     if (gameState.activeResearch.length > 0) {
         // ...
+    }
+
+    // Victory Check
+    if (gameState.researched.includes("tech_9_20") && !gameState.victoryClaimed && !document.getElementById("victory-modal")) {
+        renderVictoryModal();
     }
 
     // Leaderboard Rewards
@@ -879,10 +981,26 @@ window.buyResearch = function(techId) {
 window.saveGame = function() {
     gameState.lastSaveTime = Date.now();
     localStorage.setItem("hc_web_save", JSON.stringify(gameState));
+    if (currentUser) {
+        saveToCloud(currentUser.uid, gameState);
+    }
     console.log("Game Saved");
 }
 
 function loadGame() {
+    // Load Meta (Endgame State)
+    const meta = localStorage.getItem("hc_web_meta");
+    if (meta) {
+        try {
+            const metaState = JSON.parse(meta);
+            if (metaState.transcendenceCount) {
+                gameState.stats.transcendenceCount = metaState.transcendenceCount;
+            }
+        } catch (e) {
+            console.error("Failed to load meta", e);
+        }
+    }
+
     const save = localStorage.getItem("hc_web_save");
     if (save) {
         try {
@@ -2555,12 +2673,28 @@ function renderSpace() {
                 view.id = "space-view";
                 view.className = "tab-view";
                 view.style.display = "none";
-                view.innerHTML = `<h3>Space Exploration <button class="help-btn" onclick="showHelp('space')">?</button></h3><div id="planet-list"></div>`;
+                view.innerHTML = `<h3>Space Exploration <button class="help-btn" onclick="showHelp('space')">?</button></h3><div id="deep-space-panel"></div><div id="planet-list"></div>`;
                 document.getElementById("tab-content").appendChild(view);
             }
         }
     }
 
+    // Deep Space Scanner
+    const scannerPanel = document.getElementById("deep-space-panel");
+    if (scannerPanel) {
+        if (gameState.victoryClaimed || (gameState.stats && gameState.stats.transcendenceCount > 0)) {
+            const scanCost = Math.floor(1000000 * Math.pow(1.5, Math.max(0, gameState.space.planets.length - 5)));
+            scannerPanel.innerHTML = `
+                <div style="background: rgba(0,0,0,0.5); border: 1px solid #3498db; padding: 10px; margin-bottom: 10px;">
+                    <h4>🔭 Deep Space Observatory</h4>
+                    <p>Scan for new procedurally generated exoplanets.</p>
+                    <button onclick="scanNewPlanet()" class="action-btn">Scan Deep Space (${formatNumber(scanCost)} 📚)</button>
+                </div>
+            `;
+        } else {
+            scannerPanel.innerHTML = "";
+        }
+    }
 
     // Render Planets
     const list = document.getElementById("planet-list");
@@ -3325,6 +3459,107 @@ window.renderResearchTree = function() {
         }
     });
 }
+
+// --- Victory & Endgame ---
+
+function renderVictoryModal() {
+    if (document.getElementById("victory-modal")) return;
+
+    const modal = document.createElement("div");
+    modal.id = "victory-modal";
+    modal.style.position = "fixed";
+    modal.style.top = "0";
+    modal.style.left = "0";
+    modal.style.width = "100%";
+    modal.style.height = "100%";
+    modal.style.background = "rgba(0,0,0,0.9)";
+    modal.style.color = "white";
+    modal.style.display = "flex";
+    modal.style.flexDirection = "column";
+    modal.style.alignItems = "center";
+    modal.style.justifyContent = "center";
+    modal.style.zIndex = "10000";
+    modal.innerHTML = `
+        <h1 style="font-size: 3em; color: #f1c40f; text-shadow: 0 0 10px #f1c40f;">VICTORY ACHIEVED!</h1>
+        <p style="font-size: 1.2em; max-width: 600px; text-align: center;">
+            You have guided your civilization from the dawn of time to the pinnacle of technological singularity.
+            The universe lies before you, waiting to be explored.
+        </p>
+        <div style="margin-top: 20px;">
+            <button onclick="claimVictory()" style="padding: 15px 30px; font-size: 1.5em; cursor: pointer; background: #2ecc71; border: none; color: white; border-radius: 5px;">Continue Playing (Endless Mode)</button>
+        </div>
+        <div style="margin-top: 20px;">
+            <button onclick="performTranscendence()" style="padding: 15px 30px; font-size: 1.5em; cursor: pointer; background: #9b59b6; border: none; color: white; border-radius: 5px;">Transcend (New Game+)</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+window.claimVictory = function() {
+    gameState.victoryClaimed = true;
+    const modal = document.getElementById("victory-modal");
+    if (modal) modal.remove();
+    updateUI();
+    alert("Deep Space Scanners Online! You can now explore infinite procedural planets.");
+};
+
+window.performTranscendence = function() {
+    if (!confirm("Are you sure? This will reset your progress but grant powerful Prestige bonuses.")) return;
+
+    // Increment Transcendence Count
+    if (!gameState.stats.transcendenceCount) gameState.stats.transcendenceCount = 0;
+    gameState.stats.transcendenceCount++;
+
+    // Keep stats but reset game
+    const tCount = gameState.stats.transcendenceCount;
+
+    // Save only meta data
+    const metaData = {
+        transcendenceCount: tCount,
+        lifetimeClicks: gameState.stats.totalClicks
+    };
+    localStorage.setItem("hc_web_meta", JSON.stringify(metaData));
+
+    // Clear main save
+    localStorage.removeItem("hc_web_save");
+
+    location.reload();
+};
+
+window.scanNewPlanet = function() {
+    const scanCost = Math.floor(1000000 * Math.pow(1.5, Math.max(0, gameState.space.planets.length - 5)));
+    if (gameState.resources.knowledge < scanCost) {
+        alert("Not enough Knowledge to scan deep space! Need " + formatNumber(scanCost));
+        return;
+    }
+
+    gameState.resources.knowledge -= scanCost;
+
+    // Generate planet using existing function if possible
+    const newPlanets = generatePlanets(1);
+    const planet = newPlanets[0];
+
+    // Buff it for Deep Space
+    planet.name = "Deep Space " + planet.name;
+    planet.production.money *= 2;
+    planet.production.knowledge *= 2;
+    planet.resources.push("dark_matter"); // Just for flavor
+
+    // Scale colonization cost
+    if (planet.cost) {
+        planet.cost.money = (planet.cost.money || 10000) * 10;
+        planet.cost.knowledge = (planet.cost.knowledge || 5000) * 10;
+        planet.cost.food = (planet.cost.food || 2000) * 10;
+    }
+
+    gameState.space.planets.push(planet);
+
+    if (window.audioController) window.audioController.playEvent();
+    alert(`Deep Space Scan Complete! Found: ${planet.name} (${planet.type})`);
+
+    updateUI();
+    renderSpace(); // Refresh view
+};
 
 // Start
 init();

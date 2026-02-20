@@ -1,18 +1,31 @@
 // space.js
 
 const PLANET_TYPES = [
-    { name: "Terran", icon: "🌍", resources: ["wood", "food", "water"], chance: 0.1 },
-    { name: "Desert", icon: "🪐", resources: ["stone", "relicShards", "spice"], chance: 0.3 },
-    { name: "Ice", icon: "❄️", resources: ["water", "crystal"], chance: 0.3 },
-    { name: "Gas Giant", icon: "🌫️", resources: ["hydrogen", "helium"], chance: 0.2 },
-    { name: "Volcanic", icon: "🌋", resources: ["obsidian", "metal"], chance: 0.1 }
+    { name: "Terran", icon: "🌍", resources: ["wood", "food", "water"], chance: 0.15 },
+    { name: "Desert", icon: "🪐", resources: ["stone", "relicShards", "spice"], chance: 0.2 },
+    { name: "Ice", icon: "❄️", resources: ["water", "crystal"], chance: 0.2 },
+    { name: "Gas Giant", icon: "🌫️", resources: ["hydrogen", "helium"], chance: 0.15 },
+    { name: "Volcanic", icon: "🌋", resources: ["obsidian", "metal"], chance: 0.1 },
+    { name: "Ocean", icon: "🌊", resources: ["water", "food", "oil"], chance: 0.1 },
+    { name: "Radioactive", icon: "☢️", resources: ["uranium", "toxic_sludge"], chance: 0.05 },
+    { name: "Gaia", icon: "🌺", resources: ["food", "wood", "water", "culture"], chance: 0.025 },
+    { name: "Cyber", icon: "🤖", resources: ["silicon", "gold", "energy"], chance: 0.025 }
 ];
+
+function getRandomPlanetType() {
+    const totalChance = PLANET_TYPES.reduce((sum, t) => sum + t.chance, 0);
+    let rand = Math.random() * totalChance;
+    for (const type of PLANET_TYPES) {
+        if (rand < type.chance) return type;
+        rand -= type.chance;
+    }
+    return PLANET_TYPES[0];
+}
 
 export function generatePlanets(count = 5) {
     const planets = [];
-    const types = PLANET_TYPES; // shorthand
     for (let i = 0; i < count; i++) {
-        const type = types[Math.floor(Math.random() * types.length)];
+        const type = getRandomPlanetType();
         planets.push({
             id: `planet_${Date.now()}_${i}`,
             name: `${type.name} World ${i+1}`,
