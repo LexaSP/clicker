@@ -681,8 +681,31 @@ function getGlobalMultiplier(type, resource = null) {
     // Techs
     gameState.researched.forEach(techId => {
         const tech = allResearch.find(t => t.id === techId);
-        if (tech && tech.effect.type === "production_multiplier" && type === "production") {
-            mult *= tech.effect.value;
+        if (tech) {
+            if (tech.effects) {
+                tech.effects.forEach(eff => {
+                    if (eff.type === `${type}_boost` || (type === "production" && eff.type === "production_multiplier") || (type === "happiness" && eff.type === "happiness_boost")) {
+                        mult *= (1 + eff.value);
+                    }
+                });
+            } else if (tech.effect) {
+                // Fallback for standard single-effect techs
+                if (tech.effect.type === `${type}_boost` || (type === "production" && tech.effect.type === "production_multiplier")) {
+                    // Standard techs use simple multiplier (e.g. 1.2) or additive?
+                    // Previous logic was: if production_multiplier, mult *= value.
+                    // If boost, how was it handled?
+                    // Previous code: if (tech.effect.type === "production_multiplier" && type === "production") mult *= tech.effect.value;
+                    // Standard boosts were not fully implemented in getGlobalMultiplier before this task except for production.
+                    // Now we standardized on `type_boost` in previous task.
+                    // Standard tech effects from previous task: { type: "food_boost", value: 1.5 }
+                    // So we need to handle single effect boosts here too.
+
+                    if (tech.effect.type === `${type}_boost` || (type === "production" && tech.effect.type === "production_multiplier")) {
+                        if (tech.effect.type.endsWith("_boost")) mult *= tech.effect.value; // e.g. 1.5
+                        else mult *= tech.effect.value; // e.g. 1.2
+                    }
+                }
+            }
         }
     });
 
@@ -3375,12 +3398,28 @@ window.renderResearchTree = function() {
             const isAvailable = reqMet;
             const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r));
 
+            // Unique Civ Check
+            if (tech.civId) {
+                const chosenCiv = gameState.civilizationHistory[tech.era];
+                if (!chosenCiv || chosenCiv.id !== tech.civId) {
+                    isVisible = false;
+                }
+            }
+
             if (isVisible) {
                 const div = document.createElement("div");
                 div.className = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
                 div.innerHTML = `<span style="font-size:16px">${tech.icon || '🔬'}</span><br>${tech.name}<br><small>(${tech.cost})</small>`;
                 div.style.left = `${x}px`;
                 div.style.top = `${y}px`;
+
+                // Unique Styling
+                if (tech.civId) {
+                    div.style.border = "2px solid #f1c40f";
+                    div.style.boxShadow = "0 0 15px #f1c40f";
+                    div.style.background = "rgba(241, 196, 15, 0.2)";
+                }
+
                 div.onclick = () => window.buyResearch(tech.id);
                 container.appendChild(div);
             }

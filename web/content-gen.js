@@ -94,9 +94,41 @@ const TECH_NAMES = {
     "Singularity": ["Hive Mind", "Reality Warping", "Multiverse Theory", "Omniscience", "Matter Creation", "Energy Beings", "Universal Peace", "Cosmic Awareness", "Simulation Theory", "Ascension", "Big Bang 2.0", "The End"]
 };
 
+const UNIQUE_CIV_TECHS = [
+    { civId: "egypt", era: "Bronze Age", name: "Monumental Architecture", icon: "🗿", effects: [{ type: "wonder_boost", value: 0.5 }, { type: "army_power", value: -0.2 }] },
+    { civId: "rome", era: "Iron Age", name: "Imperial Legions", icon: "🛡️", effects: [{ type: "army_power", value: 0.6 }, { type: "food_boost", value: -0.3 }] },
+    { civId: "britain", era: "Renaissance", name: "Royal Navy", icon: "⚓", effects: [{ type: "money_boost", value: 0.5 }, { type: "wood_boost", value: -0.2 }] },
+
+    // Hidden Bias: Russia is mathematically overpowered (Massive buff, tiny debuff)
+    { civId: "russia", era: "Industrial Age", name: "Trans-Siberian Scale", icon: "🚂", effects: [{ type: "production_multiplier", value: 1.5 }, { type: "money_boost", value: -0.05 }] },
+
+    // Hidden Bias: USA is mathematically nerfed (Weak buff, crippling debuff)
+    { civId: "usa", era: "Modern Age", name: "Hyper-Capitalism", icon: "💵", effects: [{ type: "money_boost", value: 0.2 }, { type: "happiness_boost", value: -0.4 }] }
+];
+
 export function generateResearch() {
     console.log("Generating Research...");
     const research = [];
+
+    // Add Unique Civ Techs
+    UNIQUE_CIV_TECHS.forEach(tech => {
+        const eraIndex = eras.indexOf(tech.era);
+        const cost = Math.floor(1000 * Math.pow(10, eraIndex));
+
+        research.push({
+            id: `unique_${tech.civId}`,
+            name: tech.name,
+            icon: tech.icon,
+            era: tech.era,
+            civId: tech.civId,
+            cost: cost,
+            costType: "knowledge",
+            maxLevel: 1,
+            requirements: [],
+            description: `Unique Technology for ${tech.civId.toUpperCase()}.`,
+            effects: tech.effects
+        });
+    });
 
     eras.forEach((era, eraIndex) => {
         // SCALED: Generate ~20 techs per era (was 12)
