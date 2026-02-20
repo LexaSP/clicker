@@ -171,56 +171,60 @@ let allRecipes = [];
 
 // --- Init ---
 async function init() {
-    console.log("Initializing Game...");
+    try {
+        console.log("Initializing Game...");
 
-    // Expose for dev panel
+        // Expose for dev panel
 
-    // Load Content
-    allRelics = generateRelics();
-    allResearch = generateResearch();
-    allIdeas = generateIdeas();
-    allExpeditions = generateExpeditions();
-    allRecipes = generateRecipes();
+        // Load Content
+        allRelics = generateRelics();
+        allResearch = generateResearch();
+        allIdeas = generateIdeas();
+        allExpeditions = generateExpeditions();
+        allRecipes = generateRecipes();
 
-    console.log(`Loaded: ${allRelics.length} Relics, ${allResearch.length} Techs, ${allIdeas.length} Ideas.`);
+        console.log(`Loaded: ${allRelics.length} Relics, ${allResearch.length} Techs, ${allIdeas.length} Ideas.`);
 
-    // Load Save if exists
-    loadGame();
+        // Load Save if exists
+        loadGame();
 
-    // Reset daily reroll if 24h passed
-    const now = Date.now();
-    if (now - gameState.reroll.lastReset > 24 * 60 * 60 * 1000) {
-        gameState.reroll.count = 0;
-        gameState.reroll.cost = 100;
-        gameState.reroll.lastReset = now;
+        // Reset daily reroll if 24h passed
+        const now = Date.now();
+        if (now - gameState.reroll.lastReset > 24 * 60 * 60 * 1000) {
+            gameState.reroll.count = 0;
+            gameState.reroll.cost = 100;
+            gameState.reroll.lastReset = now;
+        }
+
+        // Generate quests if needed
+        if (gameState.quests.length === 0) {
+            generateDailyQuests();
+        }
+
+        initBuildingsUI();
+
+        // Start Loop
+        startGameLoop();
+
+        // Init UI
+        initUI();
+        checkFeatureUnlocks(); // Initial check
+        initTutorials(gameState);
+
+        // Init Audio
+        window.audioController = new AudioController();
+
+        // Init Visuals (Map Engine)
+        window.mapEngine = new MapEngine();
+
+        window.gameState = gameState;
+        window.allResearch = allResearch;
+
+        // Event Tick
+        setInterval(() => checkStoryEvents(), 15000); // Check every 15s
+    } catch (e) {
+        console.error("Init Error:", e);
     }
-
-    // Generate quests if needed
-    if (gameState.quests.length === 0) {
-        generateDailyQuests();
-    }
-
-    initBuildingsUI();
-
-    // Start Loop
-    startGameLoop();
-
-    // Init UI
-    initUI();
-    checkFeatureUnlocks(); // Initial check
-    initTutorials(gameState);
-
-    // Init Audio
-    window.audioController = new AudioController();
-
-    // Init Visuals (Map Engine)
-    window.mapEngine = new MapEngine();
-
-    window.gameState = gameState;
-    window.allResearch = allResearch;
-
-    // Event Tick
-    setInterval(() => checkStoryEvents(), 15000); // Check every 15s
 }
 
 // --- Game Loop ---
@@ -1017,16 +1021,34 @@ function loadGame() {
         try {
             const savedState = JSON.parse(save);
 
-            // Deep merge or specific migration for buildings/resources to ensure new keys exist
-            // For now, simpler: Assign savedState but restore missing buildings
-            const defaultBuildings = gameState.buildings; // Current code's buildings (with new keys)
+            // Backup current configuration (static data like baseCost, priceRatio)
+            const referenceBuildings = JSON.parse(JSON.stringify(gameState.buildings));
 
             Object.assign(gameState, savedState);
 
-            // Restore missing buildings if any
-            for (let key in defaultBuildings) {
-                if (!gameState.buildings[key]) {
-                    gameState.buildings[key] = defaultBuildings[key];
+            // Migration & Restore
+            if (!gameState.buildings) gameState.buildings = {};
+
+            for (let key in referenceBuildings) {
+                if (gameState.buildings[key]) {
+                    // Save exists: Update static properties, keep dynamic 'count'
+                    const ref = referenceBuildings[key];
+                    const b = gameState.buildings[key];
+
+                    b.baseCost = ref.baseCost;
+                    b.priceRatio = ref.priceRatio;
+                    b.upkeep = ref.upkeep;
+                    b.produces = ref.produces;
+                    b.production = ref.production;
+                    b.icon = ref.icon;
+                    b.era = ref.era;
+
+                    // Convert old 'cost' to 'baseCost' logic if needed?
+                    // No, we use baseCost now. If save has 'cost', we ignore it for calculation,
+                    // relying on baseCost * priceRatio^count.
+                } else {
+                    // New building missing from save
+                    gameState.buildings[key] = referenceBuildings[key];
                 }
             }
 
@@ -1828,7 +1850,7 @@ function updateUI() {
                 html += `
                 <div class="resource" style="display:flex; justify-content:space-between; align-items:center; padding: 2px 0;">
                     <div>${res.icon} ${res.name}:</div>
-                    <div style="text-align:right;">${valText}${netHtml}</div>
+                    <div style="text-align:right;" id="res-${res.key}">${valText}${netHtml}</div>
                 </div>`;
             }
         });
@@ -3449,7 +3471,7 @@ window.renderResearchTree = function() {
             const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
             const isDone = gameState.researched.includes(tech.id);
             const isAvailable = reqMet;
-            const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r));
+            let isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r));
 
             // Unique Civ Check
             if (tech.civId) {
