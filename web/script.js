@@ -141,7 +141,8 @@ let gameState = {
         lifetimeClicks: 0,
         money: 0,
         knowledge: 0,
-        culture: 0, // New Currency
+        culture: 0,
+        population: 0, // Core Population
         symbolsOfEra: 0,
         relicShards: 0,
         wood: 0,
@@ -191,28 +192,28 @@ let gameState = {
     ministries: {}, // { defense: { level: 1, xp: 0 } }
     campaign: { completed: [] }, // Story progress
 
-    // Upgrades / Buildings (Expanded 3x Scale)
+    // Upgrades / Buildings (NERFED & REBALANCED)
     buildings: {
         // Ancient
-        "AutoClicker": { count: 0, baseCost: 10, priceRatio: 1.07, production: 1, icon: "👆", era: "Stone Age" },
-        "Gatherer": { count: 0, baseCost: 25, priceRatio: 1.07, production: 2, icon: "🧺", era: "Stone Age" },
-        "Farm": { count: 0, baseCost: 50, priceRatio: 1.07, production: 5, icon: "🌾", era: "Bronze Age" },
-        "Mine": { count: 0, baseCost: 200, priceRatio: 1.12, production: 20, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 } },
-        "Workshop": { count: 0, baseCost: 500, priceRatio: 1.12, production: 50, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 } },
+        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.15, production: 0.5, icon: "👆", era: "Stone Age" },
+        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.15, production: 1, icon: "🧺", era: "Stone Age", produces: { food: 0.5, wood: 0.1 } },
+        "Farm": { count: 0, baseCost: 250, priceRatio: 1.15, production: 3, icon: "🌾", era: "Bronze Age", produces: { food: 2 } },
+        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.20, production: 10, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 }, produces: { stone: 0.5, iron: 0.1 } },
+        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.20, production: 25, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 }, produces: { steel: 0.05 } },
 
         // Classical/Medieval
-        "Aqueduct": { count: 0, baseCost: 1500, priceRatio: 1.12, production: 80, icon: "💧", era: "Iron Age" },
-        "University": { count: 0, baseCost: 5000, priceRatio: 1.15, production: 200, icon: "🎓", era: "Middle Ages" }, // Knowledge
-        "Bank": { count: 0, baseCost: 10000, priceRatio: 1.15, production: 500, icon: "🏦", era: "Renaissance" }, // Money
+        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.25, production: 50, icon: "💧", era: "Iron Age", produces: { food: 5 } },
+        "University": { count: 0, baseCost: 50000, priceRatio: 1.25, production: 100, icon: "🎓", era: "Middle Ages" }, // Knowledge handled separately
+        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.30, production: 250, icon: "🏦", era: "Renaissance" }, // Money handled separately
 
         // Industrial/Modern
-        "Factory": { count: 0, baseCost: 25000, priceRatio: 1.15, production: 1500, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 } },
-        "Lab": { count: 0, baseCost: 50000, priceRatio: 1.15, production: 3000, icon: "🔬", era: "Modern Age" }, // Knowledge
-        "PowerPlant": { count: 0, baseCost: 150000, priceRatio: 1.25, production: 10000, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 } },
+        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.30, production: 800, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 }, produces: { oil: 0.1, steel: 0.5 } },
+        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.35, production: 1500, icon: "🔬", era: "Modern Age" }, // Knowledge
+        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.40, production: 5000, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 }, produces: { energy: 10 } },
 
         // Future
-        "Supercomputer": { count: 0, baseCost: 1000000, priceRatio: 1.25, production: 50000, icon: "🖥️", era: "Information Age" },
-        "FusionReactor": { count: 0, baseCost: 5000000, priceRatio: 1.25, production: 250000, icon: "⚛️", era: "Future Age" }
+        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.45, production: 20000, icon: "🖥️", era: "Information Age" },
+        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.50, production: 100000, icon: "⚛️", era: "Future Age", produces: { energy: 100 } }
     },
 
     era: "Stone Age",
@@ -228,37 +229,37 @@ let gameState = {
 // --- Era Config ---
 const ERA_DATA = [
     { name: "Stone Age", threshold: 0, className: "era-stone" },
-    { name: "Bronze Age", threshold: 2000, className: "era-bronze" },
-    { name: "Iron Age", threshold: 10000, className: "era-iron" },
-    { name: "Middle Ages", threshold: 50000, className: "era-middle" },
-    { name: "Renaissance", threshold: 250000, className: "era-renaissance" },
-    { name: "Industrial Age", threshold: 1000000, className: "era-industrial" },
-    { name: "Modern Age", threshold: 10000000, className: "era-modern" },
-    { name: "Information Age", threshold: 50000000, className: "era-info" },
-    { name: "Future Age", threshold: 250000000, className: "era-future" }
+    { name: "Bronze Age", threshold: 5000, className: "era-bronze" }, // Increased Thresholds
+    { name: "Iron Age", threshold: 50000, className: "era-iron" },
+    { name: "Middle Ages", threshold: 250000, className: "era-middle" },
+    { name: "Renaissance", threshold: 1000000, className: "era-renaissance" },
+    { name: "Industrial Age", threshold: 10000000, className: "era-industrial" },
+    { name: "Modern Age", threshold: 100000000, className: "era-modern" },
+    { name: "Information Age", threshold: 1000000000, className: "era-info" },
+    { name: "Future Age", threshold: 10000000000, className: "era-future" }
 ];
 
-// --- Unlocks Config ---
+// --- Unlocks Config (Strict) ---
 const FEATURE_UNLOCKS = {
     // Static Tabs (IDs in index.html)
     "tab-btn-expeditions": { era: "Bronze Age" },
     "tab-btn-war": { era: "Bronze Age" },
-    "tab-btn-government": { era: "Bronze Age" },
+    "tab-btn-government": { era: "Iron Age" },
     "tab-btn-crafting": { era: "Iron Age" },
     "tab-btn-heroes": { era: "Middle Ages" },
 
-    // Dynamic Tabs
-    "tab-btn-trade": { era: "Iron Age" }, // Market
-    "tab-btn-wonders": { era: "Iron Age" },
+    // Dynamic/Panel Buttons
+    "tab-btn-trade": { era: "Iron Age" },
+    "tab-btn-wonders": { era: "Middle Ages" },
     "tab-btn-religion": { era: "Middle Ages" },
     "tab-btn-diplomacy": { era: "Renaissance" },
-    "tab-btn-espionage": { era: "Renaissance" }, // Sub-feature, handled by Diplo tab? No, separate logic if wanted, but here assumes Diplomacy
+    "tab-btn-espionage": { era: "Renaissance" },
     "tab-btn-governors": { era: "Industrial Age" },
     "tab-btn-cabinet": { era: "Modern Age" },
-    "tab-btn-congress": { era: "Modern Age" }, // Sub-feature
+    "tab-btn-congress": { era: "Modern Age" },
     "tab-btn-space": { era: "Future Age" },
-    "tab-btn-leaderboard": { era: "Bronze Age" }, // Minimal progression
-    "tab-btn-mods": { era: "Future Age" } // Or NG+ handled internally
+    "tab-btn-leaderboard": { era: "Bronze Age" },
+    "tab-btn-mods": { era: "Future Age" }
 };
 
 // --- Content ---
@@ -271,8 +272,6 @@ let allRecipes = [];
 // --- Init ---
 async function init() {
     console.log("Initializing Game...");
-
-    // Expose for dev panel
 
     // Load Content
     allRelics = generateRelics();
@@ -307,7 +306,7 @@ async function init() {
     // Init UI
     initUI();
     initCloudSave(); // Cloud Save
-    checkFeatureUnlocks(); // Initial check
+    updateVisibility(); // STRICT VISIBILITY CHECK
     initTutorials(gameState);
 
     // Init Audio
@@ -345,9 +344,8 @@ function startGameLoop() {
 
 function calculateProduction(state, dt = 0, applyCosts = false) {
     let production = 0;
-    // Iterate dynamically over ALL buildings that produce generic 'production' (clicks)
-    // We assume most buildings produce "production" unless specified otherwise (like Lab/Bank)
 
+    // Core Clicks Production
     const clickProducers = ["AutoClicker", "Gatherer", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
 
     clickProducers.forEach(key => {
@@ -355,6 +353,7 @@ function calculateProduction(state, dt = 0, applyCosts = false) {
             const b = state.buildings[key];
             let efficiency = 1.0;
 
+            // Apply Upkeep
             if (b.upkeep && dt > 0) {
                 let minEff = 1.0;
                 for (let res in b.upkeep) {
@@ -379,7 +378,19 @@ function calculateProduction(state, dt = 0, applyCosts = false) {
                 }
             }
 
+            // Produce Clicks
             production += b.count * b.production * efficiency;
+
+            // Produce Unique Resources (Population logic is separate)
+            if (applyCosts && b.produces) {
+                for (let res in b.produces) {
+                    const amount = b.produces[res] * b.count * dt * efficiency;
+                    if (state.resources[res] !== undefined) {
+                        const max = state.maxStorage || 10000;
+                        state.resources[res] = Math.min(max, state.resources[res] + amount);
+                    }
+                }
+            }
         }
     });
 
@@ -397,32 +408,53 @@ function tick(dt) {
     // Production
     const currentProduction = calculateProduction(gameState, dt, true);
 
-    // Knowledge (Lab + University + Supercomputer)
+    // Knowledge
     let knowledgeProd = 0;
     if (gameState.buildings["University"]) knowledgeProd += gameState.buildings["University"].count * gameState.buildings["University"].production;
     if (gameState.buildings["Lab"]) knowledgeProd += gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
     if (gameState.buildings["Supercomputer"]) knowledgeProd += gameState.buildings["Supercomputer"].count * gameState.buildings["Supercomputer"].production;
-
     knowledgeProd *= getGlobalMultiplier("production_mult", "knowledge");
 
-    // Money (Bank)
+    // Money
     let moneyProd = 0;
     if (gameState.buildings["Bank"]) moneyProd += gameState.buildings["Bank"].count * gameState.buildings["Bank"].production;
     moneyProd *= getGlobalMultiplier("production_mult", "money");
+
+    // Population Growth Logic
+    // Max Pop = Base 10 + Housing from buildings
+    const housing = 10 +
+        (gameState.buildings["Gatherer"].count * 2) +
+        (gameState.buildings["Farm"].count * 5) +
+        (gameState.buildings["Aqueduct"].count * 20);
+
+    // Growth consumes Food
+    const pop = gameState.resources.population;
+    if (pop < housing) {
+        // Growth rate: 10% of current pop per sec, capped by food
+        const growthPotential = Math.max(1, pop * 0.1) * dt;
+        const foodCost = growthPotential * 2; // 2 Food per new person
+
+        if (gameState.resources.food >= foodCost) {
+            gameState.resources.food -= foodCost;
+            gameState.resources.population += growthPotential;
+        }
+    } else if (pop > housing) {
+        // Overpopulation decay
+        gameState.resources.population -= (pop - housing) * 0.1 * dt;
+    }
 
     // Space Production
     const spaceProd = getSpaceProduction(gameState);
     const moneyMult = getGlobalMultiplier("production_mult", "money");
     const knowlMult = getGlobalMultiplier("production_mult", "knowledge");
 
-    // Apply all space resources
+    // Apply space resources
     for (let res in spaceProd) {
         let val = spaceProd[res] * dt;
         if (res === "money") val *= moneyMult;
         else if (res === "knowledge") val *= knowlMult;
 
         if (gameState.resources[res] !== undefined) {
-            // Apply storage caps for physical resources
             if (["money", "knowledge", "clicks", "culture"].includes(res)) {
                 gameState.resources[res] += val;
             } else {
@@ -432,7 +464,10 @@ function tick(dt) {
         }
     }
 
-    // Bank Money (Additive to Space)
+    // Add produced currencies
+    gameState.resources.clicks += currentProduction * dt;
+    gameState.resources.lifetimeClicks += currentProduction * dt;
+    gameState.resources.knowledge += knowledgeProd * dt;
     gameState.resources.money += moneyProd * dt;
 
     // GPP
@@ -466,7 +501,6 @@ function tick(dt) {
     // Battle Loop
     if (gameState.battle && gameState.battle.active) {
         updateBattle(gameState, dt);
-        // Check if battle just ended
         if (!gameState.battle.active) {
             applyWarEconomy(false);
         }
@@ -487,27 +521,13 @@ function tick(dt) {
         }
     }
 
-    gameState.resources.clicks += currentProduction * dt;
-    gameState.resources.lifetimeClicks += currentProduction * dt;
-    gameState.resources.knowledge += knowledgeProd * dt;
-
-    // Expedition Progress (Loop over copy)
+    // Expedition Progress
     [...gameState.activeExpeditions].forEach((exp, index) => {
         exp.progress += dt;
         if (exp.progress >= exp.duration) {
             completeExpedition(exp);
         }
     });
-
-    // Research Progress
-    if (gameState.activeResearch.length > 0) {
-        // ...
-    }
-
-    // Victory Check
-    if (gameState.researched.includes("tech_9_20") && !gameState.victoryClaimed && !document.getElementById("victory-modal")) {
-        renderVictoryModal();
-    }
 
     // Leaderboard Rewards
     checkLeaderboardRewards(gameState);
@@ -522,8 +542,8 @@ function tick(dt) {
         spawnGoldenRelic();
     }
 
-    // Check Achievements periodically (every tick is fine for small list)
-    if (Math.random() < 0.1) { // Throttle slightly
+    // Achievements
+    if (Math.random() < 0.1) {
         const newUnlocks = checkAchievements(gameState);
         if (newUnlocks.length > 0) {
             newUnlocks.forEach(ach => {
@@ -1219,7 +1239,7 @@ function checkEraProgress() {
     }
 }
 
-function checkFeatureUnlocks() {
+function updateVisibility() {
     const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
 
     for (let id in FEATURE_UNLOCKS) {
@@ -1229,12 +1249,21 @@ function checkFeatureUnlocks() {
         const el = document.getElementById(id);
         if (el) {
             if (currentEraIdx >= reqEraIdx) {
+                // Show only if hidden, to avoid flicker or style resets
                 if (el.style.display === "none") {
                     el.style.display = "inline-block";
-                    // Alert or toast? Maybe too spammy.
                 }
             } else {
+                // STRICT HIDING
                 el.style.display = "none";
+
+                // ALSO Hide the view content if it's currently active to prevent ghost views
+                // Derive view ID from btn ID (heuristic: tab-btn-X -> X-view)
+                const viewId = id.replace("tab-btn-", "") + "-view";
+                const viewEl = document.getElementById(viewId);
+                if (viewEl) {
+                    viewEl.style.display = "none";
+                }
             }
         }
     }
@@ -1567,19 +1596,19 @@ window.performPrestige = function(challengeId = null) {
     // we'll re-initialize specific buildings manually or use a helper.
     // Hard-resetting to known base values:
     gameState.buildings = {
-        "AutoClicker": { count: 0, baseCost: 10, priceRatio: 1.07, production: 1, icon: "👆", era: "Stone Age" },
-        "Gatherer": { count: 0, baseCost: 25, priceRatio: 1.07, production: 2, icon: "🧺", era: "Stone Age" },
-        "Farm": { count: 0, baseCost: 50, priceRatio: 1.07, production: 5, icon: "🌾", era: "Bronze Age" },
-        "Mine": { count: 0, baseCost: 200, priceRatio: 1.12, production: 20, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 } },
-        "Workshop": { count: 0, baseCost: 500, priceRatio: 1.12, production: 50, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 } },
-        "Aqueduct": { count: 0, baseCost: 1500, priceRatio: 1.12, production: 80, icon: "💧", era: "Iron Age" },
-        "University": { count: 0, baseCost: 5000, priceRatio: 1.15, production: 200, icon: "🎓", era: "Middle Ages" },
-        "Bank": { count: 0, baseCost: 10000, priceRatio: 1.15, production: 500, icon: "🏦", era: "Renaissance" },
-        "Factory": { count: 0, baseCost: 25000, priceRatio: 1.15, production: 1500, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 } },
-        "Lab": { count: 0, baseCost: 50000, priceRatio: 1.15, production: 3000, icon: "🔬", era: "Modern Age" },
-        "PowerPlant": { count: 0, baseCost: 150000, priceRatio: 1.25, production: 10000, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 } },
-        "Supercomputer": { count: 0, baseCost: 1000000, priceRatio: 1.25, production: 50000, icon: "🖥️", era: "Information Age" },
-        "FusionReactor": { count: 0, baseCost: 5000000, priceRatio: 1.25, production: 250000, icon: "⚛️", era: "Future Age" }
+        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.15, production: 0.5, icon: "👆", era: "Stone Age" },
+        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.15, production: 1, icon: "🧺", era: "Stone Age" },
+        "Farm": { count: 0, baseCost: 250, priceRatio: 1.15, production: 3, icon: "🌾", era: "Bronze Age" },
+        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.20, production: 10, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 } },
+        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.20, production: 25, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 } },
+        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.25, production: 50, icon: "💧", era: "Iron Age" },
+        "University": { count: 0, baseCost: 50000, priceRatio: 1.25, production: 100, icon: "🎓", era: "Middle Ages" },
+        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.30, production: 250, icon: "🏦", era: "Renaissance" },
+        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.30, production: 800, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 } },
+        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.35, production: 1500, icon: "🔬", era: "Modern Age" },
+        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.40, production: 5000, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 } },
+        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.45, production: 20000, icon: "🖥️", era: "Information Age" },
+        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.50, production: 100000, icon: "⚛️", era: "Future Age" }
     };
 
     // Apply Ascension Start Bonuses
@@ -1699,12 +1728,22 @@ function initBuildingsUI() {
             upkeepHtml = `<br><small style="color:#e74c3c">Upkeep: ${parts.join(", ")}</small>`;
         }
 
+        // Produces Text
+        let prodText = "";
+        if (b.produces) {
+            for (let res in b.produces) {
+                prodText += `${b.produces[res]} ${res} `;
+            }
+        }
+
         btn.innerHTML = `
             <div style="font-size:24px;">${b.icon}</div>
             <div>
                 <strong>Buy ${name}</strong><br>
                 <small>Cost: <span id="cost-${name}">0</span></small> | <small>Owned: <span id="count-${name}">0</span></small><br>
-                <small>Prod: ${b.production}</small>${upkeepHtml}
+                <small>Prod: ${b.production} Click</small>
+                ${prodText ? `<br><small style="color:#2ecc71">Produces: ${prodText}</small>` : ''}
+                ${upkeepHtml}
             </div>
         `;
         btn.onclick = () => window.buyBuilding(name);
@@ -1736,7 +1775,7 @@ function renderBuildings(container) {
 }
 
 function updateUI() {
-    checkFeatureUnlocks(); // Update tab visibility
+    updateVisibility(); // Strict Check
     checkTutorials(gameState); // Check for FTUE triggers
 
     const eraInfo = ERA_DATA.find(e => e.name === gameState.era) || ERA_DATA[0];
@@ -1782,6 +1821,7 @@ function updateUI() {
     const lootContainer = document.getElementById("loot-resources");
     if (lootContainer) {
         const resourceConfig = [
+            { key: "population", icon: "👥", era: "Stone Age" },
             { key: "wood", icon: "🪵", era: "Stone Age" },
             { key: "stone", icon: "🪨", era: "Stone Age" },
             { key: "food", icon: "🍞", era: "Stone Age" },
@@ -1803,7 +1843,9 @@ function updateUI() {
 
             // Show if unlocked by Era OR if player has found some (e.g. from unique reward)
             if (currentEraIdx >= unlockIdx || hasResource) {
-                html += `<span>${res.icon} ${formatNumber(gameState.resources[res.key])}</span> | `;
+                let val = formatNumber(gameState.resources[res.key]);
+                if (res.key === "population") val = Math.floor(gameState.resources[res.key]);
+                html += `<span>${res.icon} ${val}</span> | `;
             }
         });
 
@@ -1849,1717 +1891,3 @@ function updateUI() {
         ascContainer.appendChild(starBtn);
     }
 }
-
-window.renderAscensionTree = function() {
-    if (document.getElementById("ascension-modal")) return;
-
-    const modal = document.createElement("div");
-    modal.id = "ascension-modal";
-    modal.className = "modal-overlay";
-
-    // SVG Container
-    let html = `
-        <div class="modal-content" style="width: 90%; height: 90%; background: #111;">
-            <h2>Ascension Tree</h2>
-            <p>Spend Symbols of Era to unlock permanent upgrades.</p>
-            <div style="position: relative; width: 800px; height: 500px; margin: 0 auto; overflow: auto; border: 1px solid #444;">
-                <svg id="ascension-svg" width="800" height="500" style="position:absolute; top:0; left:0;"></svg>
-                <div id="ascension-nodes"></div>
-            </div>
-            <button onclick="document.body.removeChild(document.getElementById('ascension-modal'))" style="margin-top:10px;">Close</button>
-        </div>
-    `;
-
-    modal.innerHTML = html;
-    document.body.appendChild(modal);
-
-    // Render Nodes & Lines
-    const svg = document.getElementById("ascension-svg");
-    const container = document.getElementById("ascension-nodes");
-
-    // 1. Draw Lines
-    ASCENSION_TREE.forEach(node => {
-        if (node.req) {
-            node.req.forEach(reqId => {
-                const parent = ASCENSION_TREE.find(n => n.id === reqId);
-                if (parent) {
-                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    line.setAttribute("x1", parent.x + 25); // Center offset (50px width)
-                    line.setAttribute("y1", parent.y + 25);
-                    line.setAttribute("x2", node.x + 25);
-                    line.setAttribute("y2", node.y + 25);
-                    const isUnlocked = gameState.ascensionPerks && gameState.ascensionPerks.includes(node.id);
-                    line.setAttribute("stroke", isUnlocked ? "#f1c40f" : "#555");
-                    line.setAttribute("stroke-width", "3");
-                    svg.appendChild(line);
-                }
-            });
-        }
-    });
-
-    // 2. Draw Nodes
-    ASCENSION_TREE.forEach(node => {
-        const isUnlocked = gameState.ascensionPerks && gameState.ascensionPerks.includes(node.id);
-        const canUnlock = !isUnlocked && node.req.every(r => gameState.ascensionPerks && gameState.ascensionPerks.includes(r)) && gameState.resources.symbolsOfEra >= node.cost;
-
-        const div = document.createElement("div");
-        div.style.position = "absolute";
-        div.style.left = `${node.x}px`;
-        div.style.top = `${node.y}px`;
-        div.style.width = "50px";
-        div.style.height = "50px";
-        div.style.borderRadius = "50%";
-        div.style.background = isUnlocked ? "#f1c40f" : (canUnlock ? "#3498db" : "#555");
-        div.style.border = "2px solid #fff";
-        div.style.cursor = "pointer";
-        div.style.display = "flex";
-        div.style.alignItems = "center";
-        div.style.justifyContent = "center";
-        div.style.fontSize = "20px";
-        div.title = `${node.name}\n${node.desc}\nCost: ${node.cost} SE`;
-        div.innerText = "⭐"; // Icon placeholder
-
-        div.onclick = () => {
-            const res = buyAscensionPerk(gameState, node.id);
-            if (res.success) {
-                if (window.audioController) window.audioController.playUnlock();
-                alert(res.msg);
-                document.body.removeChild(modal);
-                renderAscensionTree(); // Re-render to update
-                updateUI();
-            } else {
-                alert(res.msg);
-            }
-        };
-
-        container.appendChild(div);
-    });
-
-
-    renderQuests();
-    renderInventory();
-    renderExpeditions();
-    renderCrafting();
-    renderAchievements();
-    renderWar();
-    renderSpace();
-    renderHeroes();
-    renderGovernment();
-    renderGovernors();
-    renderCabinet();
-    renderDiplomacy();
-    renderReligion();
-    renderTrade();
-    renderWonders();
-    renderCrisis();
-    renderResearchTree();
-}
-
-function renderGovernors() {
-    const container = document.getElementById("governors-view");
-    if (!container || container.style.display === "none") return;
-
-    let list = document.getElementById("governor-list");
-    if (!list) {
-        list = document.createElement("div");
-        list.id = "governor-list";
-        container.appendChild(list);
-    }
-    list.innerHTML = "";
-
-    GOVERNORS.forEach(g => {
-        // Show if unlocked (Era check?) - For now show all or filter
-        // Simple filter: Show if Era index >= Governor Era Index
-        const gEraIdx = ERA_DATA.findIndex(e => e.name === g.era);
-        const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
-
-        if (currentEraIdx >= gEraIdx) {
-            const isHired = gameState.governors && gameState.governors.some(gov => gov.id === g.id);
-            const div = document.createElement("div");
-            div.className = `expedition-card ${isHired ? 'completed' : ''}`;
-
-            let costText = "";
-            for (let k in g.cost) costText += `${g.cost[k]} ${k} `;
-
-            div.innerHTML = `
-                <div style="float:left; font-size: 32px; margin-right: 15px;">${g.icon}</div>
-                <strong>${g.name}</strong> (${g.era})<br>
-                <small>${g.desc}</small><br>
-                ${isHired ? generateGovernorControls(g.id) : `<small>Cost: ${costText}</small><br><button onclick="attemptHireGovernor('${g.id}')">Hire</button>`}
-            `;
-            list.appendChild(div);
-        }
-    });
-}
-
-function generateGovernorControls(id) {
-    const gState = gameState.governors.find(g => g.id === id);
-    const isActive = gState ? gState.active : true;
-    const color = isActive ? "#2ecc71" : "#e74c3c";
-    const text = isActive ? "ON" : "OFF";
-    return `<button onclick="toggleGov('${id}')" style="background:${color}; width: 80px;">${text}</button>`;
-}
-
-window.toggleGov = function(id) {
-    toggleGovernor(gameState, id);
-    updateUI();
-};
-
-window.attemptHireGovernor = function(id) {
-    const res = hireGovernor(gameState, id);
-    if (res.success) {
-        if (window.audioController) window.audioController.playBuy();
-        alert(res.msg);
-        updateUI();
-    } else {
-        alert(res.msg);
-    }
-};
-
-function renderDiplomacy() {
-    const container = document.getElementById("diplomacy-view");
-    if (!container || container.style.display === "none") return;
-
-    const diplo = getDiplomacyState(gameState);
-    let list = document.getElementById("diplomacy-list");
-    if (!list) {
-        list = document.createElement("div");
-        list.id = "diplomacy-list";
-        container.appendChild(list);
-    }
-    list.innerHTML = "";
-
-    for (let id in diplo) {
-        const d = diplo[id];
-        const div = document.createElement("div");
-        div.className = "expedition-card";
-        div.innerHTML = `
-            <strong>${id}</strong><br>
-            Relation: ${d.relation} (${d.status})<br>
-            Trade: ${d.tradeDeal ? "Active" : "None"}<br>
-            <button onclick="doDiplo('${id}', 'improve')">Improve (500$)</button>
-            <button onclick="doDiplo('${id}', 'insult')">Insult</button>
-            <button onclick="doDiplo('${id}', 'trade_agreement')">Trade Deal</button>
-            <button onclick="doDiplo('${id}', 'alliance')">Alliance</button>
-        `;
-        list.appendChild(div);
-    }
-
-    renderEspionage();
-    renderCongress();
-}
-
-function renderCongress() {
-    const container = document.getElementById("congress-list");
-    if (!container) return;
-    container.innerHTML = "";
-
-    if (!gameState.congress) gameState.congress = { activeLaws: [], activeResolution: null, timer: 300 };
-    const cong = gameState.congress;
-
-    // Status
-    if (cong.sessionActive && cong.activeResolution) {
-        // Find resolution
-        // We need RESOLUTIONS import or fetch from somewhere.
-        // Ah, RESOLUTIONS is not exported to window scope. I need access to it.
-        // I can assume the ID is enough or reconstruct it.
-        // Wait, I imported { initCongress, ..., RESOLUTIONS?? } No, I didn't import RESOLUTIONS.
-        // I should import RESOLUTIONS in script.js to use it here.
-        // For now, I'll just show ID or assume logic works if I import it.
-        // Let's add RESOLUTIONS to the import block first?
-        // Or I can add a helper "getResolution(id)" in congress.js.
-        // Let's rely on basic display for now.
-
-        const res = RESOLUTIONS.find(r => r.id === cong.activeResolution) || { name: cong.activeResolution, desc: "Unknown" };
-        container.innerHTML = `
-            <div style="background:#8e44ad; padding:10px; color:white;">
-                <h4>⚠️ SESSION IN PROGRESS</h4>
-                <p><strong>${res.name}</strong></p>
-                <small>${res.desc}</small>
-                <p>Time Left: ${Math.floor(cong.timer)}s</p>
-                <button onclick="castVote('yes')">Vote YES</button>
-                <button onclick="castVote('no')">Vote NO</button>
-                <button onclick="castVote('abstain')">Abstain</button>
-            </div>
-        `;
-    } else {
-        container.innerHTML = `
-            <p>Next Session in: ${Math.floor(cong.timer)}s</p>
-            <h4>Active Laws:</h4>
-            ${cong.activeLaws.length > 0 ? cong.activeLaws.join(", ") : "None"}
-        `;
-    }
-}
-
-window.castVote = function(option) {
-    const res = vote(gameState, option);
-    alert(res.msg);
-    updateUI();
-};
-
-function renderEspionage() {
-    const container = document.getElementById("espionage-list");
-    if (!container) return;
-    container.innerHTML = "";
-
-    if (!gameState.espionage) gameState.espionage = { spies: [], maxSpies: 3 }; // ensure init
-
-    // Header
-    const cost = 1000 * Math.pow(2, gameState.espionage.spies.length);
-    const header = document.createElement("div");
-    header.innerHTML = `
-        <p>Spies: ${gameState.espionage.spies.length} / ${gameState.espionage.maxSpies}</p>
-        <button onclick="attemptTrainSpy()">Recruit Spy (${cost} Money)</button>
-    `;
-    container.appendChild(header);
-
-    // Spies
-    gameState.espionage.spies.forEach(spy => {
-        const div = document.createElement("div");
-        div.className = "expedition-card"; // Reuse
-
-        if (spy.status === 'mission') {
-            const timeLeft = Math.max(0, Math.floor((spy.missionEnd - Date.now())/1000));
-            div.innerHTML = `
-                <strong>🕵️ ${spy.name} (Lvl ${spy.level})</strong><br>
-                Status: On Mission (${timeLeft}s)<br>
-            `;
-        } else {
-            let missionOptions = "";
-            SPY_MISSIONS.forEach(m => {
-                missionOptions += `<button onclick="attemptMission(${spy.id}, '${m.id}')" style="font-size:10px; margin:2px;">${m.name} (${m.difficulty} Diff)</button>`;
-            });
-
-            div.innerHTML = `
-                <strong>🕵️ ${spy.name} (Lvl ${spy.level})</strong><br>
-                XP: ${spy.xp} / ${100 * spy.level}<br>
-                ${missionOptions}
-            `;
-        }
-        container.appendChild(div);
-    });
-}
-
-window.attemptTrainSpy = function() {
-    const res = trainSpy(gameState);
-    if (res.success) {
-        if (window.audioController) window.audioController.playBuy();
-        alert(res.msg);
-        updateUI();
-    } else {
-        alert(res.msg);
-    }
-};
-
-window.attemptMission = function(spyId, missionId) {
-    const res = startMission(gameState, spyId, missionId);
-    if (res.success) {
-        if (window.audioController) window.audioController.playEvent();
-        alert(res.msg);
-        updateUI();
-    } else {
-        alert(res.msg);
-    }
-};
-
-window.doDiplo = function(id, action) {
-    const res = interactDiplomacy(gameState, id, action);
-    alert(res.msg);
-    updateUI();
-};
-
-function renderReligion() {
-    const container = document.getElementById("religion-view");
-    if (!container || container.style.display === "none") return;
-
-    renderMuseum(gameState); // Inject Museum here
-
-    const rel = getReligionState(gameState);
-    let ui = document.getElementById("religion-ui");
-    if (!ui) {
-        ui = document.createElement("div");
-        ui.id = "religion-ui";
-        container.appendChild(ui);
-    }
-    ui.innerHTML = "";
-
-    if (!rel.founded) {
-        ui.innerHTML = `
-            <p>Religion requires 1000 Culture.</p>
-            <input id="rel-name" placeholder="Religion Name">
-            <button onclick="foundRel()">Found Religion</button>
-        `;
-    } else {
-        let dogmasHtml = "";
-        // Import DOGMAS? Or just hardcode list for UI?
-        // Need to import DOGMAS for description.
-        // For now, let's just list active ones.
-
-        rel.dogmas.forEach(d => dogmasHtml += `<div>Checking dogma ${d}...</div>`);
-
-        // Sanitize name to prevent XSS
-        const safeName = rel.name.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-        ui.innerHTML = `
-            <h3>${safeName}</h3>
-            <p>Faith: ${Math.floor(rel.faith)}</p>
-            <div>Dogmas: ${rel.dogmas.join(", ")}</div>
-            <hr>
-            <h4>Adopt Dogma (100 Faith)</h4>
-            <button onclick="adoptDog('pacifism')">Pacifism (+Happiness)</button>
-            <button onclick="adoptDog('crusade')">Holy War (+Army)</button>
-            <button onclick="adoptDog('tithing')">Tithing (+Money)</button>
-            <button onclick="adoptDog('scholasticism')">Scholasticism (+Knowl)</button>
-        `;
-    }
-}
-
-window.foundRel = function() {
-    const name = document.getElementById("rel-name").value;
-    if (!name) return;
-    const res = foundReligion(gameState, name);
-    alert(res.msg);
-    updateUI();
-};
-
-window.adoptDog = function(id) {
-    const res = adoptDogma(gameState, id);
-    alert(res.msg);
-    updateUI();
-};
-
-// Hook renderMuseum into renderReligion or separate?
-// Let's call it from updateUI or inside renderReligion if we group them.
-// Actually, let's group it inside renderReligion for simplicity as "Culture" tab equivalent.
-
-function renderCabinet() {
-    const container = document.getElementById("cabinet-view");
-    if (!container || container.style.display === "none") return;
-
-    let list = document.getElementById("minister-list");
-    if (!list) {
-        list = document.createElement("div");
-        list.id = "minister-list";
-        container.appendChild(list);
-    }
-    list.innerHTML = "";
-
-    MINISTERS.forEach(min => {
-        // Get State
-        let state = gameState.ministries ? gameState.ministries[min.id] : null;
-        if (!state) state = { level: 1, xp: 0 }; // Fallback display
-
-        // XP progress
-        const cost = Math.floor(100 * Math.pow(1.5, state.level - 1));
-        const pct = Math.min(100, Math.floor((state.xp / cost) * 100));
-
-        // Active Tactics
-        let tacticHtml = "";
-        min.tactics.forEach(t => {
-            const unlocked = state.level >= t.level;
-            tacticHtml += `<div style="color: ${unlocked ? '#2ecc71' : '#7f8c8d'}; font-size:10px;">
-                ${unlocked ? '✅' : '🔒'} Lvl ${t.level}: ${t.name} (${t.desc})
-            </div>`;
-        });
-
-        const div = document.createElement("div");
-        div.className = "expedition-card";
-        div.innerHTML = `
-            <div style="float:left; font-size: 32px; margin-right: 15px;">${min.icon}</div>
-            <strong>${min.title}</strong> (Lvl ${state.level})<br>
-            <small>${min.name} - ${min.desc}</small>
-            <div class="expedition-progress-bg" style="height: 5px; margin: 5px 0;">
-                <div class="expedition-progress-fill" style="width: ${pct}%"></div>
-            </div>
-            <div>${tacticHtml}</div>
-        `;
-        list.appendChild(div);
-    });
-}
-
-function renderCampaignModal() {
-    if (document.getElementById("campaign-modal")) return;
-
-    const modal = document.createElement("div");
-    modal.id = "campaign-modal";
-    modal.className = "modal-overlay";
-
-    let html = `
-        <div class="modal-content">
-            <h2>Story Campaign</h2>
-            <p>Complete chapters to unlock cosmetics and permanent buffs.</p>
-            <div style="display:flex; flex-direction:column; gap:10px;">
-    `;
-
-    CAMPAIGN_CHAPTERS.forEach(chap => {
-        const completed = gameState.campaign && gameState.campaign.completed.includes(chap.id);
-        const locked = !completed && gameState.campaign.completed.length < CAMPAIGN_CHAPTERS.indexOf(chap);
-
-        // Objectives HTML
-        let objHtml = "";
-        chap.objectives.forEach(obj => {
-            let met = false;
-            // Simplified check for UI visualization
-            if (obj.type === "resource") met = (gameState.resources[obj.key] || 0) >= obj.target;
-            if (obj.type === "building") met = (gameState.buildings[obj.key] ? gameState.buildings[obj.key].count : 0) >= obj.target;
-            if (obj.type === "era") met = (gameState.era === obj.target) || (ERA_DATA.findIndex(e => e.name === gameState.era) >= ERA_DATA.findIndex(e => e.name === obj.target));
-
-            // If already completed whole chapter, mark all met
-            if (completed) met = true;
-
-            objHtml += `<div style="font-size:11px; color:${met ? '#2ecc71' : '#e74c3c'}">${met ? '✓' : '○'} ${obj.desc}</div>`;
-        });
-
-        html += `
-            <div style="border: 1px solid #7f8c8d; padding: 10px; background: ${completed ? 'rgba(46, 204, 113, 0.2)' : (locked ? 'rgba(0,0,0,0.5)' : 'rgba(52, 152, 219, 0.2)')}; text-align:left;">
-                <div style="display:flex; justify-content:space-between;">
-                    <strong>${chap.title}</strong>
-                    <span>${completed ? 'COMPLETE' : (locked ? 'LOCKED' : 'ACTIVE')}</span>
-                </div>
-                <small style="font-style:italic">"${chap.lore}"</small>
-                <div style="margin-top:5px;">${objHtml}</div>
-                <small style="color:#f1c40f">Reward: ${chap.reward.text}</small>
-            </div>
-        `;
-    });
-
-    html += `<button onclick="document.body.removeChild(document.getElementById('campaign-modal'))" style="background:#c0392b; margin-top:20px;">Close</button></div></div>`;
-    modal.innerHTML = html;
-    document.body.appendChild(modal);
-}
-
-window.renderCampaignModal = renderCampaignModal;
-
-function renderTrade() {
-    const container = document.getElementById("trade-view");
-    if (!container || container.style.display === "none") return;
-
-    let list = document.getElementById("trade-list");
-    if (!list) {
-        list = document.createElement("div");
-        list.id = "trade-list";
-        container.appendChild(list);
-    }
-    list.innerHTML = "";
-
-    // Iterate tradeable resources
-    for (let res in TRADE_RATES) {
-        const rate = TRADE_RATES[res];
-        const div = document.createElement("div");
-        div.className = "expedition-card";
-        div.style.display = "flex";
-        div.style.justifyContent = "space-between";
-        div.style.alignItems = "center";
-
-        div.innerHTML = `
-            <div>
-                <strong>${res.toUpperCase()}</strong><br>
-                <small>Buy: ${rate.buy} | Sell: ${rate.sell}</small>
-            </div>
-            <div>
-                <button onclick="attemptTrade('buy', '${res}', 10)">Buy 10</button>
-                <button onclick="attemptTrade('sell', '${res}', 10)">Sell 10</button>
-                <button onclick="attemptTrade('buy', '${res}', 100)">x100</button>
-                <button onclick="attemptTrade('sell', '${res}', 100)">x100</button>
-            </div>
-        `;
-        list.appendChild(div);
-    }
-
-    renderStockMarket();
-}
-
-function renderStockMarket() {
-    const container = document.getElementById("stock-list");
-    if (!container) return;
-    container.innerHTML = "";
-
-    if (!gameState.stockMarket) gameState.stockMarket = { stocks: {} };
-    const stocks = gameState.stockMarket.stocks;
-
-    COMPANIES.forEach(c => {
-        const stock = stocks[c.id] || { currentPrice: c.basePrice, owned: 0 };
-        const price = Math.floor(stock.currentPrice);
-        const change = stock.history && stock.history.length > 1 ?
-            Math.floor(((stock.currentPrice - stock.history[stock.history.length-2]) / stock.history[stock.history.length-2]) * 100) : 0;
-
-        const color = change >= 0 ? "#2ecc71" : "#e74c3c";
-        const sign = change >= 0 ? "+" : "";
-
-        const div = document.createElement("div");
-        div.className = "expedition-card";
-        div.innerHTML = `
-            <div style="display:flex; justify-content:space-between;">
-                <div>
-                    <strong>${c.name}</strong> (${c.industry})<br>
-                    Price: <span style="color:${color}">${price} (${sign}${change}%)</span><br>
-                    Owned: ${stock.owned}
-                </div>
-                <div>
-                    <button onclick="doStock('buy', '${c.id}', 1)">Buy 1</button>
-                    <button onclick="doStock('buy', '${c.id}', 10)">Buy 10</button>
-                    <button onclick="doStock('sell', '${c.id}', 1)">Sell 1</button>
-                    <button onclick="doStock('sell', '${c.id}', 10)">Sell 10</button>
-                </div>
-            </div>
-        `;
-        container.appendChild(div);
-    });
-}
-
-window.doStock = function(action, id, amount) {
-    if (action === "buy") {
-        const res = buyStock(gameState, id, amount);
-        alert(res.msg);
-    } else {
-        const res = sellStock(gameState, id, amount);
-        alert(res.msg);
-    }
-    updateUI();
-};
-
-window.attemptTrade = function(action, resource, amount) {
-    const res = tradeResource(gameState, action, resource, amount);
-    if (res.success) {
-        if (window.audioController) window.audioController.playBuy();
-        // Don't alert on trade success to allow spamming, just update UI
-        // Or show a toast?
-        updateUI();
-    } else {
-        alert(res.msg);
-    }
-};
-
-function renderWonders() {
-    const container = document.getElementById("wonders-view");
-    if (!container || container.style.display === "none") return;
-
-    // Assuming structure exists, else inject
-    let list = document.getElementById("wonder-list");
-    if (!list) {
-        list = document.createElement("div");
-        list.id = "wonder-list";
-        container.appendChild(list);
-    }
-
-    list.innerHTML = "";
-
-    WONDERS.forEach(w => {
-        // Only show if visible (based on Era?)
-        // Let's show all for now or filter by current era index
-
-        const isBuilt = gameState.wonders && gameState.wonders.includes(w.id);
-        const div = document.createElement("div");
-        div.className = `expedition-card ${isBuilt ? 'completed' : ''}`;
-
-        let costText = "";
-        for (let k in w.cost) costText += `${w.cost[k]} ${k} `;
-
-        div.innerHTML = `
-            <div style="float:left; font-size: 32px; margin-right: 15px;">${w.icon}</div>
-            <strong>${w.name}</strong> (${w.era})<br>
-            <small>${w.description}</small><br>
-            <span style="color: #f1c40f">${w.bonusText}</span><br>
-            ${isBuilt ? "<strong>CONSTRUCTED</strong>" : `<small>Cost: ${costText}</small><br><button onclick="attemptBuildWonder('${w.id}')">Build Wonder</button>`}
-        `;
-        list.appendChild(div);
-    });
-}
-
-window.attemptBuildWonder = function(id) {
-    const res = buildWonder(gameState, id);
-    if (res.success) {
-        if (window.audioController) window.audioController.playEvent();
-
-        const w = WONDERS.find(x => x.id === id);
-        if (window.mapEngine && w) {
-            window.mapEngine.addBuilding("Wonder", w.icon);
-        }
-
-        alert(res.msg);
-        updateUI();
-    } else {
-        alert(res.msg);
-    }
-};
-
-function renderCrisis() {
-    // Overlay or Widget? Let's do a widget in the Space View if active
-    if (!gameState.crisis || !gameState.crisis.active) return;
-
-    const container = document.getElementById("crisis-widget");
-    if (!container) {
-        const spaceView = document.getElementById("space-view");
-        if (spaceView) {
-            const div = document.createElement("div");
-            div.id = "crisis-widget";
-            div.style.background = "#c0392b";
-            div.style.padding = "15px";
-            div.style.marginBottom = "20px";
-            div.style.border = "2px solid #e74c3c";
-            div.style.color = "white";
-            spaceView.insertBefore(div, spaceView.firstChild);
-        }
-    }
-
-    const widget = document.getElementById("crisis-widget");
-    if (widget) {
-        const threat = Math.floor(gameState.crisis.threat);
-        const stage = CRISIS_STAGES.find(s => threat >= s.threshold) || CRISIS_STAGES[0]; // Logic might need reverse sort or just simple check
-        // Actually threshold is lower bound. So we want largest threshold <= threat.
-        const currentStage = [...CRISIS_STAGES].reverse().find(s => threat >= s.threshold) || CRISIS_STAGES[0];
-
-        widget.innerHTML = `
-            <h3>⚠️ VOID CRISIS ACTIVE ⚠️</h3>
-            <p>Threat Level: ${threat}% (${currentStage.name})</p>
-            <p>${currentStage.desc}</p>
-            <div style="width:100%; background:#555; height:20px;">
-                <div style="width:${threat}%; background:#fff; height:100%;"></div>
-            </div>
-            <br>
-            <button onclick="launchCounterOffensive()">Launch Counter-Offensive (5k Knowl/Gold)</button>
-        `;
-    }
-}
-
-window.launchCounterOffensive = function() {
-    const res = fightCrisis(gameState);
-    alert(res);
-    updateUI();
-};
-
-function renderGovernment() {
-    const container = document.getElementById("government-view");
-    if (!container || container.style.display === "none") return;
-
-    // Current Gov
-    const currentGov = GOVERNMENTS.find(g => g.id === gameState.government.type) || GOVERNMENTS[0];
-
-    // Dynasty Info
-    let dynastyHtml = "";
-    if (gameState.dynasty && gameState.dynasty.currentRuler) {
-        const r = gameState.dynasty.currentRuler;
-        const heir = gameState.dynasty.heir;
-
-        let traitHtml = "";
-        r.traits.forEach(t => traitHtml += `<span class="tag">${t.name}</span> `);
-
-        dynastyHtml = `
-            <div style="background: rgba(241, 196, 15, 0.1); padding: 10px; border: 1px solid #f1c40f; margin-bottom: 10px;">
-                <h4>👑 Ruling Dynasty: ${r.name} (Age: ${Math.floor(r.age)})</h4>
-                <p>Traits: ${traitHtml}</p>
-                <small>Heir: ${heir ? heir.name : "None"} (${heir ? Math.floor(heir.age) : 0})</small>
-            </div>
-        `;
-    }
-
-    document.getElementById("gov-current").innerHTML = `
-        ${dynastyHtml}
-        Current Form: <strong>${currentGov.name}</strong><br><small>${currentGov.desc}</small>
-    `;
-
-    // Switch Gov
-    const govList = document.getElementById("gov-list");
-    govList.innerHTML = "";
-    GOVERNMENTS.forEach(g => {
-        if (g.id === currentGov.id) return;
-        const div = document.createElement("div");
-        div.className = "recipe-card"; // Reuse
-        div.innerHTML = `
-            <strong>${g.name}</strong> (${g.era})<br>
-            <small>${g.desc}</small><br>
-            <button onclick="switchGov('${g.id}')">Adopt (500 Culture)</button>
-        `;
-        govList.appendChild(div);
-    });
-
-    // Policies
-    const polList = document.getElementById("policy-list");
-    polList.innerHTML = "";
-    POLICIES.forEach(p => {
-        const active = gameState.government.policies.includes(p.id);
-        const div = document.createElement("div");
-        div.className = `expedition-card ${active ? 'active-mission' : ''}`; // Reuse
-
-        let costText = "";
-        for (let k in p.cost) costText += `${p.cost[k]} ${k} `;
-
-        div.innerHTML = `
-            <strong>${p.name}</strong><br>
-            <small>${p.desc}</small><br>
-            <button onclick="togglePol('${p.id}')">${active ? 'Repeal' : `Enact (${costText})`}</button>
-        `;
-        polList.appendChild(div);
-    });
-}
-
-window.switchGov = function(id) {
-    if (adoptGovernment(gameState, id)) {
-        if (window.audioController) window.audioController.playEvent();
-        alert("Government changed!");
-        updateUI();
-    } else {
-        alert("Cannot adopt (Cost: 500 Culture)!");
-    }
-};
-
-window.togglePol = function(id) {
-    const res = togglePolicy(gameState, id);
-    if (res) {
-        if (window.audioController) window.audioController.playBuy();
-        alert(`Policy ${res}!`);
-        updateUI();
-    } else {
-        alert("Cannot toggle policy (Cost/Limit)!");
-    }
-};
-
-function renderHeroes() {
-    const container = document.getElementById("heroes-view");
-    if (!container || container.style.display === "none") return;
-
-    document.getElementById("gpp-display").innerText = `Great People Points: ${Math.floor(gameState.heroes.gpp)} / ${Math.floor(gameState.heroes.threshold)}`;
-
-    const list = document.getElementById("hero-list");
-    list.innerHTML = "";
-
-    gameState.heroes.owned.forEach(h => {
-        const div = document.createElement("div");
-        div.className = "recipe-card"; // Reuse
-        div.innerHTML = `
-            <div style="float:left; font-size: 24px; margin-right: 10px;">${h.icon}</div>
-            <strong>${h.name}</strong> (${h.title})<br>
-            <small>${h.desc}</small>
-        `;
-        list.appendChild(div);
-    });
-}
-
-window.recruitHeroBtn = function() {
-    const hero = recruitHero(gameState);
-    if (hero) {
-        if (window.audioController) window.audioController.playEvent();
-        alert(`Recruited ${hero.name}!`);
-        updateUI();
-    } else {
-        alert("Not enough GPP or all heroes collected.");
-    }
-};
-
-function renderSpace() {
-    const container = document.getElementById("space-view");
-    // Only show if Space is unlocked
-    if (!gameState.space || gameState.space.planets.length === 0) {
-        if (container) container.style.display = "none";
-        // Also hide tab button if we had one (we don't yet in HTML)
-        return;
-    }
-
-    // Check if we need to inject the tab button dynamically or just assume it exists
-    let tabBtn = document.getElementById("tab-btn-space");
-    if (!tabBtn) {
-        const tabs = document.getElementById("tabs");
-        if (tabs) {
-            tabBtn = document.createElement("button");
-            tabBtn.id = "tab-btn-space";
-            tabBtn.className = "tab-btn";
-            tabBtn.innerText = "Space 🚀";
-            tabBtn.onclick = () => showTab('space');
-            tabs.appendChild(tabBtn);
-
-            // Also create view if missing
-            if (!container) {
-                const view = document.createElement("div");
-                view.id = "space-view";
-                view.className = "tab-view";
-                view.style.display = "none";
-                view.innerHTML = `<h3>Space Exploration <button class="help-btn" onclick="showHelp('space')">?</button></h3><div id="deep-space-panel"></div><div id="planet-list"></div>`;
-                document.getElementById("tab-content").appendChild(view);
-            }
-        }
-    }
-
-    // Deep Space Scanner
-    const scannerPanel = document.getElementById("deep-space-panel");
-    if (scannerPanel) {
-        if (gameState.victoryClaimed || (gameState.stats && gameState.stats.transcendenceCount > 0)) {
-            const scanCost = Math.floor(1000000 * Math.pow(1.5, Math.max(0, gameState.space.planets.length - 5)));
-            scannerPanel.innerHTML = `
-                <div style="background: rgba(0,0,0,0.5); border: 1px solid #3498db; padding: 10px; margin-bottom: 10px;">
-                    <h4>🔭 Deep Space Observatory</h4>
-                    <p>Scan for new procedurally generated exoplanets.</p>
-                    <button onclick="scanNewPlanet()" class="action-btn">Scan Deep Space (${formatNumber(scanCost)} 📚)</button>
-                </div>
-            `;
-        } else {
-            scannerPanel.innerHTML = "";
-        }
-    }
-
-    // Render Planets
-    const list = document.getElementById("planet-list");
-    if (!list) return;
-
-    // Only render if visible to save perf
-    if (document.getElementById("space-view").style.display === "none") return;
-
-    list.innerHTML = "";
-    gameState.space.planets.forEach(p => {
-        const div = document.createElement("div");
-        div.className = `expedition-card ${p.colonized ? 'completed' : ''}`;
-
-        let costText = "";
-        for (let k in p.cost) costText += `${p.cost[k]} ${k} `;
-
-        div.innerHTML = `
-            <div style="float:left; font-size: 32px; margin-right: 15px;">${p.icon}</div>
-            <strong>${p.name}</strong> (${p.colonized ? 'Colonized' : 'Unexplored'})<br>
-            <small>Resources: ${p.resources.join(", ")}</small><br>
-            ${!p.colonized ?
-                `<small>Cost: ${costText}</small><br><button onclick="attemptColonize('${p.id}')">Colonize</button>` :
-                `<small>Producing: ${p.production.money} Gold, ${p.production.knowledge} Knowl / sec</small><br>
-                 <small>Terraform Lvl: ${p.terraformLevel || 0} / 5</small><br>
-                 <button onclick="attemptTerraform('${p.id}')">Terraform (Cost: ${5000 * Math.pow(2, p.terraformLevel || 0)} Energy)</button>`
-            }
-        `;
-        list.appendChild(div);
-    });
-}
-
-window.attemptTerraform = function(planetId) {
-    const res = terraformPlanet(gameState, planetId);
-    if (res.success) {
-        if (window.audioController) window.audioController.playEvent();
-        alert(res.msg);
-        updateUI();
-    } else {
-        alert(res.msg);
-    }
-};
-
-// Expose for testing/UI
-window.renderSpace = renderSpace;
-window.checkParadoxes = checkParadoxes;
-window.checkCrisis = checkCrisis;
-window.renderCrisis = renderCrisis;
-window.checkEraProgress = checkEraProgress;
-
-window.attemptColonize = function(planetId) {
-    if (colonizePlanet(gameState, planetId)) {
-        if (window.audioController) window.audioController.playEvent();
-        alert("Colonization Successful!");
-        updateUI();
-    } else {
-        alert("Not enough resources!");
-    }
-};
-
-function renderWar() {
-    const container = document.getElementById("war-view");
-    if (!container || container.style.display === "none") return;
-
-    // Check if Battle Active
-    if (gameState.battle && gameState.battle.active) {
-        renderBattleArena(container);
-        return;
-    } else if (gameState.battle && gameState.battle.resultMsg) {
-        // Battle just ended, show summary then clear
-        // We need a way to clear it. Maybe a "Continue" button.
-        container.innerHTML = `
-            <div style="text-align:center; padding: 20px;">
-                <h2>${gameState.battle.result === 'win' ? 'VICTORY 🏆' : 'DEFEAT 💀'}</h2>
-                <p>${gameState.battle.resultMsg}</p>
-                <button onclick="window.clearBattle()" style="font-size:18px; padding:10px;">Continue</button>
-            </div>
-        `;
-        return;
-    }
-
-    // Default View (Train/Rivals)
-    // We need to restore the layout if it was replaced by battle arena
-    // Rebuild basic layout if missing
-    if (!document.getElementById("unit-list")) {
-        container.innerHTML = `
-            <h3>Civilization Wars <button class="help-btn" onclick="showHelp('war')">?</button></h3>
-            <p id="army-power">Army Power: 0</p>
-            <p id="war-weariness-display">War Weariness: 0%</p>
-            <div style="display:flex; gap: 20px;">
-                <div style="flex:1">
-                    <h4>Train Units</h4>
-                    <div id="unit-list"></div>
-                </div>
-                <div style="flex:1">
-                    <h4>Rivals</h4>
-                    <div>
-                        <label>Select Tactic:</label>
-                        <select id="tactic-select" onchange="updateUI()">
-                            <!-- Tactics injected via JS -->
-                        </select>
-                    </div>
-                    <div id="rival-list"></div>
-                </div>
-            </div>
-        `;
-        // Re-populate Tactics
-        const sel = document.getElementById("tactic-select");
-        TACTICS.forEach(t => {
-            const opt = document.createElement("option");
-            opt.value = t.id;
-            opt.innerText = t.name;
-            sel.appendChild(opt);
-        });
-    }
-
-    // Render Units
-    const unitList = document.getElementById("unit-list");
-    unitList.innerHTML = "";
-    for (let key in UNITS) {
-        const u = UNITS[key];
-        const owned = gameState.army ? (gameState.army[key] || 0) : 0;
-        let costText = "";
-        for (let res in u.cost) costText += `${u.cost[res]} ${res} `;
-
-        const div = document.createElement("div");
-        div.className = "recipe-card";
-        div.innerHTML = `
-            <div style="float:left; font-size: 24px; margin-right: 10px;">${u.icon}</div>
-            <strong>${u.name}</strong> (Atk: ${u.attack})<br>
-            <small>Cost: ${costText}</small><br>
-            <button onclick="trainUnit('${key}')">Train (Owned: ${owned})</button>
-        `;
-        unitList.appendChild(div);
-    }
-
-    // Render Rivals
-    const rivalList = document.getElementById("rival-list");
-    rivalList.innerHTML = "";
-    RIVALS.forEach((rival, idx) => {
-        const div = document.createElement("div");
-        div.className = "expedition-card";
-        let lootText = "";
-        for (let k in rival.loot) lootText += `${rival.loot[k]} ${k} `;
-        div.innerHTML = `
-            <strong>${rival.name}</strong> (Power: ~${rival.power})<br>
-            <small>Loot: ${lootText}</small><br>
-            <button onclick="attackRival(${idx})">Attack!</button>
-        `;
-        rivalList.appendChild(div);
-    });
-
-    // Stats
-    const sel = document.getElementById("tactic-select");
-    const tacticId = sel ? sel.value : null;
-    let power = calculateArmyPower(gameState.army || {}, tacticId);
-    const armyMult = getGlobalMultiplier("army_power", null);
-    power = Math.floor(power * armyMult);
-    document.getElementById("army-power").innerText = `Army Power: ${power}`;
-
-    // War Weariness
-    const ww = Math.floor(gameState.warWeariness || 0);
-    document.getElementById("war-weariness-display").innerText = `War Weariness: ${ww}%`;
-}
-
-function renderBattleArena(container) {
-    const b = gameState.battle;
-    if (!b) return;
-
-    // Calc Percentages
-    const pPct = Math.max(0, Math.min(100, (b.playerCurrentPower / b.playerStartPower) * 100));
-    const ePct = Math.max(0, Math.min(100, (b.enemyCurrentPower / b.enemyStartPower) * 100));
-
-    container.innerHTML = `
-        <div class="battle-arena">
-            <h3>⚔️ BATTLE IN PROGRESS ⚔️</h3>
-            <p>Fighting: ${b.rival.name}</p>
-            <p>Enemy Tactic: <strong>${b.enemyTactic}</strong></p>
-
-            <div style="display:flex; justify-content:space-between; margin-top:20px;">
-                <div style="flex:1; padding:10px;">
-                    <strong>Player Army</strong><br>
-                    Power: ${Math.floor(b.playerCurrentPower)} / ${Math.floor(b.playerStartPower)}
-                    <div class="hp-bar-container">
-                        <div class="hp-bar-fill player" style="width:${pPct}%"></div>
-                    </div>
-                </div>
-
-                <div style="flex:1; padding:10px;">
-                    <strong>Enemy Army</strong><br>
-                    Power: ${Math.floor(b.enemyCurrentPower)} / ${Math.floor(b.enemyStartPower)}
-                    <div class="hp-bar-container">
-                        <div class="hp-bar-fill enemy" style="width:${ePct}%"></div>
-                    </div>
-                </div>
-            </div>
-
-            <p style="color:#e74c3c; margin-top:10px;">War Weariness: ${Math.floor(gameState.warWeariness)}%</p>
-            <button onclick="window.retreat()" style="background:#c0392b; font-size:18px; padding:10px; margin-top:20px;">🏳️ RETREAT</button>
-        </div>
-    `;
-}
-
-window.clearBattle = function() {
-    gameState.battle = null;
-    updateUI();
-};
-
-window.retreat = function() {
-    retreatBattle(gameState);
-    applyWarEconomy(false);
-    updateUI();
-};
-
-window.trainUnit = function(unitKey) {
-    // Challenge Constraint: No War
-    if (gameState.activeChallenge === "pacifist") {
-        alert("Challenge Constraint: Cannot train military units!");
-        return;
-    }
-
-    if (!gameState.army) gameState.army = {};
-    const unit = UNITS[unitKey];
-
-    // Check cost
-    for (let res in unit.cost) {
-        if ((gameState.resources[res] || 0) < unit.cost[res]) {
-            alert(`Not enough ${res}!`);
-            return;
-        }
-    }
-
-    // Pay
-    for (let res in unit.cost) {
-        gameState.resources[res] -= unit.cost[res];
-    }
-
-    if (!gameState.army[unitKey]) gameState.army[unitKey] = 0;
-    gameState.army[unitKey]++;
-
-    if (window.audioController) window.audioController.playBuy();
-    updateUI();
-};
-
-window.attackRival = function(idx) {
-    // Challenge Constraint: No War
-    if (gameState.activeChallenge === "pacifist") {
-        alert("Challenge Constraint: Cannot declare war!");
-        return;
-    }
-
-    const tactic = document.getElementById("tactic-select") ? document.getElementById("tactic-select").value : null;
-    const armyMult = getGlobalMultiplier("army_power", null);
-
-    // Use new system
-    const res = startBattle(gameState, idx, tactic, armyMult);
-    if (res.success) {
-        applyWarEconomy(true);
-    } else {
-        alert(res.msg);
-    }
-    updateUI();
-};
-
-// Expose
-window.updateUI = updateUI;
-
-function renderAchievements() {
-    const container = document.getElementById("achievement-list");
-    if (!container) return;
-
-    // Only update if not visible? Or always?
-    // Optimization: Check if currently visible or dirty.
-    if (document.getElementById("achievements-view").style.display === "none") return;
-
-    container.innerHTML = "";
-    ACHIEVEMENTS.forEach(ach => {
-        const unlocked = gameState.achievements.includes(ach.id);
-        const div = document.createElement("div");
-        div.className = `achievement-card ${unlocked ? 'unlocked' : 'locked'}`;
-        div.innerHTML = `
-            <div style="float:left; font-size: 24px; margin-right: 10px;">${ach.icon}</div>
-            <strong>${ach.name}</strong><br>
-            <small>${ach.description}</small>
-        `;
-        container.appendChild(div);
-    });
-}
-
-function renderCrafting() {
-    const container = document.getElementById("recipe-list");
-    if (!container) return;
-
-    // Simple clear/redraw
-    container.innerHTML = "";
-    if (allRecipes.length === 0) {
-        container.innerHTML = "<p>No recipes available.</p>";
-        return;
-    }
-
-    allRecipes.forEach(recipe => {
-        const div = document.createElement("div");
-        div.className = "recipe-card";
-
-        // Inputs text
-        let inputsText = [];
-        for (let key in recipe.inputs) {
-            inputsText.push(`${recipe.inputs[key]} ${key}`);
-        }
-
-        // Output text
-        let outputText = recipe.output.name || "Item";
-
-        // Check affordability
-        let canAfford = true;
-        for (let key in recipe.inputs) {
-            const cost = recipe.inputs[key];
-            if (gameState.resources[key] === undefined || gameState.resources[key] < cost) {
-                canAfford = false;
-                break;
-            }
-        }
-
-        div.innerHTML = `
-            <div style="float:left; font-size: 20px; margin-right: 8px;">${recipe.icon || '🛠️'}</div>
-            <strong>${recipe.name}</strong><br>
-            <small>Requires: ${inputsText.join(", ")}</small><br>
-            <small>Produces: ${outputText}</small><br>
-            <button onclick="craftItem('${recipe.id}')" ${canAfford ? '' : 'disabled'}>Craft</button>
-        `;
-
-        container.appendChild(div);
-    });
-}
-
-window.craftItem = function(recipeId) {
-    const recipe = allRecipes.find(r => r.id === recipeId);
-    if (!recipe) return;
-
-    // Validate again
-    let canAfford = true;
-    for (let key in recipe.inputs) {
-        const cost = recipe.inputs[key];
-        if (gameState.resources[key] === undefined || gameState.resources[key] < cost) {
-            canAfford = false;
-            break;
-        }
-    }
-
-    if (canAfford) {
-        if (window.audioController) window.audioController.playBuy();
-        // Deduct
-        for (let key in recipe.inputs) {
-            gameState.resources[key] -= recipe.inputs[key];
-        }
-
-        // Grant output
-        const item = {
-            id: `crafted_${Date.now()}`,
-            name: recipe.output.name,
-            icon: recipe.icon,
-            rarity: recipe.output.rarity,
-            description: recipe.output.desc,
-            effect: recipe.output.effect
-        };
-        if (!gameState.craftedItems) gameState.craftedItems = [];
-        gameState.craftedItems.push(item);
-
-        alert(`Crafted ${recipe.name}!`);
-        updateUI();
-    } else {
-        alert("Not enough resources!");
-    }
-};
-
-function renderInventory() {
-    const container = document.getElementById("inventory-list");
-    if (!container) return;
-
-    container.innerHTML = "";
-    const allItems = [...(gameState.inventory || []), ...(gameState.craftedItems || [])];
-    if (allItems.length === 0) {
-        container.innerHTML = "<p>No relics or gear yet.</p>";
-        return;
-    }
-
-    allItems.forEach(relic => {
-        const div = document.createElement("div");
-        div.className = `relic-card rarity-${relic.rarity.toLowerCase()}`;
-        div.title = relic.description;
-        div.innerHTML = `
-            <div style="float:left; font-size: 24px; margin-right: 10px;">${relic.icon || '🏺'}</div>
-            <strong>${relic.name}</strong><br><small>${relic.rarity}</small>
-        `;
-        container.appendChild(div);
-    });
-}
-
-function renderExpeditions() {
-    const container = document.getElementById("expedition-list");
-    if (container) {
-        container.innerHTML = "";
-
-        // Header with Reroll
-        const header = document.createElement("div");
-        let rerollText = "Reroll (Free)";
-        if (gameState.reroll.count >= 2) rerollText = `Reroll (${gameState.reroll.cost} Knowl)`;
-
-        header.innerHTML = `<button onclick="rerollExpeditions()" style="width:100%; margin-bottom:10px; background-color:#9b59b6;">${rerollText}</button>`;
-        container.appendChild(header);
-
-        // Hide list if expedition active (limit 1)
-        if (gameState.activeExpeditions.length > 0) {
-            container.innerHTML += "<p><em>Expedition in progress...</em></p>";
-        } else {
-            const available = allExpeditions.slice(0, 5);
-
-            available.forEach(exp => {
-                const div = document.createElement("div");
-                div.className = "expedition-card";
-
-                const hours = Math.floor(exp.duration / 3600);
-                const mins = Math.floor((exp.duration % 3600) / 60);
-                const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-
-                const riskColor = exp.risk > 50 ? "#e74c3c" : "#f1c40f";
-
-                // Obfuscate Loot
-                const minLoot = Math.floor(exp.rewards.loot.amount * 0.8);
-                const maxLoot = Math.floor(exp.rewards.loot.amount * 1.2);
-
-                div.innerHTML = `
-                    <div style="float:left; font-size: 24px; margin-right: 10px;">${exp.icon || '🗺️'}</div>
-                    <strong>${exp.name}</strong><br>
-                    <span style="color: ${riskColor}">Risk: ${exp.risk}%</span> | Duration: ${timeStr}<br>
-                    <small>Loot: ${minLoot}-${maxLoot} ${exp.rewards.loot.type}</small><br>
-                    <button onclick="startExpedition('${exp.id}')">Start (Cost: ${exp.cost.food} 🍞)</button>
-                `;
-                container.appendChild(div);
-            });
-        }
-    }
-
-    // 2. Active List (Status Card)
-    const activeContainer = document.getElementById("active-expedition-list");
-    if (activeContainer) {
-        activeContainer.innerHTML = "";
-        if (gameState.activeExpeditions.length === 0) {
-            activeContainer.innerHTML = "<p>No active expeditions.</p>";
-        } else {
-            gameState.activeExpeditions.forEach(exp => {
-                const div = document.createElement("div");
-                div.className = "expedition-card active-mission";
-                const pct = Math.min(100, (exp.progress / exp.duration) * 100);
-                div.onclick = () => alert(`Status: ${exp.name}\nProgress: ${Math.floor((exp.progress/exp.duration)*100)}%`);
-
-                div.innerHTML = `
-                    <strong>IN PROGRESS: ${exp.name}</strong><br>
-                    <div class="expedition-progress-bg" style="height: 20px;">
-                        <div class="expedition-progress-fill" style="width: ${pct}%"></div>
-                    </div>
-                    <small>Tap for details</small>
-                `;
-                activeContainer.appendChild(div);
-            });
-        }
-    }
-}
-
-window.startExpedition = function(expId) {
-    // Limit active
-    if (gameState.activeExpeditions.length >= 1) {
-        alert("Only 1 active expedition allowed!");
-        return;
-    }
-
-    const template = allExpeditions.find(e => e.id === expId);
-    if (!template) return;
-
-    const instance = {
-        ...template,
-        progress: 0,
-        startTime: Date.now()
-    };
-
-    gameState.activeExpeditions.push(instance);
-    updateUI();
-};
-
-function completeExpedition(exp) {
-    const index = gameState.activeExpeditions.indexOf(exp);
-    if (index > -1) {
-        gameState.activeExpeditions.splice(index, 1);
-    }
-
-    // Risk Check
-    const roll = Math.random() * 100;
-    if (roll < exp.risk) {
-        // Failed
-        if (window.audioController) window.audioController.playError();
-        const log = `Expedition '${exp.name}' FAILED! (Rolled ${Math.floor(roll)} vs Risk ${exp.risk}). All resources lost.`;
-        console.log(log);
-        alert(log);
-        updateUI();
-        return;
-    }
-
-    // Success
-    if (window.audioController) window.audioController.playEvent();
-    let log = `Expedition '${exp.name}' SUCCESS! `;
-
-    // Stats
-    if (!gameState.stats) gameState.stats = {};
-    if (!gameState.stats.expeditionsCompleted) gameState.stats.expeditionsCompleted = 0;
-    gameState.stats.expeditionsCompleted++;
-
-    if (exp.rewards.relics > 0) {
-        const relic = allRelics[Math.floor(Math.random() * allRelics.length)];
-        gameState.inventory.push(relic);
-
-        // Stats
-        if (!gameState.stats.relicsFound) gameState.stats.relicsFound = 0;
-        gameState.stats.relicsFound++;
-
-        log += `Found relic: ${relic.name}. `;
-    }
-
-    if (exp.rewards.money > 0) {
-        gameState.resources.money += exp.rewards.money;
-        log += `Gained ${exp.rewards.money} Gold. `;
-    }
-
-    if (exp.rewards.loot) {
-        const type = exp.rewards.loot.type;
-        let amount = exp.rewards.loot.amount;
-
-        // Paradox, Civ, Hero Check
-        const pMult = getGlobalMultiplier("production_mult", type);
-        amount = Math.floor(amount * pMult);
-
-        if (gameState.resources[type] !== undefined) {
-            gameState.resources[type] += amount;
-
-            // Track History
-            if (!gameState.stats.history) gameState.stats.history = {};
-            if (!gameState.stats.history[gameState.era]) gameState.stats.history[gameState.era] = {};
-
-            if (type === "wood") {
-                if (!gameState.stats.history[gameState.era].woodGathered) gameState.stats.history[gameState.era].woodGathered = 0;
-                gameState.stats.history[gameState.era].woodGathered += amount;
-            }
-
-            log += `Gained ${amount} ${type}. `;
-        }
-    }
-
-    console.log(log);
-    alert(log);
-    updateUI();
-}
-
-window.rerollExpeditions = function() {
-    // Check cost
-    let cost = 0;
-    if (gameState.reroll.count >= 2) {
-        cost = gameState.reroll.cost;
-        if (gameState.resources.knowledge < cost) {
-            alert(`Not enough Knowledge! Need ${cost}.`);
-            return;
-        }
-    }
-
-    // Pay
-    if (cost > 0) {
-        gameState.resources.knowledge -= cost;
-        gameState.reroll.cost *= 2; // Double cost
-    }
-
-    gameState.reroll.count++;
-    allExpeditions = generateExpeditions(); // Refresh
-    updateUI();
-};
-
-function renderQuests() {
-    const container = document.getElementById("quest-list");
-    if (!container) return;
-
-    container.innerHTML = "";
-
-    if (gameState.quests.length === 0) {
-        container.innerHTML = "<p>No active quests.</p>";
-        return;
-    }
-
-    gameState.quests.forEach(q => {
-        const div = document.createElement("div");
-        div.className = `quest-card ${q.completed ? 'completed' : ''} ${q.claimed ? 'claimed' : ''}`;
-
-        const title = document.createElement("div");
-        title.className = "quest-title";
-        title.innerText = q.title;
-        div.appendChild(title);
-
-        const progContainer = document.createElement("div");
-        progContainer.className = "quest-progress";
-        const bar = document.createElement("div");
-        bar.className = "quest-bar";
-        const pct = Math.min(100, Math.floor((q.progress / q.target) * 100));
-        bar.style.width = `${pct}%`;
-        progContainer.appendChild(bar);
-        div.appendChild(progContainer);
-
-        const status = document.createElement("div");
-        status.style.fontSize = "10px";
-        status.style.textAlign = "right";
-        status.innerText = `${q.progress} / ${q.target}`;
-        div.appendChild(status);
-
-        if (q.completed && !q.claimed) {
-            const btn = document.createElement("button");
-            btn.className = "quest-reward-btn";
-            let rewardText = "";
-            if (q.reward.clicks) rewardText += `+${q.reward.clicks} Clicks `;
-            if (q.reward.se) rewardText += `+${q.reward.se} SE`;
-            btn.innerText = `Claim: ${rewardText}`;
-            btn.onclick = () => window.claimQuest(q.id);
-            div.appendChild(btn);
-        } else if (q.claimed) {
-            const lbl = document.createElement("div");
-            lbl.innerText = "Claimed";
-            lbl.style.textAlign = "center";
-            lbl.style.fontStyle = "italic";
-            div.appendChild(lbl);
-        }
-
-        container.appendChild(div);
-    });
-}
-
-window.renderResearchTree = function() {
-    const container = document.getElementById("research-container");
-    if (!container) return;
-
-    // Enable Pan/Drag
-    let isDragging = false;
-    let startX, startY, scrollLeft, scrollTop;
-
-    container.onmousedown = (e) => {
-        isDragging = true;
-        container.classList.add("active");
-        startX = e.pageX - container.offsetLeft;
-        startY = e.pageY - container.offsetTop;
-        scrollLeft = container.scrollLeft;
-        scrollTop = container.scrollTop;
-    };
-    container.onmouseleave = () => { isDragging = false; container.classList.remove("active"); };
-    container.onmouseup = () => { isDragging = false; container.classList.remove("active"); };
-    container.onmousemove = (e) => {
-        if (!isDragging) return;
-        e.preventDefault();
-        const x = e.pageX - container.offsetLeft;
-        const y = e.pageY - container.offsetTop;
-        const walkX = (x - startX) * 2; // Speed
-        const walkY = (y - startY) * 2;
-        container.scrollLeft = scrollLeft - walkX;
-        container.scrollTop = scrollTop - walkY;
-    };
-
-    let svg = document.getElementById("tech-tree-svg");
-    if (!svg) {
-        svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        svg.id = "tech-tree-svg";
-        svg.style.width = "100%";
-        svg.style.height = "100%";
-        svg.style.position = "absolute";
-        svg.style.pointerEvents = "none";
-        container.appendChild(svg);
-    }
-    svg.innerHTML = "";
-
-    const columns = {};
-    allResearch.forEach(t => {
-        const eraName = t.era || "Stone Age";
-        if (!columns[eraName]) columns[eraName] = [];
-        columns[eraName].push(t);
-    });
-
-    const ERA_WIDTH = 250;
-    const NODE_HEIGHT = 80;
-
-    Array.from(container.children).forEach(child => {
-        if (child.id !== "tech-tree-svg") container.removeChild(child);
-    });
-
-    const positions = {};
-    let maxX = 0;
-    let maxY = 0;
-
-    let colIdx = 0;
-    for (const era of ERA_DATA) {
-        const techs = columns[era.name] || [];
-        techs.forEach((tech, rowIdx) => {
-            const x = 50 + colIdx * ERA_WIDTH;
-            const y = 50 + rowIdx * (NODE_HEIGHT + 20);
-
-            if (x > maxX) maxX = x;
-            if (y > maxY) maxY = y;
-
-            positions[tech.id] = {x, y};
-
-            const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
-            const isDone = gameState.researched.includes(tech.id);
-            const isAvailable = reqMet;
-            const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r));
-
-            if (isVisible) {
-                const div = document.createElement("div");
-                div.className = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
-                div.innerHTML = `<span style="font-size:16px">${tech.icon || '🔬'}</span><br>${tech.name}<br><small>(${formatNumber(tech.cost)})</small>`;
-                div.style.left = `${x}px`;
-                div.style.top = `${y}px`;
-                div.onclick = () => window.buyResearch(tech.id);
-                container.appendChild(div);
-            }
-        });
-        colIdx++;
-    }
-
-    // Resize SVG to fit content
-    svg.style.width = Math.max(container.clientWidth, maxX + 200) + "px";
-    svg.style.height = Math.max(container.clientHeight, maxY + 200) + "px";
-
-    allResearch.forEach(tech => {
-        if (!positions[tech.id]) return;
-
-        const reqMet = tech.requirements.every(r => gameState.researched.includes(r));
-        const isDone = gameState.researched.includes(tech.id);
-        const isVisible = isDone || reqMet || tech.requirements.some(r => gameState.researched.includes(r));
-
-        if (isVisible) {
-            tech.requirements.forEach(reqId => {
-                if (positions[reqId]) {
-                    const start = positions[reqId];
-                    const end = positions[tech.id];
-
-                    // Curved Path Logic (Bezier)
-                    const p1 = { x: start.x + 150, y: start.y + 30 };
-                    const p2 = { x: end.x, y: end.y + 30 };
-                    const cp1 = { x: p1.x + 50, y: p1.y };
-                    const cp2 = { x: p2.x - 50, y: p2.y };
-
-                    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-                    const d = `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`;
-                    path.setAttribute("d", d);
-                    path.setAttribute("fill", "none");
-                    path.setAttribute("stroke", isDone ? "#2ecc71" : "#555");
-                    path.setAttribute("stroke-width", "2");
-                    path.setAttribute("class", "tech-line");
-                    if (isDone) path.classList.add("active");
-                    svg.appendChild(path);
-                }
-            });
-        }
-    });
-}
-
-// --- Victory & Endgame ---
-
-function renderVictoryModal() {
-    if (document.getElementById("victory-modal")) return;
-
-    const modal = document.createElement("div");
-    modal.id = "victory-modal";
-    modal.style.position = "fixed";
-    modal.style.top = "0";
-    modal.style.left = "0";
-    modal.style.width = "100%";
-    modal.style.height = "100%";
-    modal.style.background = "rgba(0,0,0,0.9)";
-    modal.style.color = "white";
-    modal.style.display = "flex";
-    modal.style.flexDirection = "column";
-    modal.style.alignItems = "center";
-    modal.style.justifyContent = "center";
-    modal.style.zIndex = "10000";
-    modal.innerHTML = `
-        <h1 style="font-size: 3em; color: #f1c40f; text-shadow: 0 0 10px #f1c40f;">VICTORY ACHIEVED!</h1>
-        <p style="font-size: 1.2em; max-width: 600px; text-align: center;">
-            You have guided your civilization from the dawn of time to the pinnacle of technological singularity.
-            The universe lies before you, waiting to be explored.
-        </p>
-        <div style="margin-top: 20px;">
-            <button onclick="claimVictory()" style="padding: 15px 30px; font-size: 1.5em; cursor: pointer; background: #2ecc71; border: none; color: white; border-radius: 5px;">Continue Playing (Endless Mode)</button>
-        </div>
-        <div style="margin-top: 20px;">
-            <button onclick="performTranscendence()" style="padding: 15px 30px; font-size: 1.5em; cursor: pointer; background: #9b59b6; border: none; color: white; border-radius: 5px;">Transcend (New Game+)</button>
-        </div>
-    `;
-    document.body.appendChild(modal);
-}
-
-window.claimVictory = function() {
-    gameState.victoryClaimed = true;
-    const modal = document.getElementById("victory-modal");
-    if (modal) modal.remove();
-    updateUI();
-    alert("Deep Space Scanners Online! You can now explore infinite procedural planets.");
-};
-
-window.performTranscendence = function() {
-    if (!confirm("Are you sure? This will reset your progress but grant powerful Prestige bonuses.")) return;
-
-    // Increment Transcendence Count
-    if (!gameState.stats.transcendenceCount) gameState.stats.transcendenceCount = 0;
-    gameState.stats.transcendenceCount++;
-
-    // Keep stats but reset game
-    const tCount = gameState.stats.transcendenceCount;
-
-    // Save only meta data
-    const metaData = {
-        transcendenceCount: tCount,
-        lifetimeClicks: gameState.stats.totalClicks
-    };
-    localStorage.setItem("hc_web_meta", JSON.stringify(metaData));
-
-    // Clear main save
-    localStorage.removeItem("hc_web_save");
-
-    location.reload();
-};
-
-window.scanNewPlanet = function() {
-    const scanCost = Math.floor(1000000 * Math.pow(1.5, Math.max(0, gameState.space.planets.length - 5)));
-    if (gameState.resources.knowledge < scanCost) {
-        alert("Not enough Knowledge to scan deep space! Need " + formatNumber(scanCost));
-        return;
-    }
-
-    gameState.resources.knowledge -= scanCost;
-
-    // Generate planet using existing function if possible
-    const newPlanets = generatePlanets(1);
-    const planet = newPlanets[0];
-
-    // Buff it for Deep Space
-    planet.name = "Deep Space " + planet.name;
-    planet.production.money *= 2;
-    planet.production.knowledge *= 2;
-    planet.resources.push("dark_matter"); // Just for flavor
-
-    // Scale colonization cost
-    if (planet.cost) {
-        planet.cost.money = (planet.cost.money || 10000) * 10;
-        planet.cost.knowledge = (planet.cost.knowledge || 5000) * 10;
-        planet.cost.food = (planet.cost.food || 2000) * 10;
-    }
-
-    gameState.space.planets.push(planet);
-
-    if (window.audioController) window.audioController.playEvent();
-    alert(`Deep Space Scan Complete! Found: ${planet.name} (${planet.type})`);
-
-    updateUI();
-    renderSpace(); // Refresh view
-};
-
-// Start
-init();
