@@ -54,6 +54,7 @@ let gameState = {
         energy: 0
     },
     inventory: [], // Relics
+    craftedItems: [],
     activeResearch: [], // Currently researching
     researched: [], // Completed research IDs
     ideas: [], // Unlocked ideas
@@ -668,8 +669,9 @@ window.claimQuest = function(questId) {
 // --- Mechanics ---
 function getGlobalMultiplier(type, resource = null) {
     let mult = 1.0;
-    // Relics
-    gameState.inventory.forEach(relic => {
+    // Relics & Crafted Items
+    const allItems = [...(gameState.inventory || []), ...(gameState.craftedItems || [])];
+    allItems.forEach(relic => {
         if (relic.effect.type === `${type}_boost` || (type === "production" && relic.effect.type === "production_multiplier")) {
              mult += (relic.effect.value / 100);
         }
@@ -969,18 +971,124 @@ function loadGame() {
 }
 
 function calculateOfflineProgress(seconds) {
-    // Note: We use current production for offline calc.
-    const currentProduction = calculateProduction(gameState, 0, false);
+    if (seconds <= 0) return;
 
-    // Ascension Boost
-    const offMult = getAscensionMultiplier(gameState, "offline_boost", null);
+    const limit = 86400; // 24 hours
+    const actualSeconds = Math.min(seconds, limit);
 
-    const clicksGained = Math.floor(currentProduction * seconds * 0.5 * offMult);
+    // Efficiency: Base 0.5 * Ascension Bonus
+    const ascMult = getAscensionMultiplier(gameState, "offline_boost", null);
+    const efficiency = 0.5 * ascMult;
 
-    if (clicksGained > 0) {
-        gameState.resources.clicks += clicksGained;
-        gameState.resources.lifetimeClicks += clicksGained;
-        alert(`Welcome back! You were gone for ${Math.floor(seconds)} seconds.\nOffline Production: +${clicksGained} Clicks (50% efficiency).`);
+    // 1. Calculate Rates (Net Per Second)
+    const net = {};
+    const uncapped = ["clicks", "knowledge", "money", "culture"];
+
+    // Base Clicks (Production)
+    let clickProd = 0;
+    const clickProducers = ["AutoClicker", "Gatherer", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
+    clickProducers.forEach(key => {
+        if (gameState.buildings[key]) {
+            clickProd += gameState.buildings[key].count * gameState.buildings[key].production;
+        }
+    });
+    const clickMult = getGlobalMultiplier("production", "clicks");
+    if (!net["clicks"]) net["clicks"] = 0;
+    net["clicks"] += clickProd * clickMult;
+
+    // Knowledge (University, Lab, Supercomputer)
+    let knowProd = 0;
+    if (gameState.buildings["University"]) knowProd += gameState.buildings["University"].count * gameState.buildings["University"].production;
+    if (gameState.buildings["Lab"]) knowProd += gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
+    if (gameState.buildings["Supercomputer"]) knowProd += gameState.buildings["Supercomputer"].count * gameState.buildings["Supercomputer"].production;
+
+    // Space Yields
+    const spaceProd = getSpaceProduction(gameState);
+    knowProd += spaceProd.knowledge;
+
+    const knowMult = getGlobalMultiplier("production_mult", "knowledge");
+    if (!net["knowledge"]) net["knowledge"] = 0;
+    net["knowledge"] += knowProd * knowMult;
+
+    // Money (Bank + Space)
+    let moneyProd = 0;
+    if (gameState.buildings["Bank"]) moneyProd += gameState.buildings["Bank"].count * gameState.buildings["Bank"].production;
+    moneyProd += spaceProd.money;
+
+    const moneyMult = getGlobalMultiplier("production_mult", "money");
+    if (!net["money"]) net["money"] = 0;
+    net["money"] += moneyProd * moneyMult;
+
+    // Building Upkeep & Production (Generic)
+    for (let key in gameState.buildings) {
+        const b = gameState.buildings[key];
+        const count = b.count;
+        if (count <= 0) continue;
+
+        // Upkeep (Drain)
+        if (b.upkeep) {
+            for (let res in b.upkeep) {
+                if (!net[res]) net[res] = 0;
+                net[res] -= b.upkeep[res] * count;
+            }
+        }
+
+        // Production (if defined in future)
+        if (b.produces) {
+            for (let res in b.produces) {
+                if (!net[res]) net[res] = 0;
+                net[res] += b.produces[res] * count;
+            }
+        }
+    }
+
+    // 2. Apply Changes
+    const changes = {};
+    let hasChange = false;
+
+    for (let res in net) {
+        if (net[res] === 0) continue;
+
+        const totalChange = net[res] * actualSeconds * efficiency;
+        changes[res] = totalChange;
+        hasChange = true;
+
+        if (gameState.resources[res] === undefined) gameState.resources[res] = 0;
+
+        gameState.resources[res] += totalChange;
+
+        // 3. Enforce Limits
+        if (uncapped.includes(res)) {
+            // Min 0
+            if (gameState.resources[res] < 0) gameState.resources[res] = 0;
+            // Lifetime Clicks tracking
+            if (res === "clicks" && totalChange > 0) {
+                gameState.resources.lifetimeClicks += totalChange;
+            }
+        } else {
+            // Physical: Clamp [0, maxStorage]
+            const max = gameState.maxStorage || 10000;
+            gameState.resources[res] = Math.max(0, Math.min(max, gameState.resources[res]));
+        }
+    }
+
+    // 4. Alert
+    if (hasChange) {
+        const timeStr = actualSeconds > 3600
+            ? `${Math.floor(actualSeconds/3600)}h ${Math.floor((actualSeconds%3600)/60)}m`
+            : `${Math.floor(actualSeconds)}s`;
+
+        let msg = `Welcome back! You were offline for ${timeStr}.\n`;
+        msg += `Efficiency: ${(efficiency * 100).toFixed(0)}%\n\n`;
+        msg += `Gains/Losses:\n`;
+
+        for (let res in changes) {
+            const val = Math.floor(changes[res]);
+            if (val === 0) continue;
+            const sign = val > 0 ? "+" : "";
+            msg += `${sign}${val} ${res}\n`;
+        }
+        alert(msg);
     }
 }
 
@@ -2981,25 +3089,13 @@ function renderCrafting() {
         }
 
         // Output text
-        let outputText = [];
-        for (let key in recipe.output) {
-            outputText.push(`${recipe.output[key]} ${key}`);
-        }
+        let outputText = recipe.output.name || "Item";
 
         // Check affordability
         let canAfford = true;
         for (let key in recipe.inputs) {
-            let resName = key;
-            // Map generator names to gameState resources if needed
-            // Our generator uses 'stone', 'wood', 'herb', 'water', 'copper', 'tin'
-            // We implemented: wood, stone, food, relicShards.
-            // Map unknown to 'relicShards' as fallback or assume impossible?
-            // Let's implement basics:
-            if (resName === "herb" || resName === "water") resName = "food";
-            if (resName === "copper" || resName === "tin") resName = "stone";
-
             const cost = recipe.inputs[key];
-            if (gameState.resources[resName] === undefined || gameState.resources[resName] < cost) {
+            if (gameState.resources[key] === undefined || gameState.resources[key] < cost) {
                 canAfford = false;
                 break;
             }
@@ -3009,7 +3105,7 @@ function renderCrafting() {
             <div style="float:left; font-size: 20px; margin-right: 8px;">${recipe.icon || '🛠️'}</div>
             <strong>${recipe.name}</strong><br>
             <small>Requires: ${inputsText.join(", ")}</small><br>
-            <small>Produces: ${outputText.join(", ")}</small><br>
+            <small>Produces: ${outputText}</small><br>
             <button onclick="craftItem('${recipe.id}')" ${canAfford ? '' : 'disabled'}>Craft</button>
         `;
 
@@ -3024,12 +3120,8 @@ window.craftItem = function(recipeId) {
     // Validate again
     let canAfford = true;
     for (let key in recipe.inputs) {
-        let resName = key;
-        if (resName === "herb" || resName === "water") resName = "food";
-        if (resName === "copper" || resName === "tin") resName = "stone";
-
         const cost = recipe.inputs[key];
-        if (gameState.resources[resName] === undefined || gameState.resources[resName] < cost) {
+        if (gameState.resources[key] === undefined || gameState.resources[key] < cost) {
             canAfford = false;
             break;
         }
@@ -3039,25 +3131,25 @@ window.craftItem = function(recipeId) {
         if (window.audioController) window.audioController.playBuy();
         // Deduct
         for (let key in recipe.inputs) {
-            let resName = key;
-            if (resName === "herb" || resName === "water") resName = "food";
-            if (resName === "copper" || resName === "tin") resName = "stone";
-            gameState.resources[resName] -= recipe.inputs[key];
+            gameState.resources[key] -= recipe.inputs[key];
         }
 
         // Grant output
-        gameState.inventory.push({
+        const item = {
             id: `crafted_${Date.now()}`,
-            name: `Crafted ${recipe.name}`,
-            rarity: "Common",
-            description: "Hand-crafted item.",
-            effect: { type: "production_boost", value: 1 }
-        });
+            name: recipe.output.name,
+            icon: recipe.icon,
+            rarity: recipe.output.rarity,
+            description: recipe.output.desc,
+            effect: recipe.output.effect
+        };
+        if (!gameState.craftedItems) gameState.craftedItems = [];
+        gameState.craftedItems.push(item);
 
         alert(`Crafted ${recipe.name}!`);
         updateUI();
     } else {
-        alert("Not enough resources (Need Stone/Shards)!");
+        alert("Not enough resources!");
     }
 };
 
@@ -3066,12 +3158,13 @@ function renderInventory() {
     if (!container) return;
 
     container.innerHTML = "";
-    if (gameState.inventory.length === 0) {
-        container.innerHTML = "<p>No relics yet.</p>";
+    const allItems = [...(gameState.inventory || []), ...(gameState.craftedItems || [])];
+    if (allItems.length === 0) {
+        container.innerHTML = "<p>No relics or gear yet.</p>";
         return;
     }
 
-    gameState.inventory.forEach(relic => {
+    allItems.forEach(relic => {
         const div = document.createElement("div");
         div.className = `relic-card rarity-${relic.rarity.toLowerCase()}`;
         div.title = relic.description;
