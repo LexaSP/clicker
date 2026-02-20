@@ -47,3 +47,48 @@
 .hp-bar-fill.enemy {
     background: #e74c3c; /* Red */
 }
+/* Floating Text */
+.floating-text {
+    position: fixed;
+    pointer-events: none;
+    font-weight: bold;
+    font-size: 16px;
+    text-shadow: 0 0 3px black;
+    animation: floatUp 1s ease-out forwards;
+    z-index: 1000;
+}
+
+@keyframes floatUp {
+    0% { transform: translateY(0) scale(1); opacity: 1; }
+    100% { transform: translateY(-30px) scale(1.2); opacity: 0; }
+}
+
+/* Button Juice */
+.building-btn, .tab-btn {
+    transition: all 0.1s ease;
+}
+
+.building-btn:active, .tab-btn:active {
+    transform: scale(0.95);
+}
+
+/* Clicker Pulse */
+#click-btn {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7); }
+    70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+}
+
+/* Tech Tree Pan */
+#research-container {
+    cursor: grab;
+    overflow: hidden; /* Hide scrollbars */
+}
+
+#research-container.active {
+    cursor: grabbing;
+}
