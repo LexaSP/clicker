@@ -17,7 +17,9 @@ def start_server():
 def verify():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        # Set a large viewport to avoid mobile layout/media queries
+        context = browser.new_context(viewport={'width': 1920, 'height': 1080})
+        page = context.new_page()
 
         console_errors = []
         # Capture console errors
