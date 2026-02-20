@@ -1,3 +1,4 @@
+
 // stock_market.js
 // Buy and sell shares of companies
 
@@ -37,32 +38,34 @@ export function initStockMarket(state) {
 export function updateStockMarket(state, dt) {
     initStockMarket(state);
 
-    // Update every 5 seconds
     const market = state.stockMarket;
-    const now = Date.now();
-    if (now - market.lastUpdate < 5000) return;
-
-    market.lastUpdate = now;
 
     COMPANIES.forEach(c => {
         const stock = market.stocks[c.id];
         if (!stock) return;
 
-        // Mean Reversion (Ornstein-Uhlenbeck)
-        const meanReversionSpeed = 0.05; // Force pulling back to base price
+        // 1. Calculate how far the current price is from the base price (Reversion force)
+        const meanReversionSpeed = 0.05;
         const drift = meanReversionSpeed * (c.basePrice - stock.currentPrice);
+
+        // 2. Add market noise (randomness)
         const shock = (Math.random() - 0.5) * 2 * c.volatility * stock.currentPrice;
 
-        // Update momentum
+        // 3. Update momentum with inertia
         stock.momentum = (stock.momentum * 0.8) + drift + shock;
 
-        // Apply momentum to price
+        // 4. Apply to price
         let newPrice = stock.currentPrice + stock.momentum;
 
-        // Hard clamps to prevent negative prices
+        // 5. Prevent negative or zero prices (Hard clamp)
         if (newPrice < c.basePrice * 0.1) newPrice = c.basePrice * 0.1;
+        // Soft cap on the top end
+        if (newPrice > c.basePrice * 5.0) newPrice = c.basePrice * 5.0;
 
         stock.currentPrice = newPrice;
+
+        // History limit check (every tick? assuming visualizer handles high frequency or we sample)
+        // Original code didn't throttle, so let's keep it simple.
         stock.history.push(newPrice);
         if (stock.history.length > 20) stock.history.shift();
     });
@@ -96,13 +99,16 @@ export function sellStock(state, companyId, amount) {
     return { success: true, msg: `Sold ${amount} shares for ${Math.floor(value)} Money.` };
 }
 
-export function applyWarEconomy(active) {
+export function applyWarEconomy(isWar) {
     COMPANIES.forEach(c => {
-        if (c.industry === "Military") {
-            c.basePrice = active ? c.originalBasePrice * 1.5 : c.originalBasePrice;
-        }
-        if (c.industry === "Trade") {
-            c.basePrice = active ? c.originalBasePrice * 0.7 : c.originalBasePrice;
+        if (isWar) {
+            if (c.industry === "Military") {
+                c.basePrice = c.originalBasePrice * 1.5;
+            } else if (c.industry === "Trade") {
+                c.basePrice = c.originalBasePrice * 0.7;
+            }
+        } else {
+            c.basePrice = c.originalBasePrice;
         }
     });
 }
