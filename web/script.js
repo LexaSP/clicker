@@ -77,13 +77,13 @@ async function initCloudSave() {
         btn.style.border = "none";
         btn.style.cursor = "pointer";
         btn.style.fontWeight = "bold";
-
+        
         btn.innerText = "Cloud Login";
         btn.onclick = () => {
             if (currentUser) window.cloudLogout();
             else window.cloudLogin();
         };
-
+        
         // Try to insert before Story button if it exists, or prepend to top
         const storyBtn = document.getElementById("btn-story");
         if (storyBtn) {
@@ -420,7 +420,7 @@ function tick(dt) {
         let val = spaceProd[res] * dt;
         if (res === "money") val *= moneyMult;
         else if (res === "knowledge") val *= knowlMult;
-
+        
         if (gameState.resources[res] !== undefined) {
             // Apply storage caps for physical resources
             if (["money", "knowledge", "clicks", "culture"].includes(res)) {
@@ -907,7 +907,7 @@ window.buyBuilding = function(name) {
     if (gameState.resources.clicks >= finalCost) {
         if (window.audioController) window.audioController.playBuy();
         gameState.resources.clicks -= finalCost;
-
+        
         // Float text on button
         const btn = document.getElementById(`btn-${name}`);
         if (btn) {
@@ -1026,7 +1026,7 @@ function calculateOfflineProgress(seconds) {
 
     const limit = 86400; // 24 hours
     const actualSeconds = Math.min(seconds, limit);
-
+    
     // Efficiency: Base 0.5 * Ascension Bonus
     const ascMult = getAscensionMultiplier(gameState, "offline_boost", null);
     const efficiency = 0.5 * ascMult;
@@ -1052,11 +1052,11 @@ function calculateOfflineProgress(seconds) {
     if (gameState.buildings["University"]) knowProd += gameState.buildings["University"].count * gameState.buildings["University"].production;
     if (gameState.buildings["Lab"]) knowProd += gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
     if (gameState.buildings["Supercomputer"]) knowProd += gameState.buildings["Supercomputer"].count * gameState.buildings["Supercomputer"].production;
-
+    
     // Space Yields
     const spaceProd = getSpaceProduction(gameState);
     knowProd += spaceProd.knowledge;
-
+    
     const knowMult = getGlobalMultiplier("production_mult", "knowledge");
     if (!net["knowledge"]) net["knowledge"] = 0;
     net["knowledge"] += knowProd * knowMult;
@@ -1105,7 +1105,7 @@ function calculateOfflineProgress(seconds) {
         hasChange = true;
 
         if (gameState.resources[res] === undefined) gameState.resources[res] = 0;
-
+        
         gameState.resources[res] += totalChange;
 
         // 3. Enforce Limits
@@ -1125,8 +1125,8 @@ function calculateOfflineProgress(seconds) {
 
     // 4. Alert
     if (hasChange) {
-        const timeStr = actualSeconds > 3600
-            ? `${Math.floor(actualSeconds/3600)}h ${Math.floor((actualSeconds%3600)/60)}m`
+        const timeStr = actualSeconds > 3600 
+            ? `${Math.floor(actualSeconds/3600)}h ${Math.floor((actualSeconds%3600)/60)}m` 
             : `${Math.floor(actualSeconds)}s`;
 
         let msg = `Welcome back! You were offline for ${timeStr}.\n`;
@@ -3464,7 +3464,7 @@ window.renderResearchTree = function() {
 
 function renderVictoryModal() {
     if (document.getElementById("victory-modal")) return;
-
+    
     const modal = document.createElement("div");
     modal.id = "victory-modal";
     modal.style.position = "fixed";
@@ -3482,7 +3482,7 @@ function renderVictoryModal() {
     modal.innerHTML = `
         <h1 style="font-size: 3em; color: #f1c40f; text-shadow: 0 0 10px #f1c40f;">VICTORY ACHIEVED!</h1>
         <p style="font-size: 1.2em; max-width: 600px; text-align: center;">
-            You have guided your civilization from the dawn of time to the pinnacle of technological singularity.
+            You have guided your civilization from the dawn of time to the pinnacle of technological singularity. 
             The universe lies before you, waiting to be explored.
         </p>
         <div style="margin-top: 20px;">
@@ -3505,24 +3505,24 @@ window.claimVictory = function() {
 
 window.performTranscendence = function() {
     if (!confirm("Are you sure? This will reset your progress but grant powerful Prestige bonuses.")) return;
-
+    
     // Increment Transcendence Count
     if (!gameState.stats.transcendenceCount) gameState.stats.transcendenceCount = 0;
     gameState.stats.transcendenceCount++;
-
+    
     // Keep stats but reset game
     const tCount = gameState.stats.transcendenceCount;
-
+    
     // Save only meta data
     const metaData = {
         transcendenceCount: tCount,
         lifetimeClicks: gameState.stats.totalClicks
     };
     localStorage.setItem("hc_web_meta", JSON.stringify(metaData));
-
+    
     // Clear main save
     localStorage.removeItem("hc_web_save");
-
+    
     location.reload();
 };
 
@@ -3532,31 +3532,31 @@ window.scanNewPlanet = function() {
         alert("Not enough Knowledge to scan deep space! Need " + formatNumber(scanCost));
         return;
     }
-
+    
     gameState.resources.knowledge -= scanCost;
-
+    
     // Generate planet using existing function if possible
     const newPlanets = generatePlanets(1);
     const planet = newPlanets[0];
-
+    
     // Buff it for Deep Space
     planet.name = "Deep Space " + planet.name;
     planet.production.money *= 2;
     planet.production.knowledge *= 2;
     planet.resources.push("dark_matter"); // Just for flavor
-
+    
     // Scale colonization cost
     if (planet.cost) {
         planet.cost.money = (planet.cost.money || 10000) * 10;
         planet.cost.knowledge = (planet.cost.knowledge || 5000) * 10;
         planet.cost.food = (planet.cost.food || 2000) * 10;
     }
-
+    
     gameState.space.planets.push(planet);
-
+    
     if (window.audioController) window.audioController.playEvent();
     alert(`Deep Space Scan Complete! Found: ${planet.name} (${planet.type})`);
-
+    
     updateUI();
     renderSpace(); // Refresh view
 };

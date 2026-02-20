@@ -1,49 +1,250 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
 
-/* Help Button */
-.help-btn {
-    float: right;
-    font-size: 12px;
-    padding: 2px 5px;
-    background: #3498db;
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    color: white;
+:root {
+    --bg-color: #0f172a;
+    --surface-color: rgba(30, 41, 59, 0.7);
+    --text-main: #e2e8f0;
+    --text-muted: #94a3b8;
+    --accent-blue: #3b82f6;
+    --accent-green: #10b981;
+    --accent-red: #ef4444;
+    --accent-gold: #f59e0b;
+    --glass-border: rgba(255, 255, 255, 0.1);
 }
 
-.help-btn:hover {
-    background: #2980b9;
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
 }
 
-/* Battle Arena */
-.battle-arena {
-    text-align: center;
-    padding: 20px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 2px solid #e74c3c;
-    border-radius: 10px;
-    margin-top: 10px;
-}
-
-.hp-bar-container {
+#game-container {
+    display: flex;
     width: 100%;
-    height: 20px;
-    background: #555;
+    height: 100%;
+}
+
+/* Sidebar */
+#sidebar {
+    width: 320px;
+    background: rgba(15, 23, 42, 0.9);
+    border-right: 1px solid var(--glass-border);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    overflow-y: auto;
+    backdrop-filter: blur(10px);
+    box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+}
+
+/* Main Area */
+#main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 30px;
+    position: relative;
+}
+
+/* Tabs */
+#tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--glass-border);
+    padding-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.tab-btn {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 10px 15px;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-btn.active {
+    color: var(--accent-blue);
+    background: rgba(59, 130, 246, 0.1);
+}
+
+/* Cards */
+.building-btn, .expedition-card, .recipe-card, .relic-card, .civ-card, .achievement-card {
+    background: var(--surface-color);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 15px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    transition: all 0.2s ease;
+    backdrop-filter: blur(5px);
+    color: var(--text-main);
+    margin-bottom: 10px;
+}
+
+.building-btn:hover, .expedition-card:hover, .recipe-card:hover, .civ-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 15px rgba(0,0,0,0.4);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.building-btn:active {
+    transform: scale(0.98);
+}
+
+/* Buttons */
+button {
+    background: var(--accent-blue);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.1s ease;
+    margin-top: 5px;
+}
+
+button:hover {
+    background: #2563eb;
+    transform: scale(1.02);
+}
+
+button:active {
+    transform: scale(0.95);
+}
+
+button:disabled {
+    background: #475569;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Big Click Button */
+#click-btn {
+    background: radial-gradient(circle, var(--accent-gold), #d97706);
+    color: #000;
+    font-size: 24px;
+    padding: 20px 40px;
+    border-radius: 50px;
+    border: 2px solid rgba(255,255,255,0.5);
+    margin: 20px auto;
+    display: block;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+    70% { box-shadow: 0 0 0 15px rgba(245, 158, 11, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+/* Floating Text */
+.floating-text {
+    position: fixed;
+    pointer-events: none;
+    font-weight: 800;
+    font-size: 18px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+    animation: floatUp 1s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    z-index: 9999;
+}
+
+@keyframes floatUp {
+    0% { transform: translateY(0) scale(0.8); opacity: 1; }
+    100% { transform: translateY(-50px) scale(1.2); opacity: 0; }
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-color); }
+::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+/* Modals */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    backdrop-filter: blur(8px);
+    background: rgba(15, 23, 42, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+
+.modal-content {
+    background: var(--surface-color);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 30px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    max-width: 600px;
+    text-align: center;
+}
+
+/* Progress Bars */
+.expedition-progress-bg {
+    background: rgba(0,0,0,0.5);
     border-radius: 10px;
     overflow: hidden;
-    margin-top: 5px;
-    border: 1px solid #fff;
+    height: 10px;
 }
-
-.hp-bar-fill {
+.expedition-progress-fill {
+    background: var(--accent-green);
     height: 100%;
-    transition: width 0.2s ease-in-out;
+    transition: width 0.2s ease;
 }
 
-.hp-bar-fill.player {
-    background: #2ecc71; /* Green */
+/* Tech Tree */
+.tech-node {
+    position: absolute;
+    background: var(--surface-color);
+    border: 2px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+    width: 150px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    color: var(--text-main);
+    z-index: 2;
+    cursor: pointer;
+    backdrop-filter: blur(5px);
+}
+.tech-node.researched { border-color: var(--accent-green); background: rgba(16, 185, 129, 0.1); }
+.tech-node.available { border-color: var(--accent-blue); background: rgba(59, 130, 246, 0.1); }
+.tech-node.locked { opacity: 0.5; cursor: not-allowed; }
+/* Принудительно убираем старые фоны эпох */
+body {
+    background: var(--bg-color) !important;
 }
 
-.hp-bar-fill.enemy {
-    background: #e74c3c; /* Red */
+/* Делаем красивую сетку для зданий и карточек */
+#building-list, #planet-list, #trade-list, #stock-list, #wonder-list, #governor-list {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 15px;
+}
+
+/* Убираем растягивание кнопок зданий */
+.building-btn {
+    width: auto !important;
+    margin-bottom: 0 !important;
 }
