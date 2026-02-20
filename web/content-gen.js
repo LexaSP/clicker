@@ -130,18 +130,20 @@ export function generateResearch() {
             let effect = { type: "production_multiplier", value: 1.1 };
             const n = name.toLowerCase();
 
-            if (n.includes("agriculture") || n.includes("irrigation") || n.includes("crop rotation")) {
+            if (n.includes("agriculture") || n.includes("irrigation") || n.includes("crop rotation") || n.includes("gathering")) {
                 effect = { type: "food_boost", value: 1.5 };
-            } else if (n.includes("stone tools") || n.includes("masonry") || n.includes("concrete")) {
+            } else if (n.includes("stone tools") || n.includes("masonry") || n.includes("concrete") || n.includes("pottery")) {
                 effect = { type: "stone_boost", value: 1.5 };
-            } else if (n.includes("bronze") || n.includes("iron") || n.includes("steel")) {
+            } else if (n.includes("bronze") || n.includes("iron") || n.includes("steel") || n.includes("gunpowder")) {
                 effect = { type: "iron_boost", value: 1.5 };
-            } else if (n.includes("writing") || n.includes("alphabet") || n.includes("philosophy") || n.includes("universit") || n.includes("printing")) {
+            } else if (n.includes("writing") || n.includes("alphabet") || n.includes("philosophy") || n.includes("universit") || n.includes("printing") || n.includes("scientific") || n.includes("internet")) {
                 effect = { type: "knowledge_boost", value: 1.5 };
             } else if (n.includes("trade") || n.includes("currency") || n.includes("mercantilism") || n.includes("banking")) {
                 effect = { type: "money_boost", value: 1.5 };
             } else if (n.includes("wheel") || n.includes("roads") || n.includes("railroad") || n.includes("assembly")) {
                 effect = { type: "cost_reduction", value: 10 };
+            } else if (n.includes("hunting") || n.includes("legions") || n.includes("chariots") || n.includes("muskets")) {
+                effect = { type: "army_power", value: 1.2 };
             }
 
             research.push({
