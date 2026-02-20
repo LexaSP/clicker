@@ -231,3 +231,20 @@ button:disabled {
 .tech-node.researched { border-color: var(--accent-green); background: rgba(16, 185, 129, 0.1); }
 .tech-node.available { border-color: var(--accent-blue); background: rgba(59, 130, 246, 0.1); }
 .tech-node.locked { opacity: 0.5; cursor: not-allowed; }
+/* Принудительно убираем старые фоны эпох */
+body {
+    background: var(--bg-color) !important;
+}
+
+/* Делаем красивую сетку для зданий и карточек */
+#building-list, #planet-list, #trade-list, #stock-list, #wonder-list, #governor-list {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 15px;
+}
+
+/* Убираем растягивание кнопок зданий */
+.building-btn {
+    width: auto !important;
+    margin-bottom: 0 !important;
+}
