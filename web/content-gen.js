@@ -126,26 +126,6 @@ export function generateResearch() {
             // Assign type: Alternate
             const type = (i % 2 === 0) ? "culture" : "knowledge";
 
-            // Determine Effect
-            let effect = { type: "production_multiplier", value: 1.1 };
-            const n = name.toLowerCase();
-
-            if (n.includes("agriculture") || n.includes("irrigation") || n.includes("crop rotation") || n.includes("gathering")) {
-                effect = { type: "food_boost", value: 1.5 };
-            } else if (n.includes("stone tools") || n.includes("masonry") || n.includes("concrete") || n.includes("pottery")) {
-                effect = { type: "stone_boost", value: 1.5 };
-            } else if (n.includes("bronze") || n.includes("iron") || n.includes("steel") || n.includes("gunpowder")) {
-                effect = { type: "iron_boost", value: 1.5 };
-            } else if (n.includes("writing") || n.includes("alphabet") || n.includes("philosophy") || n.includes("universit") || n.includes("printing") || n.includes("scientific") || n.includes("internet")) {
-                effect = { type: "knowledge_boost", value: 1.5 };
-            } else if (n.includes("trade") || n.includes("currency") || n.includes("mercantilism") || n.includes("banking")) {
-                effect = { type: "money_boost", value: 1.5 };
-            } else if (n.includes("wheel") || n.includes("roads") || n.includes("railroad") || n.includes("assembly")) {
-                effect = { type: "cost_reduction", value: 10 };
-            } else if (n.includes("hunting") || n.includes("legions") || n.includes("chariots") || n.includes("muskets")) {
-                effect = { type: "army_power", value: 1.2 };
-            }
-
             research.push({
                 id: techId,
                 name: name,
@@ -155,7 +135,7 @@ export function generateResearch() {
                 costType: type,
                 requirements: requirements,
                 description: flavor,
-                effect: effect
+                effect: { type: "production_multiplier", value: 1.2 }
             });
         }
     });
@@ -208,9 +188,9 @@ export function generateExpeditions() {
         // Generate variations: Short, Medium, Long, Epic
         const types = [
             { name: "Short", duration: 1800, mult: 1.0 }, // 30 mins
-            { name: "Medium", duration: 14400, mult: 0.8 }, // 4 hours
-            { name: "Long", duration: 43200, mult: 0.6 }, // 12 hours
-            { name: "Epic", duration: 86400, mult: 0.5 } // 24 hours
+            { name: "Medium", duration: 14400, mult: 0.8 }, // 4 hours, 80% efficiency
+            { name: "Long", duration: 43200, mult: 0.6 }, // 12 hours, 60% efficiency
+            { name: "Epic", duration: 86400, mult: 0.5 } // 24 hours, 50% efficiency
         ];
 
         types.forEach(type => {
@@ -224,23 +204,10 @@ export function generateExpeditions() {
 
             // Base reward scaled by duration * efficiency * risk bonus
             const riskBonus = 1 + (risk / 100) * 3;
-            const baseAmount = 1000;
+            const baseAmount = 100; // Base loot per 30 mins (scaled)
             const durationRatio = type.duration / 1800; // 1, 8, 24, 48 intervals
 
             const lootAmount = Math.floor(baseAmount * durationRatio * type.mult * riskBonus);
-            const expeditionCost = Math.floor(150 * durationRatio);
-            const moneyReward = Math.floor(1000 * durationRatio * type.mult);
-
-            // Relic Chance
-            let relicChance = 0;
-            if (type.name === "Short") relicChance = 0.015;
-            if (type.name === "Medium") relicChance = 0.08;
-            if (type.name === "Long") relicChance = 0.18;
-            if (type.name === "Epic") relicChance = 0.30;
-
-            if (risk > 70) relicChance += 0.05; // High risk bonus
-
-            const relicCount = Math.random() < relicChance ? 1 : 0;
 
             expeditions.push({
                 id: `exp_${idCounter++}`,
@@ -249,10 +216,10 @@ export function generateExpeditions() {
                 duration: type.duration,
                 difficulty: `${risk}% Risk`,
                 risk: risk,
-                cost: { food: expeditionCost },
+                cost: { food: Math.floor(50 * durationRatio) },
                 rewards: {
-                    relics: relicCount,
-                    money: moneyReward,
+                    relics: (risk > 50 && Math.random() < 0.5) ? 1 : 0,
+                    money: Math.floor(500 * durationRatio * type.mult),
                     loot: { type: resourceType, amount: lootAmount }
                 }
             });
