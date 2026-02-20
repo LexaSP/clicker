@@ -77,13 +77,13 @@ async function initCloudSave() {
         btn.style.border = "none";
         btn.style.cursor = "pointer";
         btn.style.fontWeight = "bold";
-
+        
         btn.innerText = "Cloud Login";
         btn.onclick = () => {
             if (currentUser) window.cloudLogout();
             else window.cloudLogin();
         };
-
+        
         // Try to insert before Story button if it exists, or prepend to top
         const storyBtn = document.getElementById("btn-story");
         if (storyBtn) {
@@ -195,11 +195,10 @@ let gameState = {
     buildings: {
         // Ancient
         "AutoClicker": { count: 0, baseCost: 10, priceRatio: 1.07, production: 1, icon: "👆", era: "Stone Age" },
-        "Gatherer": { count: 0, baseCost: 25, priceRatio: 1.07, production: 2, icon: "🧺", era: "Stone Age", produces: { food: 2, wood: 2 } },
-        "Farm": { count: 0, baseCost: 50, priceRatio: 1.07, production: 5, icon: "🌾", era: "Bronze Age", produces: { food: 10 } },
-        "Warehouse": { count: 0, baseCost: 100, priceRatio: 1.15, production: 0, icon: "📦", era: "Bronze Age" },
-        "Mine": { count: 0, baseCost: 200, priceRatio: 1.12, production: 20, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 2, food: 2 }, produces: { stone: 5, iron: 1 } },
-        "Workshop": { count: 0, baseCost: 500, priceRatio: 1.12, production: 50, icon: "🔨", era: "Iron Age", upkeep: { stone: 5, iron: 2 }, produces: { steel: 1 } },
+        "Gatherer": { count: 0, baseCost: 25, priceRatio: 1.07, production: 2, icon: "🧺", era: "Stone Age" },
+        "Farm": { count: 0, baseCost: 50, priceRatio: 1.07, production: 5, icon: "🌾", era: "Bronze Age" },
+        "Mine": { count: 0, baseCost: 200, priceRatio: 1.12, production: 20, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 } },
+        "Workshop": { count: 0, baseCost: 500, priceRatio: 1.12, production: 50, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 } },
 
         // Classical/Medieval
         "Aqueduct": { count: 0, baseCost: 1500, priceRatio: 1.12, production: 80, icon: "💧", era: "Iron Age" },
@@ -207,19 +206,17 @@ let gameState = {
         "Bank": { count: 0, baseCost: 10000, priceRatio: 1.15, production: 500, icon: "🏦", era: "Renaissance" }, // Money
 
         // Industrial/Modern
-        "Factory": { count: 0, baseCost: 25000, priceRatio: 1.15, production: 1500, icon: "🏭", era: "Industrial Age", upkeep: { steel: 2, energy: 5 } },
+        "Factory": { count: 0, baseCost: 25000, priceRatio: 1.15, production: 1500, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 } },
         "Lab": { count: 0, baseCost: 50000, priceRatio: 1.15, production: 3000, icon: "🔬", era: "Modern Age" }, // Knowledge
-        "PowerPlant": { count: 0, baseCost: 150000, priceRatio: 1.25, production: 10000, icon: "⚡", era: "Modern Age", upkeep: { wood: 20 }, produces: { energy: 50 } },
+        "PowerPlant": { count: 0, baseCost: 150000, priceRatio: 1.25, production: 10000, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 } },
 
         // Future
         "Supercomputer": { count: 0, baseCost: 1000000, priceRatio: 1.25, production: 50000, icon: "🖥️", era: "Information Age" },
-        "FusionReactor": { count: 0, baseCost: 5000000, priceRatio: 1.25, production: 250000, icon: "⚛️", era: "Future Age", upkeep: { steel: 50 } }
+        "FusionReactor": { count: 0, baseCost: 5000000, priceRatio: 1.25, production: 250000, icon: "⚛️", era: "Future Age" }
     },
 
     era: "Stone Age",
 
-    maxStorage: 10000,
-    storageLevel: 1,
     settings: {
         autoSave: true
     },
@@ -353,9 +350,6 @@ function calculateProduction(state, dt = 0, applyCosts = false) {
 
     const clickProducers = ["AutoClicker", "Gatherer", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
 
-    // Init warning tracker if missing
-    if (!state.lastWarnings) state.lastWarnings = {};
-
     clickProducers.forEach(key => {
         if (state.buildings[key]) {
             const b = state.buildings[key];
@@ -363,37 +357,16 @@ function calculateProduction(state, dt = 0, applyCosts = false) {
 
             if (b.upkeep && dt > 0) {
                 let minEff = 1.0;
-                let limitingRes = null;
-
                 for (let res in b.upkeep) {
                     const req = b.upkeep[res] * b.count * dt;
                     if (req > 0) {
                         const avail = state.resources[res] || 0;
                         if (avail < req) {
-                            const eff = avail / req;
-                            if (eff < minEff) {
-                                minEff = eff;
-                                limitingRes = res;
-                            }
+                            minEff = Math.min(minEff, avail / req);
                         }
                     }
                 }
                 efficiency = minEff;
-
-                // Warning System
-                if (efficiency < 1.0 && limitingRes && applyCosts) {
-                    const now = Date.now();
-                    const lastWarn = state.lastWarnings[limitingRes] || 0;
-                    if (now - lastWarn > 10000) { // 10s throttle
-                        state.lastWarnings[limitingRes] = now;
-                        showAchievementToast({
-                            icon: "⚠️",
-                            title: "Production Warning",
-                            name: "Resource Shortage",
-                            description: `${key} lacks ${limitingRes}. Operating at ${Math.floor(efficiency * 100)}% efficiency.`
-                        });
-                    }
-                }
 
                 if (applyCosts) {
                     for (let res in b.upkeep) {
@@ -403,21 +376,6 @@ function calculateProduction(state, dt = 0, applyCosts = false) {
                             state.resources[res] = Math.max(0, state.resources[res] - consume);
                         }
                     }
-                }
-            }
-
-            // Passive Generation
-            if (b.produces && applyCosts) {
-                const physicalResources = ["wood", "stone", "food", "iron", "steel", "oil", "uranium", "energy"];
-                for (let res in b.produces) {
-                    const amount = b.produces[res] * b.count * dt * efficiency;
-                    let current = state.resources[res] || 0;
-                    current += amount;
-
-                    if (physicalResources.includes(res)) {
-                        current = Math.min(state.maxStorage || 10000, current);
-                    }
-                    state.resources[res] = current;
                 }
             }
 
@@ -435,11 +393,6 @@ function calculateProduction(state, dt = 0, applyCosts = false) {
 function tick(dt) {
     // Era Progress
     checkEraProgress();
-
-    // Storage
-    const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
-    const baseStorage = 10000 * Math.pow(2, currentEraIdx);
-    gameState.maxStorage = baseStorage * (gameState.storageLevel || 1);
 
     // Production
     const currentProduction = calculateProduction(gameState, dt, true);
@@ -467,7 +420,7 @@ function tick(dt) {
         let val = spaceProd[res] * dt;
         if (res === "money") val *= moneyMult;
         else if (res === "knowledge") val *= knowlMult;
-
+        
         if (gameState.resources[res] !== undefined) {
             // Apply storage caps for physical resources
             if (["money", "knowledge", "clicks", "culture"].includes(res)) {
@@ -645,11 +598,10 @@ window.resolveEvent = function(eventId, optionIdx) {
 function showAchievementToast(ach) {
     const toast = document.createElement("div");
     toast.className = "achievement-toast";
-    const title = ach.title || "Achievement Unlocked!";
     toast.innerHTML = `
         <div style="font-size: 24px; margin-right: 10px;">${ach.icon}</div>
         <div>
-            <strong>${title}</strong><br>
+            <strong>Achievement Unlocked!</strong><br>
             <span>${ach.name}</span><br>
             <small>${ach.description}</small>
         </div>
@@ -955,7 +907,7 @@ window.buyBuilding = function(name) {
     if (gameState.resources.clicks >= finalCost) {
         if (window.audioController) window.audioController.playBuy();
         gameState.resources.clicks -= finalCost;
-
+        
         // Float text on button
         const btn = document.getElementById(`btn-${name}`);
         if (btn) {
@@ -977,22 +929,6 @@ window.buyBuilding = function(name) {
 
         checkQuestProgress("purchases", 1);
         updateUI();
-    }
-};
-
-window.upgradeStorage = function() {
-    const level = gameState.storageLevel || 1;
-    const woodCost = Math.floor(500 * Math.pow(1.5, level - 1));
-    const stoneCost = Math.floor(500 * Math.pow(1.5, level - 1));
-
-    if (gameState.resources.wood >= woodCost && gameState.resources.stone >= stoneCost) {
-        if (window.audioController) window.audioController.playBuy();
-        gameState.resources.wood -= woodCost;
-        gameState.resources.stone -= stoneCost;
-        gameState.storageLevel = level + 1;
-        updateUI();
-    } else {
-        alert(`Not enough resources! Need ${woodCost} Wood and ${stoneCost} Stone.`);
     }
 };
 
@@ -1069,19 +1005,7 @@ function loadGame() {
     if (save) {
         try {
             const savedState = JSON.parse(save);
-
-            // Deep merge or specific migration for buildings/resources to ensure new keys exist
-            // For now, simpler: Assign savedState but restore missing buildings
-            const defaultBuildings = gameState.buildings; // Current code's buildings (with new keys)
-
             Object.assign(gameState, savedState);
-
-            // Restore missing buildings if any
-            for (let key in defaultBuildings) {
-                if (!gameState.buildings[key]) {
-                    gameState.buildings[key] = defaultBuildings[key];
-                }
-            }
 
             // Offline Progress
             if (gameState.lastSaveTime) {
@@ -1102,7 +1026,7 @@ function calculateOfflineProgress(seconds) {
 
     const limit = 86400; // 24 hours
     const actualSeconds = Math.min(seconds, limit);
-
+    
     // Efficiency: Base 0.5 * Ascension Bonus
     const ascMult = getAscensionMultiplier(gameState, "offline_boost", null);
     const efficiency = 0.5 * ascMult;
@@ -1128,11 +1052,11 @@ function calculateOfflineProgress(seconds) {
     if (gameState.buildings["University"]) knowProd += gameState.buildings["University"].count * gameState.buildings["University"].production;
     if (gameState.buildings["Lab"]) knowProd += gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
     if (gameState.buildings["Supercomputer"]) knowProd += gameState.buildings["Supercomputer"].count * gameState.buildings["Supercomputer"].production;
-
+    
     // Space Yields
     const spaceProd = getSpaceProduction(gameState);
     knowProd += spaceProd.knowledge;
-
+    
     const knowMult = getGlobalMultiplier("production_mult", "knowledge");
     if (!net["knowledge"]) net["knowledge"] = 0;
     net["knowledge"] += knowProd * knowMult;
@@ -1181,7 +1105,7 @@ function calculateOfflineProgress(seconds) {
         hasChange = true;
 
         if (gameState.resources[res] === undefined) gameState.resources[res] = 0;
-
+        
         gameState.resources[res] += totalChange;
 
         // 3. Enforce Limits
@@ -1201,8 +1125,8 @@ function calculateOfflineProgress(seconds) {
 
     // 4. Alert
     if (hasChange) {
-        const timeStr = actualSeconds > 3600
-            ? `${Math.floor(actualSeconds/3600)}h ${Math.floor((actualSeconds%3600)/60)}m`
+        const timeStr = actualSeconds > 3600 
+            ? `${Math.floor(actualSeconds/3600)}h ${Math.floor((actualSeconds%3600)/60)}m` 
             : `${Math.floor(actualSeconds)}s`;
 
         let msg = `Welcome back! You were offline for ${timeStr}.\n`;
@@ -1644,19 +1568,18 @@ window.performPrestige = function(challengeId = null) {
     // Hard-resetting to known base values:
     gameState.buildings = {
         "AutoClicker": { count: 0, baseCost: 10, priceRatio: 1.07, production: 1, icon: "👆", era: "Stone Age" },
-        "Gatherer": { count: 0, baseCost: 25, priceRatio: 1.07, production: 2, icon: "🧺", era: "Stone Age", produces: { food: 2, wood: 2 } },
-        "Farm": { count: 0, baseCost: 50, priceRatio: 1.07, production: 5, icon: "🌾", era: "Bronze Age", produces: { food: 10 } },
-        "Warehouse": { count: 0, baseCost: 100, priceRatio: 1.15, production: 0, icon: "📦", era: "Bronze Age" },
-        "Mine": { count: 0, baseCost: 200, priceRatio: 1.12, production: 20, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 2, food: 2 }, produces: { stone: 5, iron: 1 } },
-        "Workshop": { count: 0, baseCost: 500, priceRatio: 1.12, production: 50, icon: "🔨", era: "Iron Age", upkeep: { stone: 5, iron: 2 }, produces: { steel: 1 } },
+        "Gatherer": { count: 0, baseCost: 25, priceRatio: 1.07, production: 2, icon: "🧺", era: "Stone Age" },
+        "Farm": { count: 0, baseCost: 50, priceRatio: 1.07, production: 5, icon: "🌾", era: "Bronze Age" },
+        "Mine": { count: 0, baseCost: 200, priceRatio: 1.12, production: 20, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 } },
+        "Workshop": { count: 0, baseCost: 500, priceRatio: 1.12, production: 50, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 } },
         "Aqueduct": { count: 0, baseCost: 1500, priceRatio: 1.12, production: 80, icon: "💧", era: "Iron Age" },
         "University": { count: 0, baseCost: 5000, priceRatio: 1.15, production: 200, icon: "🎓", era: "Middle Ages" },
         "Bank": { count: 0, baseCost: 10000, priceRatio: 1.15, production: 500, icon: "🏦", era: "Renaissance" },
-        "Factory": { count: 0, baseCost: 25000, priceRatio: 1.15, production: 1500, icon: "🏭", era: "Industrial Age", upkeep: { steel: 2, energy: 5 } },
+        "Factory": { count: 0, baseCost: 25000, priceRatio: 1.15, production: 1500, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 } },
         "Lab": { count: 0, baseCost: 50000, priceRatio: 1.15, production: 3000, icon: "🔬", era: "Modern Age" },
-        "PowerPlant": { count: 0, baseCost: 150000, priceRatio: 1.25, production: 10000, icon: "⚡", era: "Modern Age", upkeep: { wood: 20 }, produces: { energy: 50 } },
+        "PowerPlant": { count: 0, baseCost: 150000, priceRatio: 1.25, production: 10000, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 } },
         "Supercomputer": { count: 0, baseCost: 1000000, priceRatio: 1.25, production: 50000, icon: "🖥️", era: "Information Age" },
-        "FusionReactor": { count: 0, baseCost: 5000000, priceRatio: 1.25, production: 250000, icon: "⚛️", era: "Future Age", upkeep: { steel: 50 } }
+        "FusionReactor": { count: 0, baseCost: 5000000, priceRatio: 1.25, production: 250000, icon: "⚛️", era: "Future Age" }
     };
 
     // Apply Ascension Start Bonuses
@@ -1776,21 +1699,12 @@ function initBuildingsUI() {
             upkeepHtml = `<br><small style="color:#e74c3c">Upkeep: ${parts.join(", ")}</small>`;
         }
 
-        let producesHtml = "";
-        if (b.produces) {
-            let parts = [];
-            for (let res in b.produces) {
-                parts.push(`${b.produces[res]} ${res}`);
-            }
-            producesHtml = `<br><small style="color:#3498db">Generates: ${parts.join(", ")}</small>`;
-        }
-
         btn.innerHTML = `
             <div style="font-size:24px;">${b.icon}</div>
             <div>
                 <strong>Buy ${name}</strong><br>
                 <small>Cost: <span id="cost-${name}">0</span></small> | <small>Owned: <span id="count-${name}">0</span></small><br>
-                <small>Prod: ${b.production}</small>${upkeepHtml}${producesHtml}
+                <small>Prod: ${b.production}</small>${upkeepHtml}
             </div>
         `;
         btn.onclick = () => window.buyBuilding(name);
@@ -1876,190 +1790,29 @@ function updateUI() {
             { key: "oil", icon: "🛢️", era: "Industrial Age" },
             { key: "uranium", icon: "☢️", era: "Modern Age" },
             { key: "energy", icon: "⚡", era: "Modern Age" }
-    // Unified Resource List
-    const unifiedList = document.getElementById("unified-resource-list");
-    if (unifiedList) {
-        const RESOURCE_DISPLAY_ORDER = [
-            { key: "clicks", name: "Clicks", icon: "👆", capped: false },
-            { key: "money", name: "Money", icon: "💰", capped: false },
-            { key: "knowledge", name: "Knowledge", icon: "📚", capped: false },
-            { key: "culture", name: "Culture", icon: "🎨", capped: false },
-            { key: "relicShards", name: "Shards", icon: "💎", capped: false },
-            { key: "symbolsOfEra", name: "Symbols", icon: "🏛️", capped: false },
-            { key: "wood", name: "Wood", icon: "🪵", capped: true, era: "Stone Age" },
-            { key: "stone", name: "Stone", icon: "🪨", capped: true, era: "Stone Age" },
-            { key: "food", name: "Food", icon: "🍞", capped: true, era: "Stone Age" },
-            { key: "iron", name: "Iron", icon: "🔩", capped: true, era: "Iron Age" },
-            { key: "steel", name: "Steel", icon: "🏗️", capped: true, era: "Industrial Age" },
-            { key: "oil", name: "Oil", icon: "🛢️", capped: true, era: "Industrial Age" },
-            { key: "uranium", name: "Uranium", icon: "☢️", capped: true, era: "Modern Age" },
-            { key: "energy", name: "Energy", icon: "⚡", capped: true, era: "Modern Age" }
         ];
-
-        // Calculate Net Consumption and Generation for ALL resources
-        const consumption = {};
-        const generation = {};
-
-        // Loop over buildings
-        Object.values(gameState.buildings).forEach(b => {
-            if (b.count > 0) {
-                if (b.upkeep) {
-                    for (let res in b.upkeep) {
-                        consumption[res] = (consumption[res] || 0) + (b.upkeep[res] * b.count);
-                    }
-                }
-                if (b.produces) {
-                    for (let res in b.produces) {
-                        generation[res] = (generation[res] || 0) + (b.produces[res] * b.count);
-                    }
-                }
-            }
-        });
-
-        // Also manually add production (clicks, knowledge from lab etc)
-        // Note: calculateProduction mainly returns clicks.
-        // Knowledge/Money come from other buildings but they use 'production' property.
-        // We need to map 'production' property to resource type if implicit.
-        // AutoClicker, etc -> clicks
-        // Bank -> money
-        // Lab -> knowledge
-        // Let's iterate buildings again or merge logic?
-        // Simpler: Just rely on 'produces' for physical and handle special cases here or assume they are not net/s but pure gain.
-        // Wait, Clicks is net/s too (manual + buildings).
-        // Let's add the 'production' property contribution to generation.
-
-        Object.keys(gameState.buildings).forEach(key => {
-            const b = gameState.buildings[key];
-            if (b.count > 0 && b.production > 0) {
-                let target = "clicks";
-                if (["University", "Lab", "Supercomputer"].includes(key)) target = "knowledge";
-                if (["Bank"].includes(key)) target = "money";
-
-                // Note: This ignores multipliers for display simplicity, or we should fetch generic multiplier?
-                // Real production includes multipliers.
-                // Let's use base production for net display or try to approximate?
-                // Using base production * count is consistent with 'produces' logic above (which is base).
-                // Actually, 'produces' logic above didn't include multipliers either.
-                // For UI net/s, raw base rates are often less confusing than fluctuating ones,
-                // BUT user wants to know real income.
-                // Given the complexity of multipliers, let's stick to base rates for the sidebar or accept it might be lower than actual.
-                // Or better, let's use the actual efficiency from previous tick? No, efficiency is local.
-
-                generation[target] = (generation[target] || 0) + (b.production * b.count);
-            }
-        });
 
         // Helper to find era index
         const getEraIndex = (name) => ERA_DATA.findIndex(e => e.name === name);
         const currentEraIdx = getEraIndex(gameState.era);
 
         let html = "";
-        RESOURCE_DISPLAY_ORDER.forEach(res => {
-            // Check visibility
-            let visible = true;
-            if (res.era) {
-                const unlockIdx = getEraIndex(res.era);
-                if (currentEraIdx < unlockIdx && (!gameState.resources[res.key] || gameState.resources[res.key] <= 0)) {
-                    visible = false;
-                }
-            } else {
-                // Uncapped resources like Clicks/Money always visible?
-                // Maybe hide Knowledge until Stone Age?
-                // Let's keep them visible or use simple check.
-                if (res.key === "culture" && gameState.resources.culture <= 0 && currentEraIdx < 1) visible = false;
-                // etc.
-            }
-
-            if (visible) {
-                const amount = Math.floor(gameState.resources[res.key]);
-                const max = gameState.maxStorage || 10000;
-
-                let valText = `${amount}`;
-                if (res.capped) {
-                    const ratio = amount / max;
-                    let amountStyle = "";
-                    if (ratio >= 1.0) amountStyle = "color:#e74c3c; font-weight:bold;"; // Red
-                    else if (ratio >= 0.9) amountStyle = "color:#e67e22;"; // Orange
-                    else if (ratio >= 0.8) amountStyle = "color:#f1c40f;"; // Yellow
-
-                    if (amountStyle) {
-                        valText = `<span style="${amountStyle}">${amount}</span> / ${max}`;
-                    } else {
-                        valText = `${amount} / ${max}`;
-                    }
-                }
+        resourceConfig.forEach(res => {
+            const unlockIdx = getEraIndex(res.era);
+            const hasResource = gameState.resources[res.key] > 0;
 
             // Show if unlocked by Era OR if player has found some (e.g. from unique reward)
             if (currentEraIdx >= unlockIdx || hasResource) {
                 html += `<span>${res.icon} ${formatNumber(gameState.resources[res.key])}</span> | `;
-                const net = (generation[res.key] || 0) - (consumption[res.key] || 0);
-
-                let netHtml = "";
-                if (net !== 0) {
-                    const color = net > 0 ? "#2ecc71" : "#e74c3c"; // Green/Red
-                    const sign = net > 0 ? "+" : "";
-                    const style = net < 0 ? "font-weight: bold;" : "";
-                    netHtml = ` <span style="color:${color}; ${style}">(${sign}${net}/s)</span>`;
-                } else if (consumption[res.key] > 0) {
-                    netHtml = ` <span style="color:#f1c40f">(0/s)</span>`;
-                }
-
-                html += `
-                <div class="resource" style="display:flex; justify-content:space-between; align-items:center; padding: 2px 0;">
-                    <div>${res.icon} ${res.name}:</div>
-                    <div style="text-align:right;">${valText}${netHtml}</div>
-                </div>`;
             }
         });
 
-        // Append Storage Upgrade
-        const level = gameState.storageLevel || 1;
-        const nextWood = Math.floor(500 * Math.pow(1.5, level - 1));
-        const nextStone = Math.floor(500 * Math.pow(1.5, level - 1));
-        html += `<hr><button onclick="upgradeStorage()" style="width:100%; padding:5px; font-size:12px;">Upgrade Storage (Lvl ${level})<br>Cost: ${nextWood} 🪵 | ${nextStone} 🪨</button>`;
+        // Remove trailing separator
+        if (html.endsWith(" | ")) html = html.substring(0, html.length - 3);
 
-        unifiedList.innerHTML = html;
+        lootContainer.innerHTML = html;
     }
-
-    // Happiness Indicator
-    const happyEl = document.getElementById("happiness-indicator");
-    if (happyEl) {
-        let happiness = 100;
-        let tooltip = "Base: 100";
-
-        // War Weariness
-        if (gameState.warWeariness > 0) {
-            happiness -= gameState.warWeariness;
-            tooltip += `\nWar Weariness: -${Math.floor(gameState.warWeariness)}`;
-        }
-
-        // Dynasty Traits (Tyrant)
-        if (gameState.dynasty && gameState.dynasty.currentRuler) {
-            const tyrant = gameState.dynasty.currentRuler.traits.find(t => t.id === "tyrant");
-            if (tyrant) {
-                // Effect is -20% (multiplicative)
-                const pen = Math.floor(happiness * 0.2);
-                happiness -= pen;
-                tooltip += `\nTyrant Ruler: -${pen} (-20%)`;
-            }
-        }
-
-        // Crisis/Starvation (Placeholder)
-        if (gameState.resources.food < 0) { // If we tracked starvation
-            // Not implemented yet
-        }
-
-        // Global Multiplier
-        tooltip += `\nGlobal Multiplier: ${(happiness / 100).toFixed(2)}x`;
-
-        happyEl.innerText = `${Math.floor(happiness)}%`;
-        happyEl.title = tooltip;
-
-        // Color coding
-        if (happiness >= 100) happyEl.style.color = "#2ecc71";
-        else if (happiness >= 50) happyEl.style.color = "#f1c40f";
-        else happyEl.style.color = "#e74c3c";
-    }
+    document.getElementById("res-se").innerText = gameState.resources.symbolsOfEra;
 
     const prestigeBtn = document.getElementById("btn-prestige");
     if (prestigeBtn) {
@@ -3711,7 +3464,7 @@ window.renderResearchTree = function() {
 
 function renderVictoryModal() {
     if (document.getElementById("victory-modal")) return;
-
+    
     const modal = document.createElement("div");
     modal.id = "victory-modal";
     modal.style.position = "fixed";
@@ -3729,7 +3482,7 @@ function renderVictoryModal() {
     modal.innerHTML = `
         <h1 style="font-size: 3em; color: #f1c40f; text-shadow: 0 0 10px #f1c40f;">VICTORY ACHIEVED!</h1>
         <p style="font-size: 1.2em; max-width: 600px; text-align: center;">
-            You have guided your civilization from the dawn of time to the pinnacle of technological singularity.
+            You have guided your civilization from the dawn of time to the pinnacle of technological singularity. 
             The universe lies before you, waiting to be explored.
         </p>
         <div style="margin-top: 20px;">
@@ -3752,24 +3505,24 @@ window.claimVictory = function() {
 
 window.performTranscendence = function() {
     if (!confirm("Are you sure? This will reset your progress but grant powerful Prestige bonuses.")) return;
-
+    
     // Increment Transcendence Count
     if (!gameState.stats.transcendenceCount) gameState.stats.transcendenceCount = 0;
     gameState.stats.transcendenceCount++;
-
+    
     // Keep stats but reset game
     const tCount = gameState.stats.transcendenceCount;
-
+    
     // Save only meta data
     const metaData = {
         transcendenceCount: tCount,
         lifetimeClicks: gameState.stats.totalClicks
     };
     localStorage.setItem("hc_web_meta", JSON.stringify(metaData));
-
+    
     // Clear main save
     localStorage.removeItem("hc_web_save");
-
+    
     location.reload();
 };
 
@@ -3779,31 +3532,31 @@ window.scanNewPlanet = function() {
         alert("Not enough Knowledge to scan deep space! Need " + formatNumber(scanCost));
         return;
     }
-
+    
     gameState.resources.knowledge -= scanCost;
-
+    
     // Generate planet using existing function if possible
     const newPlanets = generatePlanets(1);
     const planet = newPlanets[0];
-
+    
     // Buff it for Deep Space
     planet.name = "Deep Space " + planet.name;
     planet.production.money *= 2;
     planet.production.knowledge *= 2;
     planet.resources.push("dark_matter"); // Just for flavor
-
+    
     // Scale colonization cost
     if (planet.cost) {
         planet.cost.money = (planet.cost.money || 10000) * 10;
         planet.cost.knowledge = (planet.cost.knowledge || 5000) * 10;
         planet.cost.food = (planet.cost.food || 2000) * 10;
     }
-
+    
     gameState.space.planets.push(planet);
-
+    
     if (window.audioController) window.audioController.playEvent();
     alert(`Deep Space Scan Complete! Found: ${planet.name} (${planet.type})`);
-
+    
     updateUI();
     renderSpace(); // Refresh view
 };
