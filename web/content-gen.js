@@ -231,10 +231,9 @@ export function generateExpeditions() {
 // --- Recipes ---
 export function generateRecipes() {
     return [
-        { id: "craft_potion", name: "Health Potion", icon: "🧪", inputs: { herb: 2, water: 1 }, output: { potion: 1 } },
-        { id: "craft_tool", name: "Stone Tool", icon: "🔨", inputs: { stone: 2, wood: 1 }, output: { tool: 1 } },
-        { id: "craft_bronze", name: "Bronze Ingot", icon: "🧱", inputs: { copper: 1, tin: 1 }, output: { bronze: 1 } },
-        { id: "craft_sword", name: "Iron Sword", icon: "⚔️", inputs: { iron: 2, wood: 1 }, output: { sword: 1 } },
-        { id: "craft_crown", name: "Gold Crown", icon: "👑", inputs: { gold: 5 }, output: { crown: 1 } }
+        { id: "craft_tool", name: "Steel Tools", icon: "⛏️", inputs: { steel: 50, wood: 100 }, output: { type: "crafted", name: "Steel Tools", rarity: "Common", effect: { type: "cost_reduction", value: 5 }, desc: "Reduces all building costs by 5%." } },
+        { id: "craft_sword", name: "Officer's Sword", icon: "⚔️", inputs: { steel: 100, iron: 200 }, output: { type: "crafted", name: "Officer's Sword", rarity: "Uncommon", effect: { type: "army_power", value: 0.5 }, desc: "Increases Global Army Power by 50%." } },
+        { id: "craft_crown", name: "Jeweled Crown", icon: "👑", inputs: { money: 5000 }, output: { type: "crafted", name: "Jeweled Crown", rarity: "Rare", effect: { type: "happiness_boost", value: 0.2 }, desc: "Increases Global Happiness by 20%." } },
+        { id: "craft_battery", name: "High-Cap Battery", icon: "🔋", inputs: { energy: 5000, stone: 1000 }, output: { type: "crafted", name: "High-Cap Battery", rarity: "Epic", effect: { type: "production_multiplier", value: 1.5 }, desc: "Increases global production by 50%." } }
     ];
 }

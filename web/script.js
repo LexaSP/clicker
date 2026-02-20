@@ -54,6 +54,7 @@ let gameState = {
         energy: 0
     },
     inventory: [], // Relics
+    craftedItems: [],
     activeResearch: [], // Currently researching
     researched: [], // Completed research IDs
     ideas: [], // Unlocked ideas
@@ -620,8 +621,9 @@ window.claimQuest = function(questId) {
 // --- Mechanics ---
 function getGlobalMultiplier(type, resource = null) {
     let mult = 1.0;
-    // Relics
-    gameState.inventory.forEach(relic => {
+    // Relics & Crafted Items
+    const allItems = [...(gameState.inventory || []), ...(gameState.craftedItems || [])];
+    allItems.forEach(relic => {
         if (relic.effect.type === `${type}_boost` || (type === "production" && relic.effect.type === "production_multiplier")) {
              mult += (relic.effect.value / 100);
         }
@@ -2754,25 +2756,13 @@ function renderCrafting() {
         }
 
         // Output text
-        let outputText = [];
-        for (let key in recipe.output) {
-            outputText.push(`${recipe.output[key]} ${key}`);
-        }
+        let outputText = recipe.output.name || "Item";
 
         // Check affordability
         let canAfford = true;
         for (let key in recipe.inputs) {
-            let resName = key;
-            // Map generator names to gameState resources if needed
-            // Our generator uses 'stone', 'wood', 'herb', 'water', 'copper', 'tin'
-            // We implemented: wood, stone, food, relicShards.
-            // Map unknown to 'relicShards' as fallback or assume impossible?
-            // Let's implement basics:
-            if (resName === "herb" || resName === "water") resName = "food";
-            if (resName === "copper" || resName === "tin") resName = "stone";
-
             const cost = recipe.inputs[key];
-            if (gameState.resources[resName] === undefined || gameState.resources[resName] < cost) {
+            if (gameState.resources[key] === undefined || gameState.resources[key] < cost) {
                 canAfford = false;
                 break;
             }
@@ -2782,7 +2772,7 @@ function renderCrafting() {
             <div style="float:left; font-size: 20px; margin-right: 8px;">${recipe.icon || '🛠️'}</div>
             <strong>${recipe.name}</strong><br>
             <small>Requires: ${inputsText.join(", ")}</small><br>
-            <small>Produces: ${outputText.join(", ")}</small><br>
+            <small>Produces: ${outputText}</small><br>
             <button onclick="craftItem('${recipe.id}')" ${canAfford ? '' : 'disabled'}>Craft</button>
         `;
 
@@ -2797,12 +2787,8 @@ window.craftItem = function(recipeId) {
     // Validate again
     let canAfford = true;
     for (let key in recipe.inputs) {
-        let resName = key;
-        if (resName === "herb" || resName === "water") resName = "food";
-        if (resName === "copper" || resName === "tin") resName = "stone";
-
         const cost = recipe.inputs[key];
-        if (gameState.resources[resName] === undefined || gameState.resources[resName] < cost) {
+        if (gameState.resources[key] === undefined || gameState.resources[key] < cost) {
             canAfford = false;
             break;
         }
@@ -2812,25 +2798,25 @@ window.craftItem = function(recipeId) {
         if (window.audioController) window.audioController.playBuy();
         // Deduct
         for (let key in recipe.inputs) {
-            let resName = key;
-            if (resName === "herb" || resName === "water") resName = "food";
-            if (resName === "copper" || resName === "tin") resName = "stone";
-            gameState.resources[resName] -= recipe.inputs[key];
+            gameState.resources[key] -= recipe.inputs[key];
         }
 
         // Grant output
-        gameState.inventory.push({
+        const item = {
             id: `crafted_${Date.now()}`,
-            name: `Crafted ${recipe.name}`,
-            rarity: "Common",
-            description: "Hand-crafted item.",
-            effect: { type: "production_boost", value: 1 }
-        });
+            name: recipe.output.name,
+            icon: recipe.icon,
+            rarity: recipe.output.rarity,
+            description: recipe.output.desc,
+            effect: recipe.output.effect
+        };
+        if (!gameState.craftedItems) gameState.craftedItems = [];
+        gameState.craftedItems.push(item);
 
         alert(`Crafted ${recipe.name}!`);
         updateUI();
     } else {
-        alert("Not enough resources (Need Stone/Shards)!");
+        alert("Not enough resources!");
     }
 };
 
@@ -2839,12 +2825,13 @@ function renderInventory() {
     if (!container) return;
 
     container.innerHTML = "";
-    if (gameState.inventory.length === 0) {
-        container.innerHTML = "<p>No relics yet.</p>";
+    const allItems = [...(gameState.inventory || []), ...(gameState.craftedItems || [])];
+    if (allItems.length === 0) {
+        container.innerHTML = "<p>No relics or gear yet.</p>";
         return;
     }
 
-    gameState.inventory.forEach(relic => {
+    allItems.forEach(relic => {
         const div = document.createElement("div");
         div.className = `relic-card rarity-${relic.rarity.toLowerCase()}`;
         div.title = relic.description;
