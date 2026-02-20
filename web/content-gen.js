@@ -155,6 +155,9 @@ export function generateResearch() {
             // Base cost scales with Era (10x per era) and Tech level within era (1.2x per tech)
             const cost = Math.floor(100 * Math.pow(8, eraIndex) * Math.pow(1.25, i));
 
+            // Max Level Logic (Milestones are single level, others multi)
+            const maxLevel = (i === 1 || i === 20) ? 1 : 5;
+
             // Assign type: Alternate
             const type = (i % 2 === 0) ? "culture" : "knowledge";
 
@@ -185,6 +188,7 @@ export function generateResearch() {
                 era: era,
                 cost: cost,
                 costType: type,
+                maxLevel: maxLevel,
                 requirements: requirements,
                 description: flavor,
                 effect: effect

@@ -56,6 +56,7 @@ let gameState = {
     inventory: [], // Relics
     activeResearch: [], // Currently researching
     researched: [], // Completed research IDs
+    techLevels: {}, // { "tech_0_2": 3 }
     ideas: [], // Unlocked ideas
     expeditions: [], // Available
     activeExpeditions: [],
@@ -682,27 +683,65 @@ function getGlobalMultiplier(type, resource = null) {
     gameState.researched.forEach(techId => {
         const tech = allResearch.find(t => t.id === techId);
         if (tech) {
+            // Get Level (Default 1 if not tracked)
+            const lvl = (gameState.techLevels && gameState.techLevels[techId]) ? gameState.techLevels[techId] : 1;
+
             if (tech.effects) {
                 tech.effects.forEach(eff => {
                     if (eff.type === `${type}_boost` || (type === "production" && eff.type === "production_multiplier") || (type === "happiness" && eff.type === "happiness_boost")) {
-                        mult *= (1 + eff.value);
+                        // Multiplicative scaling per level: (1 + value)^lvl ?
+                        // Or additive stack? Usually 1.2x at lvl 1, 1.4x at lvl 2 (additive base).
+                        // Let's go with additive stack on the bonus: 1 + (bonus * lvl)
+                        // If bonus is 0.5 (1.5x), lvl 2 is 2.0x (1 + 1.0).
+
+                        // Handle multipliers (value ~1.2) vs additive ratios (value ~0.5? No, previous task used 1.5 for +50%)
+                        // If value is 1.5, bonus is 0.5.
+                        // If value is 1.2, bonus is 0.2.
+                        // Formula: 1 + ((value - 1) * lvl)
+
+                        // Handle negatives? -0.2 -> 1 + (-0.2 * lvl) -> 0.8, 0.6. Correct.
+
+                        const bonus = eff.value >= 0 ? (eff.value - 1) : eff.value; // Wait, if value is 1.5, bonus is 0.5.
+                        // But negative values were stored as -0.2 directly?
+                        // Let's check unique techs: { type: "army_power", value: -0.2 }.
+                        // Standard techs: { type: "food_boost", value: 1.5 }.
+                        // So positive > 1.0, negative < 0? No, negative is additive modifier.
+
+                        let effectiveValue = 0;
+                        if (eff.value > 1.0) effectiveValue = (eff.value - 1) * lvl; // 1.5 -> 0.5 * lvl
+                        else if (eff.value < 0) effectiveValue = eff.value * lvl; // -0.2 -> -0.2 * lvl
+                        else effectiveValue = eff.value * lvl; // Small positive like 0.2? (If used)
+
+                        mult *= (1 + effectiveValue);
                     }
                 });
             } else if (tech.effect) {
                 // Fallback for standard single-effect techs
-                if (tech.effect.type === `${type}_boost` || (type === "production" && tech.effect.type === "production_multiplier")) {
-                    // Standard techs use simple multiplier (e.g. 1.2) or additive?
-                    // Previous logic was: if production_multiplier, mult *= value.
-                    // If boost, how was it handled?
-                    // Previous code: if (tech.effect.type === "production_multiplier" && type === "production") mult *= tech.effect.value;
-                    // Standard boosts were not fully implemented in getGlobalMultiplier before this task except for production.
-                    // Now we standardized on `type_boost` in previous task.
-                    // Standard tech effects from previous task: { type: "food_boost", value: 1.5 }
-                    // So we need to handle single effect boosts here too.
+                // Only process if it matches the requested type
+                let match = false;
+                if (tech.effect.type === `${type}_boost`) match = true;
+                if (type === "production" && tech.effect.type === "production_multiplier") match = true;
+                if (type === "cost" && tech.effect.type === "cost_reduction") match = true;
+                if (type === "army_power" && tech.effect.type === "army_power") match = true;
 
-                    if (tech.effect.type === `${type}_boost` || (type === "production" && tech.effect.type === "production_multiplier")) {
-                        if (tech.effect.type.endsWith("_boost")) mult *= tech.effect.value; // e.g. 1.5
-                        else mult *= tech.effect.value; // e.g. 1.2
+                if (match) {
+                    if (type === "cost") {
+                        // Cost reduction is percent integer (e.g. 10)
+                        // mult -= (val * lvl / 100)
+                        const reduction = tech.effect.value * lvl;
+                        mult -= (reduction / 100);
+                    } else {
+                        // Multipliers
+                        // value 1.5 -> bonus 0.5
+                        // value 1.2 -> bonus 0.2
+                        // Formula: 1 + ((value - 1) * lvl)
+
+                        // Safety for weird values
+                        let bonus = 0;
+                        if (tech.effect.value > 1.0) bonus = tech.effect.value - 1;
+                        else bonus = tech.effect.value; // If using 0.2 style
+
+                        mult *= (1 + (bonus * lvl));
                     }
                 }
             }
@@ -761,6 +800,9 @@ function getGlobalMultiplier(type, resource = null) {
         // Reduction is raw sum (e.g. 20 for 20%)
         mult -= (reduction / 100);
     }
+
+    // Safety clamp
+    if (type === "cost" && mult < 0.1) mult = 0.1;
 
     return mult;
 }
@@ -916,15 +958,21 @@ window.buyResearch = function(techId) {
     const tech = allResearch.find(t => t.id === techId);
     if (!tech) return;
 
-    let costMult = getGlobalMultiplier("cost", "knowledge"); // Tech cost is usually knowledge
-    const cost = Math.floor(tech.cost * costMult);
+    const currentLvl = gameState.techLevels[techId] || 0;
+    const maxLvl = tech.maxLevel || 1;
+
+    if (currentLvl >= maxLvl) return;
+
+    let costMult = getGlobalMultiplier("cost", "knowledge");
+
+    // Scale cost based on level
+    let baseCost = tech.cost * Math.pow(1.5, currentLvl);
+    const cost = Math.floor(baseCost * costMult);
 
     const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
-    const costType = tech.costType || "knowledge"; // Default to knowledge (was clicks? No, original plan said clicks/knowledge mix)
+    const costType = tech.costType || "knowledge";
 
-    // Previously we used clicks as placeholder. Now we switch to knowledge/culture.
-    // If user has enough resources
-    if (reqMet && !gameState.researched.includes(techId)) {
+    if (reqMet) {
         let purchased = false;
         if (costType === "knowledge" && gameState.resources.knowledge >= cost) {
             gameState.resources.knowledge -= cost;
@@ -932,19 +980,24 @@ window.buyResearch = function(techId) {
         } else if (costType === "culture" && gameState.resources.culture >= cost) {
             gameState.resources.culture -= cost;
             purchased = true;
-        } else if (costType === "clicks" && gameState.resources.clicks >= cost) { // Legacy/Early
+        } else if (costType === "clicks" && gameState.resources.clicks >= cost) {
              gameState.resources.clicks -= cost;
              purchased = true;
         }
 
         if (purchased) {
             if (window.audioController) window.audioController.playUnlock();
-            gameState.researched.push(techId);
 
-            // Stats
-            if (!gameState.stats) gameState.stats = {};
-            if (!gameState.stats.techsResearched) gameState.stats.techsResearched = 0;
-            gameState.stats.techsResearched++;
+            // First time unlock
+            if (currentLvl === 0) {
+                gameState.researched.push(techId);
+                // Stats
+                if (!gameState.stats) gameState.stats = {};
+                if (!gameState.stats.techsResearched) gameState.stats.techsResearched = 0;
+                gameState.stats.techsResearched++;
+            }
+
+            gameState.techLevels[techId] = currentLvl + 1;
 
             updateUI();
         }
@@ -3407,9 +3460,39 @@ window.renderResearchTree = function() {
             }
 
             if (isVisible) {
+                const currentLvl = gameState.techLevels[tech.id] || 0;
+                const maxLvl = tech.maxLevel || 1;
+
+                // Determine Status Class
+                let statusClass = 'locked';
+                if (currentLvl >= maxLvl) statusClass = 'researched'; // Green (Maxed)
+                else if (currentLvl > 0) statusClass = 'available'; // Blue (Partial/Progress)
+                else if (isAvailable) statusClass = 'available'; // Blue (Unlocked)
+
+                // Cost Calculation for Next Level
+                let costDisplay = "MAX";
+                if (currentLvl < maxLvl) {
+                    let costMult = getGlobalMultiplier("cost", "knowledge");
+                    let baseCost = tech.cost * Math.pow(1.5, currentLvl);
+                    const cost = Math.floor(baseCost * costMult);
+                    costDisplay = `${cost} Knowl`;
+                }
+
                 const div = document.createElement("div");
-                div.className = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
-                div.innerHTML = `<span style="font-size:16px">${tech.icon || '🔬'}</span><br>${tech.name}<br><small>(${tech.cost})</small>`;
+                div.className = `tech-node ${statusClass}`;
+
+                // Override color for partial?
+                if (currentLvl > 0 && currentLvl < maxLvl) {
+                    div.style.border = "2px solid #3498db"; // Keep blue border
+                    // Maybe add a progress bar or text?
+                }
+
+                div.innerHTML = `
+                    <span style="font-size:16px">${tech.icon || '🔬'}</span><br>
+                    <strong>${tech.name}</strong><br>
+                    <small>Lvl ${currentLvl} / ${maxLvl}</small><br>
+                    <small>${costDisplay}</small>
+                `;
                 div.style.left = `${x}px`;
                 div.style.top = `${y}px`;
 
