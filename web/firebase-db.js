@@ -1,9 +1,10 @@
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAXiLOuEr5OvhaLhu6q2xO1Tru7KIDDF4c",
+  apiKey: "AIzaSyAjJT6MK68KUXDF_4I1u_onNxmlW_CpBHI",
   authDomain: "history-clicker.firebaseapp.com",
   projectId: "history-clicker",
   storageBucket: "history-clicker.firebasestorage.app",
