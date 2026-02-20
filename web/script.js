@@ -34,6 +34,27 @@ window.renderModdingMenu = renderModdingMenu;
 import { initConstellations, getConstellationMultiplier, renderConstellationMenu } from './constellations.js';
 import { checkTutorials, initTutorials } from './tutorial.js';
 
+// --- Helpers ---
+function formatNumber(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(2) + "M";
+    if (num >= 1000) return (num / 1000).toFixed(1) + "K";
+    return Math.floor(num);
+}
+
+function spawnFloatingText(x, y, text, color = "#fff") {
+    const el = document.createElement("div");
+    el.innerText = text;
+    el.className = "floating-text";
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    el.style.color = color;
+    document.body.appendChild(el);
+
+    setTimeout(() => {
+        if (document.body.contains(el)) document.body.removeChild(el);
+    }, 1000);
+}
+
 // --- Game State ---
 let gameState = {
     resources: {
@@ -750,7 +771,7 @@ window.manualClick = function(event) {
 
     // Spawn Particle
     if (event) {
-        spawnClickParticle(event.clientX, event.clientY, clickValue, isCrit);
+        spawnFloatingText(event.clientX, event.clientY, `+${formatNumber(clickValue)}`, isCrit ? "#e74c3c" : "#f1c40f");
     }
 
     checkQuestProgress("clicks", 1);
@@ -761,26 +782,6 @@ window.manualClick = function(event) {
     }
     updateUI();
 };
-
-function spawnClickParticle(x, y, amount, isCrit) {
-    const p = document.createElement("div");
-    p.innerText = `+${amount}`;
-    p.style.position = "absolute";
-    p.style.left = `${x}px`;
-    p.style.top = `${y}px`;
-    p.style.color = isCrit ? "#e74c3c" : "#f1c40f";
-    p.style.fontSize = isCrit ? "20px" : "14px";
-    p.style.fontWeight = "bold";
-    p.style.pointerEvents = "none";
-    p.style.animation = "floatUp 1s ease-out forwards";
-    p.style.textShadow = "0 0 5px black";
-    p.style.zIndex = "100";
-    document.body.appendChild(p);
-
-    setTimeout(() => {
-        if (document.body.contains(p)) document.body.removeChild(p);
-    }, 1000);
-}
 
 window.buyBuilding = function(name) {
     // Challenge Constraint: Max 1 Building
@@ -804,6 +805,14 @@ window.buyBuilding = function(name) {
     if (gameState.resources.clicks >= finalCost) {
         if (window.audioController) window.audioController.playBuy();
         gameState.resources.clicks -= finalCost;
+
+        // Float text on button
+        const btn = document.getElementById(`btn-${name}`);
+        if (btn) {
+            const rect = btn.getBoundingClientRect();
+            spawnFloatingText(rect.left + rect.width/2, rect.top, `-${formatNumber(finalCost)} 🖱️`, "#e74c3c");
+        }
+
         b.count++;
 
         // Stats
@@ -1598,7 +1607,7 @@ function renderBuildings(container) {
         const finalCost = Math.floor(currentCost * costMult);
 
         const costEl = document.getElementById(`cost-${name}`);
-        if (costEl) costEl.innerText = finalCost;
+        if (costEl) costEl.innerText = formatNumber(finalCost);
 
         const countEl = document.getElementById(`count-${name}`);
         if (countEl) countEl.innerText = b.count;
@@ -1646,9 +1655,9 @@ function updateUI() {
         renderBuildings(list);
     }
 
-    document.getElementById("res-clicks").innerText = Math.floor(gameState.resources.clicks);
-    document.getElementById("res-knowledge").innerText = Math.floor(gameState.resources.knowledge);
-    document.getElementById("res-culture").innerText = Math.floor(gameState.resources.culture);
+    document.getElementById("res-clicks").innerText = formatNumber(gameState.resources.clicks);
+    document.getElementById("res-knowledge").innerText = formatNumber(gameState.resources.knowledge);
+    document.getElementById("res-culture").innerText = formatNumber(gameState.resources.culture);
     document.getElementById("res-shards").innerText = gameState.resources.relicShards;
 
     // Loot resources
@@ -1676,7 +1685,7 @@ function updateUI() {
 
             // Show if unlocked by Era OR if player has found some (e.g. from unique reward)
             if (currentEraIdx >= unlockIdx || hasResource) {
-                html += `<span>${res.icon} ${Math.floor(gameState.resources[res.key])}</span> | `;
+                html += `<span>${res.icon} ${formatNumber(gameState.resources[res.key])}</span> | `;
             }
         });
 
@@ -3194,6 +3203,31 @@ window.renderResearchTree = function() {
     const container = document.getElementById("research-container");
     if (!container) return;
 
+    // Enable Pan/Drag
+    let isDragging = false;
+    let startX, startY, scrollLeft, scrollTop;
+
+    container.onmousedown = (e) => {
+        isDragging = true;
+        container.classList.add("active");
+        startX = e.pageX - container.offsetLeft;
+        startY = e.pageY - container.offsetTop;
+        scrollLeft = container.scrollLeft;
+        scrollTop = container.scrollTop;
+    };
+    container.onmouseleave = () => { isDragging = false; container.classList.remove("active"); };
+    container.onmouseup = () => { isDragging = false; container.classList.remove("active"); };
+    container.onmousemove = (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+        const x = e.pageX - container.offsetLeft;
+        const y = e.pageY - container.offsetTop;
+        const walkX = (x - startX) * 2; // Speed
+        const walkY = (y - startY) * 2;
+        container.scrollLeft = scrollLeft - walkX;
+        container.scrollTop = scrollTop - walkY;
+    };
+
     let svg = document.getElementById("tech-tree-svg");
     if (!svg) {
         svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -3244,7 +3278,7 @@ window.renderResearchTree = function() {
             if (isVisible) {
                 const div = document.createElement("div");
                 div.className = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
-                div.innerHTML = `<span style="font-size:16px">${tech.icon || '🔬'}</span><br>${tech.name}<br><small>(${tech.cost})</small>`;
+                div.innerHTML = `<span style="font-size:16px">${tech.icon || '🔬'}</span><br>${tech.name}<br><small>(${formatNumber(tech.cost)})</small>`;
                 div.style.left = `${x}px`;
                 div.style.top = `${y}px`;
                 div.onclick = () => window.buyResearch(tech.id);
@@ -3271,14 +3305,21 @@ window.renderResearchTree = function() {
                     const start = positions[reqId];
                     const end = positions[tech.id];
 
-                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    line.setAttribute("x1", start.x + 150);
-                    line.setAttribute("y1", start.y + 30);
-                    line.setAttribute("x2", end.x);
-                    line.setAttribute("y2", end.y + 30);
-                    line.setAttribute("class", "tech-line");
-                    if (isDone) line.classList.add("active");
-                    svg.appendChild(line);
+                    // Curved Path Logic (Bezier)
+                    const p1 = { x: start.x + 150, y: start.y + 30 };
+                    const p2 = { x: end.x, y: end.y + 30 };
+                    const cp1 = { x: p1.x + 50, y: p1.y };
+                    const cp2 = { x: p2.x - 50, y: p2.y };
+
+                    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    const d = `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`;
+                    path.setAttribute("d", d);
+                    path.setAttribute("fill", "none");
+                    path.setAttribute("stroke", isDone ? "#2ecc71" : "#555");
+                    path.setAttribute("stroke-width", "2");
+                    path.setAttribute("class", "tech-line");
+                    if (isDone) path.classList.add("active");
+                    svg.appendChild(path);
                 }
             });
         }
