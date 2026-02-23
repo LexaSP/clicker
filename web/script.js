@@ -2154,120 +2154,60 @@ window.renderResearchTree = function() {
         container.style.position = "relative";
     }
 
-    // Ensure nodes are rendered before calculating rects (though appending is usually sync enough)
-    // We need to look up actual elements to get their bounding client rects relative to container.
-    // The previous math assumed nodes were exactly at (x, y) relative to container,
-    // but styles or offsets might shift them. Using getBoundingClientRect is robust.
+    // CRITICAL FIX: Wrap geometry calculations in setTimeout to ensure DOM layout is complete
+    // and use try/catch to prevent blocking main thread if it fails.
+    setTimeout(() => {
+        try {
+            if (!container) return;
+            const containerRect = container.getBoundingClientRect();
 
-    // We need to wait for layout? Usually sync append is fine.
-    // But we need to reference the *elements* by ID or class.
-    // We didn't give them IDs in the render loop above. Let's fix that first in the loop above?
-    // Actually, we can just select them since we know the tech ID.
-    // Wait, the tech nodes created above don't have IDs on the div, just click handlers.
-    // Let's modify the creation loop to add ID.
+            allResearch.forEach(tech => {
+                if (!positions[tech.id]) return;
 
-    // Re-iterate to draw lines using getBoundingClientRect
-    // Note: We need the container rect too.
-    const containerRect = container.getBoundingClientRect();
+                const reqMet = tech.requirements.every(r => gameState.researched.includes(r));
+                const isDone = gameState.researched.includes(tech.id);
+                const isVisible = isDone || reqMet || tech.requirements.some(r => gameState.researched.includes(r));
 
-    allResearch.forEach(tech => {
-        if (!positions[tech.id]) return;
+                if (isVisible) {
+                    tech.requirements.forEach(reqId => {
+                        if (positions[reqId]) {
+                            const startNode = document.getElementById(`tech-node-${reqId}`);
+                            const endNode = document.getElementById(`tech-node-${tech.id}`);
 
-        const reqMet = tech.requirements.every(r => gameState.researched.includes(r));
-        const isDone = gameState.researched.includes(tech.id);
-        const isVisible = isDone || reqMet || tech.requirements.some(r => gameState.researched.includes(r));
+                            if (startNode && endNode) {
+                                const parentRect = startNode.getBoundingClientRect();
+                                const childRect = endNode.getBoundingClientRect();
 
-        if (isVisible) {
-            tech.requirements.forEach(reqId => {
-                if (positions[reqId]) {
-                    // Find actual DOM elements
-                    // We need to ensure we can find them.
-                    // Let's assume we add IDs in the loop above in a separate patch or lookup by text?
-                    // Lookup by text is fragile. Let's rely on the positioning logic we just used
-                    // BUT verify if we can get the element.
-                    // Actually, the prompt explicitly asked for getBoundingClientRect.
-                    // This implies the elements EXIST.
-                    // I will add IDs to the nodes in the previous loop first.
+                                // Calculate relative to container with scroll adjustment
+                                const x1 = parentRect.left + parentRect.width / 2 - containerRect.left + container.scrollLeft;
+                                const y1 = parentRect.top + parentRect.height / 2 - containerRect.top + container.scrollTop;
+                                const x2 = childRect.left + childRect.width / 2 - containerRect.left + container.scrollLeft;
+                                const y2 = childRect.top + childRect.height / 2 - containerRect.top + container.scrollTop;
 
-                    const startNode = document.getElementById(`tech-node-${reqId}`);
-                    const endNode = document.getElementById(`tech-node-${tech.id}`);
+                                // Curved Path Logic (Bezier)
+                                const cp1 = { x: x1 + 50, y: y1 };
+                                const cp2 = { x: x2 - 50, y: y2 };
 
-                    if (startNode && endNode) {
-                        const parentRect = startNode.getBoundingClientRect();
-                        const childRect = endNode.getBoundingClientRect();
+                                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                                const d = `M ${x1} ${y1} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${x2} ${y2}`;
+                                path.setAttribute("d", d);
+                                path.setAttribute("fill", "none");
+                                path.setAttribute("stroke", isDone ? "#2ecc71" : "#555");
+                                path.setAttribute("stroke-width", "2");
+                                path.setAttribute("class", "tech-line");
+                                path.style.pointerEvents = "none";
 
-                        // Calculate relative to container
-                        // x = clientRect.left - containerRect.left + scrollLeft?
-                        // If container is relative, and svg is absolute 0,0:
-                        // The SVG coordinate system matches the container's *content* box if we account for scroll.
-                        // But wait, the nodes move with scroll. The SVG moves with scroll.
-                        // If we use getBoundingClientRect, we get viewport coordinates.
-                        // Subtracting containerRect.left gives offset relative to container's visible top-left.
-                        // We need to add container.scrollLeft to map to the absolute canvas space?
-                        // NO, the nodes are absolute positioned `left: x px`.
-                        // If we use getBoundingClientRect, we get the *current* visual position.
-                        // If we draw lines based on that, they might be wrong if we scrolled?
-                        // Actually, if we draw the path *into* the SVG which is absolute positioned at 0,0 of container,
-                        // and sizing matches container scrollWidth/Height...
-                        // The prompt asked for:
-                        // x1 = parentRect.left + parentRect.width / 2 - containerRect.left;
-                        // This calculates position relative to the *viewport* of the container.
-                        // If the container is scrolled, parentRect.left changes.
-                        // If the SVG is also scrolling (it is inside container), then its internal (0,0) is also shifting visually?
-                        // NO, `svg` is `position: absolute; width: ...`.
-                        // If it's `absolute` inside `relative` container, it moves with scroll.
-                        // So `0,0` in SVG is `0,0` of the scrollable content area.
-                        // `containerRect.left` is the viewport left.
-                        // `parentRect.left` is the element left.
-                        // `parentRect.left - containerRect.left` is the distance from the left edge of the *visible* container.
-                        // IF the container is scrolled, this distance is smaller.
-                        // BUT the SVG coordinate system (0,0) is at the top-left of the *scrolled content*?
-                        // No, usually `absolute` inside a scrollable `relative` starts at the top-left of the *content*, so it scrolls away.
-                        // So we need to ADD `container.scrollLeft` to the calculated x1.
-                        // The prompt didn't strictly say "add scroll", but "use getBoundingClientRect".
-                        // I will implement exactly what was asked + scroll correction if needed to make it work.
-                        // `x1 = parentRect.left + parentRect.width/2 - containerRect.left + container.scrollLeft`
-
-                        const x1 = parentRect.left + parentRect.width / 2 - containerRect.left + container.scrollLeft;
-                        const y1 = parentRect.top + parentRect.height / 2 - containerRect.top + container.scrollTop;
-                        const x2 = childRect.left + childRect.width / 2 - containerRect.left + container.scrollLeft;
-                        const y2 = childRect.top + childRect.height / 2 - containerRect.top + container.scrollTop;
-
-                        // Curved Path Logic (Bezier)
-                        const cp1 = { x: x1 + 50, y: y1 };
-                        const cp2 = { x: x2 - 50, y: y2 };
-
-                        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-                        const d = `M ${x1} ${y1} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${x2} ${y2}`;
-                        path.setAttribute("d", d);
-                        path.setAttribute("fill", "none");
-                        path.setAttribute("stroke", isDone ? "#2ecc71" : "#555");
-                        path.setAttribute("stroke-width", "2");
-                        path.setAttribute("class", "tech-line");
-                        // Ensure lines don't block clicks either
-                        path.style.pointerEvents = "none";
-
-                        if (isDone) path.classList.add("active");
-                        svg.appendChild(path);
-                    }
+                                if (isDone) path.classList.add("active");
+                                svg.appendChild(path);
+                            }
+                        }
+                    });
                 }
             });
+        } catch (e) {
+            console.error("Error drawing tech tree lines:", e);
         }
-    });
-}
-                    path.setAttribute("fill", "none");
-                    path.setAttribute("stroke", isDone ? "#2ecc71" : "#555");
-                    path.setAttribute("stroke-width", "2");
-                    path.setAttribute("class", "tech-line");
-                    // Ensure lines don't block clicks either
-                    path.style.pointerEvents = "none";
-
-                    if (isDone) path.classList.add("active");
-                    svg.appendChild(path);
-                }
-            });
-        }
-    });
+    }, 0);
 }
 
 // --- Victory & Endgame ---
