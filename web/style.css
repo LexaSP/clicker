@@ -255,11 +255,21 @@ button:not(.tab-btn):not(#click-btn) {
     font-size: 0.9rem;
     margin-bottom: 5px;
     transition: all 0.2s ease-in-out;
+    backface-visibility: hidden; /* Fix for potential jitter on scale */
+    transform: translateZ(0); /* Hardware accel */
 }
 
 button:not(.tab-btn):not(#click-btn):hover {
     background: rgba(255,255,255,0.15);
     border-color: rgba(255,255,255,0.3);
+    transform: scale(1.05);
+}
+
+/* Specific fix for Sidebar Ascension Buttons to ensure they catch the rule */
+#ascension-list button {
+    transition: all 0.2s ease-in-out;
+}
+#ascension-list button:hover {
     transform: scale(1.05);
 }
 

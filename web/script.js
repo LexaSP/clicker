@@ -323,15 +323,16 @@ async function init() {
             gameState.reroll.lastReset = now;
         }
 
-        // Generate quests if needed
-        if (gameState.quests.length === 0) {
+        // Generate quests if needed (Synchronous, before UI)
+        if (!gameState.quests || gameState.quests.length === 0) {
             generateDailyQuests();
         }
 
         // 2. UI Initialization (Synchronous - Critical for display)
         // Must happen BEFORE visibility updates
         initBuildingsUI();
-        initUI(); // This calls renderResearchTree and injectDynamicTabs
+        initUI(); // This calls renderResearchTree, injectDynamicTabs, and initAscensionUI
+        renderQuestList(); // Initial render of quests
         initTutorials(gameState);
 
         // 3. Apply Visibility Logic
@@ -944,6 +945,8 @@ window.manualClick = function(event) {
         checkQuestProgress("shards", 1);
     }
     updateUI();
+    // Force immediate quest UI update for responsiveness
+    updateQuestUI();
 };
 
 window.buyBuilding = function(name) {
@@ -990,6 +993,7 @@ window.buyBuilding = function(name) {
 
         checkQuestProgress("purchases", 1);
         updateUI();
+        updateQuestUI();
     }
 };
 
@@ -2297,3 +2301,69 @@ if (document.readyState === 'loading') {
 } else {
     init();
 }
+
+function renderQuestList() {
+    const list = document.getElementById("quest-list");
+    if (!list) return;
+
+    if (!gameState.quests || gameState.quests.length === 0) {
+        list.innerHTML = "<p>No quests available.</p>";
+        return;
+    }
+
+    list.innerHTML = "";
+    gameState.quests.forEach(q => {
+        const div = document.createElement("div");
+        div.id = `quest-${q.id}`;
+        div.className = "quest-item";
+        div.style.marginBottom = "8px";
+        div.style.padding = "8px";
+        div.style.background = "rgba(255,255,255,0.05)";
+        div.style.borderRadius = "4px";
+
+        div.innerHTML = `
+            <div style="display:flex; justify-content:space-between; font-size:0.9rem;">
+                <span>${q.title}</span>
+                <span id="quest-status-${q.id}">${q.completed ? (q.claimed ? '✅' : '🎁') : ''}</span>
+            </div>
+            <div style="background:#333; height:6px; width:100%; margin-top:5px; border-radius:3px; overflow:hidden;">
+                <div id="quest-bar-${q.id}" style="height:100%; width:${(q.progress / q.target) * 100}%; background:#f1c40f; transition: width 0.2s;"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-top:2px;">
+                <small id="quest-text-${q.id}">${Math.floor(q.progress)} / ${q.target}</small>
+                ${!q.claimed && q.completed ? `<button onclick="claimQuest('${q.id}')" style="padding:2px 6px; font-size:0.7rem;">Claim</button>` : ''}
+            </div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function updateQuestUI() {
+    if (!gameState.quests) return;
+
+    gameState.quests.forEach(q => {
+        // Direct DOM update by ID to avoid thrashing
+        const bar = document.getElementById(`quest-bar-${q.id}`);
+        const text = document.getElementById(`quest-text-${q.id}`);
+        const status = document.getElementById(`quest-status-${q.id}`);
+        const item = document.getElementById(`quest-${q.id}`);
+
+        if (bar) bar.style.width = `${Math.min(100, (q.progress / q.target) * 100)}%`;
+        if (text) text.innerText = `${Math.floor(q.progress)} / ${q.target}`;
+
+        // If state changed to completed and button missing, re-render specific item?
+        // Or just handle the claim button visibility.
+        // For simplicity, if completion state changes, we might want to re-render just that item or toggle class.
+        // But the button insertion is HTML structure change.
+        if (q.completed && !q.claimed) {
+             if (item && !item.querySelector("button")) {
+                 // Lazy re-render or inject button
+                 renderQuestList(); // Re-render all to be safe and simple for now, or optimize later.
+             }
+        }
+    });
+}
+
+// Expose functions to window if needed or just keep in module scope
+window.renderQuestList = renderQuestList;
+window.updateQuestUI = updateQuestUI;
