@@ -578,3 +578,84 @@ button:not(.tab-btn):not(#click-btn):active {
     background: var(--accent-blue);
     color: white;
 }
+
+/* =========================================
+   9. TUTORIAL / NOTIFICATION SYSTEM
+   ========================================= */
+
+#tutorial-modal.modal-overlay {
+    background: rgba(0, 0, 0, 0.4); /* Lighter backdrop */
+    backdrop-filter: blur(5px);
+    z-index: 2000;
+}
+
+.tutorial-content {
+    background: rgba(30, 41, 59, 0.85); /* Glassy dark blue */
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.2), inset 0 0 20px rgba(255,255,255,0.05);
+    border-radius: 16px;
+    padding: 30px;
+    max-width: 500px;
+    width: 90%;
+    text-align: left;
+    color: var(--text-main);
+    position: relative;
+    overflow: hidden;
+    animation: slideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.tutorial-content::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+}
+
+.tutorial-content h3 {
+    font-size: 1.5rem;
+    color: var(--accent-blue);
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+}
+
+.tutorial-content p {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    margin-bottom: 25px;
+}
+
+.tutorial-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.tutorial-actions button {
+    background: linear-gradient(135deg, var(--accent-blue), #1e3a8a);
+    color: white;
+    font-weight: bold;
+    padding: 10px 24px;
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+    transition: all 0.2s ease;
+}
+
+.tutorial-actions button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+}
+
+@keyframes slideIn {
+    0% { transform: translateY(50px) scale(0.9); opacity: 0; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+}

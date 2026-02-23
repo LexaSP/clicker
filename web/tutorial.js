@@ -14,17 +14,22 @@ export const TUTORIALS = {
     },
     "unlock_bronze": {
         title: "The Bronze Age",
-        text: "You have advanced to a new Era! \n\nNew tabs unlocked:\n- **Expeditions**: Send units to find loot.\n- **War**: Train an army to fight rivals.\n- **Government**: Choose a ruler style.",
+        text: "You have advanced to a new Era! \n\nNew tabs unlocked:\n- <b>Expeditions</b>: Send units to find loot.",
         trigger: (state) => state.era === "Bronze Age" && !state.tutorials.includes("unlock_bronze")
     },
-    "unlock_market": {
-        title: "Trade & Economics",
-        text: "The **Market** is open! You can now trade resources for Money. Later, you can invest in the Stock Market.",
-        trigger: (state) => state.era === "Iron Age" && !state.tutorials.includes("unlock_market")
+    "unlock_iron": {
+        title: "The Iron Age",
+        text: "You have reached the Iron Age! \n\nNew tabs unlocked:\n- <b>War</b>: Train an army to fight rivals.\n- <b>Crafting</b>: Create powerful items.\n- <b>Market</b>: Trade resources for Money.",
+        trigger: (state) => state.era === "Iron Age" && !state.tutorials.includes("unlock_iron")
+    },
+    "unlock_middle": {
+        title: "The Middle Ages",
+        text: "You have entered the Middle Ages! \n\nNew tabs unlocked:\n- <b>Government</b>: Choose a ruler style.\n- <b>Heroes</b>: Recruit legendary figures.\n- <b>Wonders</b>: Build massive monuments.\n- <b>Religion</b>: Found a faith.",
+        trigger: (state) => state.era === "Middle Ages" && !state.tutorials.includes("unlock_middle")
     },
     "unlock_space": {
         title: "The Final Frontier",
-        text: "Welcome to the Future! The **Space** tab allows you to colonize new worlds. Look for 'Terraforming' options to boost their output.",
+        text: "Welcome to the Future! The <b>Space</b> tab allows you to colonize new worlds. Look for 'Terraforming' options to boost their output.",
         trigger: (state) => state.era === "Future Age" && !state.tutorials.includes("unlock_space")
     }
 };
@@ -57,10 +62,10 @@ function showTutorialModal(id, content) {
     modal.className = "modal-overlay";
 
     modal.innerHTML = `
-        <div class="modal-content" style="border-left: 5px solid #3498db; text-align: left;">
-            <h3 style="color: #3498db;">💡 ${content.title}</h3>
-            <p style="white-space: pre-wrap;">${content.text}</p>
-            <div style="text-align: right;">
+        <div class="modal-content tutorial-content">
+            <h3>💡 ${content.title}</h3>
+            <p>${content.text}</p>
+            <div class="tutorial-actions">
                 <button onclick="closeTutorial('${id}')">Got it!</button>
             </div>
         </div>

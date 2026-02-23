@@ -268,8 +268,8 @@ const ERA_DATA = [
 const FEATURE_UNLOCKS = {
     // Static Tabs (IDs in index.html)
     "tab-btn-expeditions": { era: "Bronze Age" },
-    "tab-btn-war": { era: "Bronze Age" },
-    "tab-btn-government": { era: "Iron Age" },
+    "tab-btn-war": { era: "Iron Age" },
+    "tab-btn-government": { era: "Middle Ages" },
     "tab-btn-crafting": { era: "Iron Age" },
     "tab-btn-heroes": { era: "Middle Ages" },
 
