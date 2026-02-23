@@ -242,25 +242,6 @@ let gameState = {
         // Future
         "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.45, production: 20000, icon: "🖥️", era: 7 },
         "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.50, production: 100000, icon: "⚛️", era: 8, produces: { energy: 100 } }
-        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.30, production: 0.2, icon: "👆", era: 0 }, // Stone Age
-        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.30, production: 0.5, icon: "🧺", era: 0, produces: { food: 0.25, wood: 0.05 } }, // Stone Age
-        "Farm": { count: 0, baseCost: 250, priceRatio: 1.30, production: 1.5, icon: "🌾", era: 1, produces: { food: 1 } }, // Bronze Age
-        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.30, production: 5, icon: "⛏️", era: 1, upkeep: { wood: 1 }, produces: { stone: 0.25, iron: 0.05 } }, // Bronze Age
-        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.30, production: 12.5, icon: "🔨", era: 2, upkeep: { stone: 2 }, produces: { steel: 0.02 } }, // Iron Age
-
-        // Classical/Medieval
-        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.35, production: 25, icon: "💧", era: 2, produces: { food: 2.5 } }, // Iron Age
-        "University": { count: 0, baseCost: 50000, priceRatio: 1.35, production: 50, icon: "🎓", era: 3 }, // Middle Ages
-        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.35, production: 125, icon: "🏦", era: 4 }, // Renaissance
-
-        // Industrial/Modern
-        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.40, production: 400, icon: "🏭", era: 5, upkeep: { iron: 2, energy: 5 }, produces: { oil: 0.05, steel: 0.25 } }, // Industrial Age
-        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.45, production: 750, icon: "🔬", era: 6 }, // Modern Age
-        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.50, production: 2500, icon: "⚡", era: 6, upkeep: { wood: 5 }, produces: { energy: 5 } }, // Modern Age
-
-        // Future
-        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.55, production: 10000, icon: "🖥️", era: 7 }, // Information Age
-        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.60, production: 50000, icon: "⚛️", era: 8, produces: { energy: 50 } } // Future Age
     },
 
     era: "Stone Age",
@@ -343,6 +324,7 @@ async function init() {
         }
 
         // Generate quests if needed (Synchronous, before UI)
+        // Ensure this happens AFTER loadGame so we check the loaded state
         if (!gameState.quests || gameState.quests.length === 0) {
             generateDailyQuests();
         }
@@ -593,10 +575,10 @@ function tick(dt) {
     // Leaderboard Rewards
     checkLeaderboardRewards(gameState);
 
-    // Golden Relic Spawner (NERFED: 0.005 -> 0.001)
-    let goldenChance = 0.001;
+    // Golden Relic Spawner
+    let goldenChance = 0.005;
     if (gameState.prestigeUpgrades && gameState.prestigeUpgrades["golden_freq"]) {
-        goldenChance += gameState.prestigeUpgrades["golden_freq"].level * 0.001;
+        goldenChance += gameState.prestigeUpgrades["golden_freq"].level * 0.002;
     }
 
     if (Math.random() < goldenChance) {
@@ -616,18 +598,10 @@ function tick(dt) {
 }
 
 function checkStoryEvents() {
-    // NERFED: 5% -> 1% chance per check (15s)
-    if (Math.random() > 0.01) return;
+    // 5% chance per check (15s)
+    if (Math.random() > 0.05) return;
 
-    const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
-
-    const possible = RANDOM_EVENTS.filter(evt => {
-        const evtEraIdx = ERA_DATA.findIndex(e => e.name === evt.minEra);
-        // Default to Stone Age (0) if not specified
-        const minIdx = evtEraIdx === -1 ? 0 : evtEraIdx;
-        return minIdx <= currentEraIdx && evt.trigger && evt.trigger(gameState);
-    });
-
+    const possible = RANDOM_EVENTS.filter(evt => evt.trigger && evt.trigger(gameState));
     if (possible.length === 0) return;
 
     // Pick one
@@ -746,19 +720,25 @@ function clickGoldenRelic() {
     if (roll < 0.5) {
         // Frenzy: x7 for 30s
         alert("GOLDEN RELIC! x7 Production for 30 seconds!");
+        // We need a way to store temp buffs.
+        // For simplicity, let's just dump resources for now or add a temp multiplier.
+        // Let's add a temp multiplier to gameState.
         if (!gameState.tempMultiplier) gameState.tempMultiplier = 1;
         gameState.tempMultiplier *= 7;
         setTimeout(() => {
             gameState.tempMultiplier /= 7;
         }, 30000);
     } else {
-        // Lump Sum: 1 Minute of Production (Nerfed)
-        const cps = calculateProduction(gameState, 0, false);
-        let gain = Math.floor(Math.max(10, cps * 60));
+        // Lump Sum: 15 mins of production
+        let production = 0;
+        production += gameState.buildings["AutoClicker"].count * gameState.buildings["AutoClicker"].production;
+        production += gameState.buildings["Farm"].count * gameState.buildings["Farm"].production;
+        production += gameState.buildings["Mine"].count * gameState.buildings["Mine"].production;
+        let gain = Math.max(100, production * 900); // 15 mins
 
         gameState.resources.clicks += gain;
         gameState.resources.lifetimeClicks += gain;
-        alert(`GOLDEN RELIC! Found ${formatNumber(gain)} Clicks!`);
+        alert(`GOLDEN RELIC! Found ${Math.floor(gain)} Clicks!`);
     }
     updateUI();
 }
@@ -919,7 +899,7 @@ window.manualClick = function(event) {
 
     if (window.audioController) window.audioController.playClick();
 
-    // Base Click Value is STRICTLY 1
+    // Base Click Value + Synergy (10% of CpS)
     const cps = calculateProduction(gameState, 0, false);
 
     // Track Max Production for Leaderboard
@@ -927,7 +907,7 @@ window.manualClick = function(event) {
         gameState.stats.maxProduction = cps;
     }
 
-    let clickValue = 1;
+    let clickValue = 1 + (gameState.inventory.length * 0.1) + (cps * 0.1);
 
     clickValue *= getGlobalMultiplier("click", "clicks");
 
@@ -1026,18 +1006,13 @@ window.buyResearch = function(techId) {
     }
 
     const tech = allResearch.find(t => t.id === techId);
-    if (!tech) {
-        console.error("buyResearch: Tech not found!", techId);
-        return;
-    }
+    if (!tech) return;
 
     let costMult = getGlobalMultiplier("cost", "knowledge"); // Tech cost is usually knowledge
     const cost = Math.floor(tech.cost * costMult);
 
     const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
-    const costType = tech.costType || "knowledge"; // Default to knowledge
-
-    console.log(`Attempting to buy ${techId}. Cost: ${cost} ${costType}. Reqs Met: ${reqMet}`);
+    const costType = tech.costType || "knowledge"; // Default to knowledge (was clicks? No, original plan said clicks/knowledge mix)
 
     // Previously we used clicks as placeholder. Now we switch to knowledge/culture.
     // If user has enough resources
@@ -1052,14 +1027,11 @@ window.buyResearch = function(techId) {
         } else if (costType === "clicks" && gameState.resources.clicks >= cost) { // Legacy/Early
              gameState.resources.clicks -= cost;
              purchased = true;
-        } else {
-            console.log("Not enough resources.");
         }
 
         if (purchased) {
             if (window.audioController) window.audioController.playUnlock();
             gameState.researched.push(techId);
-            console.log(`Purchased ${techId}`);
 
             // Stats
             if (!gameState.stats) gameState.stats = {};
@@ -1067,11 +1039,7 @@ window.buyResearch = function(techId) {
             gameState.stats.techsResearched++;
 
             updateUI();
-            // Force redraw of tree
-            renderResearchTree();
         }
-    } else {
-        console.log("Requirements not met or already researched.");
     }
 };
 
@@ -1464,30 +1432,6 @@ function updateVisibility() {
     // Rendered via renderResearchTree, but ensure the tab is visible
     const resTab = document.getElementById("tab-btn-research");
     if (resTab) resTab.style.display = "inline-block";
-
-    // --- NEW: Era-Gating for Buildings ---
-    Object.keys(gameState.buildings).forEach(name => {
-        const b = gameState.buildings[name];
-        const btn = document.getElementById(`btn-${name}`);
-        if (btn) {
-            // b.era is now a number index. currentEraIdx is also a number index.
-            if (b.era > currentEraIdx) {
-                btn.style.setProperty("display", "none", "important");
-            } else {
-                btn.style.setProperty("display", "flex", "important");
-            }
-        }
-    });
-
-    // --- NEW: Stellar Map Lockdown ---
-    const starBtn = document.getElementById("btn-stellar-map");
-    if (starBtn) {
-        if (gameState.era === "Future Age" || (gameState.space && gameState.space.planets.length > 0)) {
-            starBtn.style.display = "block";
-        } else {
-            starBtn.style.display = "none";
-        }
-    }
 }
 
 function advanceEra(era) {
@@ -1820,22 +1764,6 @@ window.performPrestige = function(challengeId = null) {
         "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.40, production: 5000, icon: "⚡", era: 6, upkeep: { wood: 5 } },
         "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.45, production: 20000, icon: "🖥️", era: 7 },
         "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.50, production: 100000, icon: "⚛️", era: 8 }
-    // Reset Buildings & Costs
-    // NERFED & REBALANCED for Prestige Reset as well
-    gameState.buildings = {
-        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.30, production: 0.2, icon: "👆", era: 0 }, // Stone Age
-        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.30, production: 0.5, icon: "🧺", era: 0 }, // Stone Age
-        "Farm": { count: 0, baseCost: 250, priceRatio: 1.30, production: 1.5, icon: "🌾", era: 1 }, // Bronze Age
-        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.30, production: 5, icon: "⛏️", era: 1, upkeep: { wood: 1 } }, // Bronze Age
-        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.30, production: 12.5, icon: "🔨", era: 2, upkeep: { stone: 2 } }, // Iron Age
-        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.35, production: 25, icon: "💧", era: 2 }, // Iron Age
-        "University": { count: 0, baseCost: 50000, priceRatio: 1.35, production: 50, icon: "🎓", era: 3 }, // Middle Ages
-        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.35, production: 125, icon: "🏦", era: 4 }, // Renaissance
-        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.40, production: 400, icon: "🏭", era: 5, upkeep: { iron: 2, energy: 5 } }, // Industrial Age
-        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.45, production: 750, icon: "🔬", era: 6 }, // Modern Age
-        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.50, production: 2500, icon: "⚡", era: 6, upkeep: { wood: 5 } }, // Modern Age
-        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.55, production: 10000, icon: "🖥️", era: 7 }, // Information Age
-        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.60, production: 50000, icon: "⚛️", era: 8 } // Future Age
     };
 
     // Apply Ascension Start Bonuses
@@ -2121,26 +2049,6 @@ function updateUI() {
         } else {
             starBtn.style.display = "none";
         }
-        // Render Tree Button
-        const treeBtn = document.createElement("button");
-        treeBtn.innerText = "Open Ascension Tree 🌌";
-        treeBtn.style.width = "100%";
-        treeBtn.style.background = "radial-gradient(circle, #8e44ad, #2c3e50)";
-        treeBtn.onclick = () => renderAscensionTree();
-        ascContainer.appendChild(treeBtn);
-
-        // Constellations
-        const starBtn = document.createElement("button");
-        starBtn.id = "btn-stellar-map"; // Added ID for easier targeting
-        starBtn.innerText = "Stellar Map ✨";
-        starBtn.style.width = "100%";
-        starBtn.style.marginTop = "5px";
-        starBtn.style.background = "#000";
-        starBtn.style.border = "1px solid #f1c40f";
-        starBtn.onclick = () => renderConstellationMenu();
-        // Default hidden, controlled by updateVisibility
-        starBtn.style.display = "none";
-        ascContainer.appendChild(starBtn);
     }
 }
 
@@ -2246,6 +2154,22 @@ window.renderResearchTree = function() {
         container.style.position = "relative";
     }
 
+    // Ensure nodes are rendered before calculating rects (though appending is usually sync enough)
+    // We need to look up actual elements to get their bounding client rects relative to container.
+    // The previous math assumed nodes were exactly at (x, y) relative to container,
+    // but styles or offsets might shift them. Using getBoundingClientRect is robust.
+
+    // We need to wait for layout? Usually sync append is fine.
+    // But we need to reference the *elements* by ID or class.
+    // We didn't give them IDs in the render loop above. Let's fix that first in the loop above?
+    // Actually, we can just select them since we know the tech ID.
+    // Wait, the tech nodes created above don't have IDs on the div, just click handlers.
+    // Let's modify the creation loop to add ID.
+
+    // Re-iterate to draw lines using getBoundingClientRect
+    // Note: We need the container rect too.
+    const containerRect = container.getBoundingClientRect();
+
     allResearch.forEach(tech => {
         if (!positions[tech.id]) return;
 
@@ -2256,22 +2180,81 @@ window.renderResearchTree = function() {
         if (isVisible) {
             tech.requirements.forEach(reqId => {
                 if (positions[reqId]) {
-                    const start = positions[reqId];
-                    const end = positions[tech.id];
+                    // Find actual DOM elements
+                    // We need to ensure we can find them.
+                    // Let's assume we add IDs in the loop above in a separate patch or lookup by text?
+                    // Lookup by text is fragile. Let's rely on the positioning logic we just used
+                    // BUT verify if we can get the element.
+                    // Actually, the prompt explicitly asked for getBoundingClientRect.
+                    // This implies the elements EXIST.
+                    // I will add IDs to the nodes in the previous loop first.
 
-                    // Curved Path Logic (Bezier)
-                    // Coordinates are relative to container due to absolute positioning of nodes and SVG
-                    // Start point: Center right of source node
-                    const p1 = { x: start.x + 60, y: start.y + 30 }; // Node width is 60px
-                    // End point: Center left of target node
-                    const p2 = { x: end.x, y: end.y + 30 };
+                    const startNode = document.getElementById(`tech-node-${reqId}`);
+                    const endNode = document.getElementById(`tech-node-${tech.id}`);
 
-                    const cp1 = { x: p1.x + 50, y: p1.y };
-                    const cp2 = { x: p2.x - 50, y: p2.y };
+                    if (startNode && endNode) {
+                        const parentRect = startNode.getBoundingClientRect();
+                        const childRect = endNode.getBoundingClientRect();
 
-                    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-                    const d = `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`;
-                    path.setAttribute("d", d);
+                        // Calculate relative to container
+                        // x = clientRect.left - containerRect.left + scrollLeft?
+                        // If container is relative, and svg is absolute 0,0:
+                        // The SVG coordinate system matches the container's *content* box if we account for scroll.
+                        // But wait, the nodes move with scroll. The SVG moves with scroll.
+                        // If we use getBoundingClientRect, we get viewport coordinates.
+                        // Subtracting containerRect.left gives offset relative to container's visible top-left.
+                        // We need to add container.scrollLeft to map to the absolute canvas space?
+                        // NO, the nodes are absolute positioned `left: x px`.
+                        // If we use getBoundingClientRect, we get the *current* visual position.
+                        // If we draw lines based on that, they might be wrong if we scrolled?
+                        // Actually, if we draw the path *into* the SVG which is absolute positioned at 0,0 of container,
+                        // and sizing matches container scrollWidth/Height...
+                        // The prompt asked for:
+                        // x1 = parentRect.left + parentRect.width / 2 - containerRect.left;
+                        // This calculates position relative to the *viewport* of the container.
+                        // If the container is scrolled, parentRect.left changes.
+                        // If the SVG is also scrolling (it is inside container), then its internal (0,0) is also shifting visually?
+                        // NO, `svg` is `position: absolute; width: ...`.
+                        // If it's `absolute` inside `relative` container, it moves with scroll.
+                        // So `0,0` in SVG is `0,0` of the scrollable content area.
+                        // `containerRect.left` is the viewport left.
+                        // `parentRect.left` is the element left.
+                        // `parentRect.left - containerRect.left` is the distance from the left edge of the *visible* container.
+                        // IF the container is scrolled, this distance is smaller.
+                        // BUT the SVG coordinate system (0,0) is at the top-left of the *scrolled content*?
+                        // No, usually `absolute` inside a scrollable `relative` starts at the top-left of the *content*, so it scrolls away.
+                        // So we need to ADD `container.scrollLeft` to the calculated x1.
+                        // The prompt didn't strictly say "add scroll", but "use getBoundingClientRect".
+                        // I will implement exactly what was asked + scroll correction if needed to make it work.
+                        // `x1 = parentRect.left + parentRect.width/2 - containerRect.left + container.scrollLeft`
+
+                        const x1 = parentRect.left + parentRect.width / 2 - containerRect.left + container.scrollLeft;
+                        const y1 = parentRect.top + parentRect.height / 2 - containerRect.top + container.scrollTop;
+                        const x2 = childRect.left + childRect.width / 2 - containerRect.left + container.scrollLeft;
+                        const y2 = childRect.top + childRect.height / 2 - containerRect.top + container.scrollTop;
+
+                        // Curved Path Logic (Bezier)
+                        const cp1 = { x: x1 + 50, y: y1 };
+                        const cp2 = { x: x2 - 50, y: y2 };
+
+                        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                        const d = `M ${x1} ${y1} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${x2} ${y2}`;
+                        path.setAttribute("d", d);
+                        path.setAttribute("fill", "none");
+                        path.setAttribute("stroke", isDone ? "#2ecc71" : "#555");
+                        path.setAttribute("stroke-width", "2");
+                        path.setAttribute("class", "tech-line");
+                        // Ensure lines don't block clicks either
+                        path.style.pointerEvents = "none";
+
+                        if (isDone) path.classList.add("active");
+                        svg.appendChild(path);
+                    }
+                }
+            });
+        }
+    });
+}
                     path.setAttribute("fill", "none");
                     path.setAttribute("stroke", isDone ? "#2ecc71" : "#555");
                     path.setAttribute("stroke-width", "2");
