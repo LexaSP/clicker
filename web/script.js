@@ -228,6 +228,7 @@ let gameState = {
         // Ancient
         "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.15, production: 0.5, icon: "👆", era: 0 },
         "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.15, production: 1, icon: "🧺", era: 0, produces: { food: 0.5, wood: 0.1 } },
+        "LumberCamp": { count: 0, baseCost: 150, priceRatio: 1.15, production: 2, icon: "🪓", era: 0, produces: { wood: 1.5 } }, // New dedicated wood producer
         "Farm": { count: 0, baseCost: 250, priceRatio: 1.15, production: 3, icon: "🌾", era: 1, produces: { food: 2 } },
         "Mine": { count: 0, baseCost: 1000, priceRatio: 1.20, production: 10, icon: "⛏️", era: 1, upkeep: { wood: 1 }, produces: { stone: 0.5, iron: 0.1 } },
         "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.20, production: 25, icon: "🔨", era: 2, upkeep: { stone: 2 }, produces: { steel: 0.05 } },
@@ -240,7 +241,7 @@ let gameState = {
         // Industrial/Modern
         "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.30, production: 800, icon: "🏭", era: 5, upkeep: { iron: 2, energy: 5 }, produces: { oil: 0.1, steel: 0.5 } },
         "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.35, production: 1500, icon: "🔬", era: 6 }, // Knowledge
-        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.40, production: 5000, icon: "⚡", era: 6, upkeep: { wood: 5 }, produces: { energy: 10 } },
+        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.40, production: 5000, icon: "⚡", era: 5, upkeep: { wood: 5 }, produces: { energy: 10 } }, // Moved to Era 5 to feed Factory
 
         // Future
         "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.45, production: 20000, icon: "🖥️", era: 7 },
@@ -392,7 +393,7 @@ function calculateProduction(state, dt = 0, applyCosts = false) {
     let production = 0;
 
     // Core Clicks Production
-    const clickProducers = ["AutoClicker", "Gatherer", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
+    const clickProducers = ["AutoClicker", "Gatherer", "LumberCamp", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
 
     clickProducers.forEach(key => {
         if (state.buildings[key]) {
@@ -1175,7 +1176,7 @@ function calculateOfflineProgress(seconds) {
 
     // Base Clicks (Production)
     let clickProd = 0;
-    const clickProducers = ["AutoClicker", "Gatherer", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
+    const clickProducers = ["AutoClicker", "Gatherer", "LumberCamp", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
     clickProducers.forEach(key => {
         if (gameState.buildings[key]) {
             clickProd += gameState.buildings[key].count * gameState.buildings[key].production;
@@ -1944,12 +1945,13 @@ function initBuildingsUI() {
             }
         }
 
+        // Initial text, updated dynamically in renderBuildings
         btn.innerHTML = `
             <div style="font-size:24px;">${b.icon}</div>
             <div>
                 <strong>Buy ${name}</strong><br>
                 <small>Cost: <span id="cost-${name}">0</span></small> | <small>Owned: <span id="count-${name}">0</span></small><br>
-                <small>Prod: ${b.production} Click</small>
+                <small id="prod-text-${name}">Prod: ${b.production} Click</small>
                 ${prodText ? `<br><small style="color:#2ecc71">Produces: ${prodText}</small>` : ''}
                 ${upkeepHtml}
             </div>
@@ -1976,6 +1978,17 @@ function renderBuildings(container) {
 
         const countEl = document.getElementById(`count-${name}`);
         if (countEl) countEl.innerText = b.count;
+
+        // Update Production Text (Base vs Total)
+        const prodEl = document.getElementById(`prod-text-${name}`);
+        if (prodEl) {
+            const totalProd = b.production * b.count;
+            if (b.count > 0) {
+                prodEl.innerText = `Prod: ${b.production} Click | Total: ${formatNumber(totalProd)}`;
+            } else {
+                prodEl.innerText = `Prod: ${b.production} Click`;
+            }
+        }
 
         const btn = document.getElementById(`btn-${name}`);
         if (btn) btn.disabled = gameState.resources.clicks < finalCost;
