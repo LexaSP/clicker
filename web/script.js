@@ -122,8 +122,11 @@ window.cloudLogin = async function() {
         try {
             await firebaseModule.login();
         } catch (e) {
-            alert("Login failed: " + e.message);
+            console.warn("Cloud login error:", e);
+            alert("Cloud services are currently unavailable. Please use 'Save to File' in the Settings menu.");
         }
+    } else {
+        alert("Cloud services are currently unavailable. Please use 'Save to File' in the Settings menu.");
     }
 };
 
@@ -225,6 +228,7 @@ let gameState = {
         // Ancient
         "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.15, production: 0.5, icon: "👆", era: 0 },
         "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.15, production: 1, icon: "🧺", era: 0, produces: { food: 0.5, wood: 0.1 } },
+        "LumberCamp": { count: 0, baseCost: 150, priceRatio: 1.15, production: 2, icon: "🪓", era: 0, produces: { wood: 1.5 } }, // New dedicated wood producer
         "Farm": { count: 0, baseCost: 250, priceRatio: 1.15, production: 3, icon: "🌾", era: 1, produces: { food: 2 } },
         "Mine": { count: 0, baseCost: 1000, priceRatio: 1.20, production: 10, icon: "⛏️", era: 1, upkeep: { wood: 1 }, produces: { stone: 0.5, iron: 0.1 } },
         "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.20, production: 25, icon: "🔨", era: 2, upkeep: { stone: 2 }, produces: { steel: 0.05 } },
@@ -237,7 +241,7 @@ let gameState = {
         // Industrial/Modern
         "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.30, production: 800, icon: "🏭", era: 5, upkeep: { iron: 2, energy: 5 }, produces: { oil: 0.1, steel: 0.5 } },
         "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.35, production: 1500, icon: "🔬", era: 6 }, // Knowledge
-        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.40, production: 5000, icon: "⚡", era: 6, upkeep: { wood: 5 }, produces: { energy: 10 } },
+        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.40, production: 5000, icon: "⚡", era: 5, upkeep: { wood: 5 }, produces: { energy: 10 } }, // Moved to Era 5 to feed Factory
 
         // Future
         "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.45, production: 20000, icon: "🖥️", era: 7 },
@@ -271,8 +275,8 @@ const ERA_DATA = [
 const FEATURE_UNLOCKS = {
     // Static Tabs (IDs in index.html)
     "tab-btn-expeditions": { era: "Bronze Age" },
-    "tab-btn-war": { era: "Iron Age" },
-    "tab-btn-government": { era: "Middle Ages" },
+    "tab-btn-war": { era: "Future Age" }, // QUARANTINED: MVP logic pending
+    "tab-btn-government": { era: "Future Age" }, // QUARANTINED: MVP logic pending
     "tab-btn-crafting": { era: "Iron Age" },
     "tab-btn-heroes": { era: "Middle Ages" },
 
@@ -389,7 +393,7 @@ function calculateProduction(state, dt = 0, applyCosts = false) {
     let production = 0;
 
     // Core Clicks Production
-    const clickProducers = ["AutoClicker", "Gatherer", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
+    const clickProducers = ["AutoClicker", "Gatherer", "LumberCamp", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
 
     clickProducers.forEach(key => {
         if (state.buildings[key]) {
@@ -565,12 +569,19 @@ function tick(dt) {
     }
 
     // Expedition Progress
-    [...gameState.activeExpeditions].forEach((exp, index) => {
-        exp.progress += dt;
-        if (exp.progress >= exp.duration) {
-            completeExpedition(exp);
-        }
-    });
+    if (gameState.activeExpeditions) {
+        [...gameState.activeExpeditions].forEach((exp, index) => {
+            exp.progress += dt;
+            if (exp.progress >= exp.duration) {
+                // Ensure completeExpedition is defined before calling
+                if (typeof completeExpedition === 'function') {
+                    completeExpedition(exp);
+                } else if (window.completeExpedition) {
+                    window.completeExpedition(exp);
+                }
+            }
+        });
+    }
 
     // Leaderboard Rewards
     checkLeaderboardRewards(gameState);
@@ -596,6 +607,37 @@ function tick(dt) {
         }
     }
 }
+
+window.renderStoryModal = function() {
+    if (document.getElementById("story-modal")) return;
+
+    const modal = document.createElement("div");
+    modal.id = "story-modal";
+    modal.className = "modal-overlay";
+
+    // Content based on Era
+    let title = gameState.era;
+    let desc = "The story of your civilization...";
+
+    if (title === "Stone Age") desc = "Your tribe wanders the wilderness, gathering berries and hunting wild beasts. The first sparks of consciousness ignite.";
+    if (title === "Bronze Age") desc = "Metalworking changes everything. City-states rise from the dust, and the first empires are born.";
+    if (title === "Iron Age") desc = "Tools of war and agriculture become stronger. The world connects through conquest and trade.";
+    if (title === "Middle Ages") desc = "Knights and castles dominate the land. Faith and feudalism bind society together.";
+    if (title === "Renaissance") desc = "Art, science, and exploration flourish. The old ways are questioned as new horizons open.";
+    if (title === "Industrial Age") desc = "Steam and steel drive the engines of progress. Factories rise, and the world shrinks.";
+    if (title === "Modern Age") desc = "Electricity, flight, and the atom. Humanity reaches for the stars.";
+    if (title === "Information Age") desc = "Data flows like water. The world is a global village connected by light.";
+    if (title === "Future Age") desc = "Beyond the boundaries of Earth. The cosmos awaits.";
+
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 600px;">
+            <h2>📜 Chronicles of the ${title}</h2>
+            <p style="font-size: 1.1em; line-height: 1.6; margin: 20px 0;">${desc}</p>
+            <button onclick="document.body.removeChild(document.getElementById('story-modal'))" style="background: #c0392b;">Close</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+};
 
 function checkStoryEvents() {
     // 5% chance per check (15s)
@@ -801,6 +843,9 @@ window.claimQuest = function(questId) {
         if (q.reward.knowledge) gameState.resources.knowledge += q.reward.knowledge;
         if (q.reward.se) gameState.resources.symbolsOfEra += q.reward.se;
         updateUI();
+        // Force Reactivity
+        if (window.renderQuestList) window.renderQuestList();
+        else if (window.updateQuestUI) window.updateQuestUI();
     }
 };
 
@@ -1039,6 +1084,10 @@ window.buyResearch = function(techId) {
             gameState.stats.techsResearched++;
 
             updateUI();
+
+            // Force Reactivity
+            renderResearchTree();
+            updateVisibility(); // Show unlocked stuff
         }
     }
 };
@@ -1134,7 +1183,7 @@ function calculateOfflineProgress(seconds) {
 
     // Base Clicks (Production)
     let clickProd = 0;
-    const clickProducers = ["AutoClicker", "Gatherer", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
+    const clickProducers = ["AutoClicker", "Gatherer", "LumberCamp", "Farm", "Mine", "Workshop", "Aqueduct", "Factory", "PowerPlant", "FusionReactor"];
     clickProducers.forEach(key => {
         if (gameState.buildings[key]) {
             clickProd += gameState.buildings[key].count * gameState.buildings[key].production;
@@ -1331,6 +1380,13 @@ function injectDynamicTabs() {
     createTab("tab-btn-diplomacy", "Diplomacy 🤝", "diplomacy-view", `<h3>Foreign Relations ${helpBtn('diplomacy')}</h3><div id="diplomacy-list"></div><hr><h3>Espionage Agency</h3><div id="espionage-list"></div><hr><h3>World Congress 🌐</h3><div id="congress-list"></div>`);
     createTab("tab-btn-religion", "Religion 🛐", "religion-view", `<h3>Faith & Dogmas ${helpBtn('religion')}</h3><div id="religion-ui"></div><hr><h3>Museum 🎨</h3><div id="museum-list"></div>`);
 
+    // Ensure Expeditions view content is populated if empty
+    const expView = document.getElementById("expeditions-view");
+    if (expView) {
+         // Render the dynamic list
+         if (window.renderExpeditions) window.renderExpeditions();
+    }
+
     // Campaign Widget (Top of content?)
     // We can inject it into main-area or a specific tab. Let's put it in main area for visibility?
     // Or just a button. Let's add a "Story" button to the sidebar.
@@ -1341,7 +1397,7 @@ function injectDynamicTabs() {
             storyBtn = document.createElement("button");
             storyBtn.id = "btn-story";
             storyBtn.innerText = "📜 Story";
-            storyBtn.onclick = () => renderCampaignModal();
+            storyBtn.onclick = () => window.renderStoryModal();
             storyBtn.style.width = "100%";
             storyBtn.style.padding = "10px";
             storyBtn.style.marginBottom = "10px";
@@ -1375,14 +1431,16 @@ function updateVisibility() {
 
         const el = document.getElementById(id);
         if (el) {
+            // Retroactive Locking: Even if it was visible before, if currentEra < reqEra, FORCE HIDE
             if (currentEraIdx >= reqEraIdx) {
                 // Show only if hidden, to avoid flicker or style resets
                 if (el.style.display === "none") {
                     el.style.display = "inline-block";
                 }
             } else {
-                // STRICT HIDING
+                // STRICT HIDING / RETROACTIVE LOCK
                 el.style.display = "none";
+                el.style.setProperty("display", "none", "important"); // Force override
 
                 // ALSO Hide the view content if it's currently active to prevent ghost views
                 // Derive view ID from btn ID (heuristic: tab-btn-X -> X-view)
@@ -1390,6 +1448,12 @@ function updateVisibility() {
                 const viewEl = document.getElementById(viewId);
                 if (viewEl) {
                     viewEl.style.display = "none";
+                    viewEl.style.setProperty("display", "none", "important");
+                }
+
+                // If this tab was active, switch to Research
+                if (el.classList.contains("active")) {
+                    showTab("research");
                 }
             }
         }
@@ -1903,12 +1967,13 @@ function initBuildingsUI() {
             }
         }
 
+        // Initial text, updated dynamically in renderBuildings
         btn.innerHTML = `
             <div style="font-size:24px;">${b.icon}</div>
             <div>
                 <strong>Buy ${name}</strong><br>
                 <small>Cost: <span id="cost-${name}">0</span></small> | <small>Owned: <span id="count-${name}">0</span></small><br>
-                <small>Prod: ${b.production} Click</small>
+                <small id="prod-text-${name}">Prod: ${b.production} Click</small>
                 ${prodText ? `<br><small style="color:#2ecc71">Produces: ${prodText}</small>` : ''}
                 ${upkeepHtml}
             </div>
@@ -1935,6 +2000,17 @@ function renderBuildings(container) {
 
         const countEl = document.getElementById(`count-${name}`);
         if (countEl) countEl.innerText = b.count;
+
+        // Update Production Text (Base vs Total)
+        const prodEl = document.getElementById(`prod-text-${name}`);
+        if (prodEl) {
+            const totalProd = b.production * b.count;
+            if (b.count > 0) {
+                prodEl.innerText = `Prod: ${b.production} Click | Total: ${formatNumber(totalProd)}`;
+            } else {
+                prodEl.innerText = `Prod: ${b.production} Click`;
+            }
+        }
 
         const btn = document.getElementById(`btn-${name}`);
         if (btn) btn.disabled = gameState.resources.clicks < finalCost;
@@ -1983,6 +2059,17 @@ function updateUI() {
     document.getElementById("res-knowledge").innerText = formatNumber(gameState.resources.knowledge);
     document.getElementById("res-culture").innerText = formatNumber(gameState.resources.culture);
     document.getElementById("res-shards").innerText = gameState.resources.relicShards;
+
+    // Population UI
+    const popEl = document.getElementById("res-population");
+    if (popEl) {
+        const housing = 10 +
+            (gameState.buildings["Gatherer"].count * 2) +
+            (gameState.buildings["Farm"].count * 5) +
+            (gameState.buildings["Aqueduct"].count * 20);
+        popEl.innerText = `${Math.floor(gameState.resources.population)} / ${housing}`;
+        popEl.title = "Population grows if Food > 0. Requires housing.";
+    }
 
     // Loot resources
     const lootContainer = document.getElementById("loot-resources");
@@ -2470,3 +2557,129 @@ window.buyAscensionPerkWrapper = function(perkId) {
         alert(result.msg);
     }
 }
+
+/* EXPEDITIONS SYSTEM */
+function renderExpeditions() {
+    const list = document.getElementById("expedition-list");
+    if (!list) return;
+
+    if (!gameState.expeditions || gameState.expeditions.length === 0) {
+        // Fallback or init
+        // For MVP, hardcode some available expeditions if none exist
+        gameState.expeditions = [
+            { id: "exp_scout", name: "Scout Wilderness", cost: { food: 50 }, duration: 5, rewardDesc: "Random Resources" },
+            { id: "exp_ruins", name: "Explore Ruins", cost: { food: 200, money: 50 }, duration: 15, rewardDesc: "Relic Chance" }
+        ];
+    }
+
+    list.innerHTML = "";
+    gameState.expeditions.forEach(exp => {
+        const div = document.createElement("div");
+        div.className = "expedition-card";
+        div.style.border = "1px solid #7f8c8d";
+        div.style.padding = "10px";
+        div.style.marginBottom = "10px";
+        div.style.background = "rgba(0,0,0,0.3)";
+        div.innerHTML = `
+            <strong>${exp.name}</strong><br>
+            <small>Cost: ${Object.entries(exp.cost).map(([k,v]) => `${v} ${k}`).join(", ")}</small><br>
+            <small>Duration: ${exp.duration}s</small><br>
+            <button onclick="startExpedition('${exp.id}')" style="margin-top:5px;">Send Expedition</button>
+        `;
+        list.appendChild(div);
+    });
+
+    renderActiveExpeditions();
+}
+
+function renderActiveExpeditions() {
+    const list = document.getElementById("active-expedition-list");
+    if (!list) return;
+
+    list.innerHTML = "";
+    if (!gameState.activeExpeditions || gameState.activeExpeditions.length === 0) {
+        list.innerHTML = "<p>No active expeditions.</p>";
+        return;
+    }
+
+    gameState.activeExpeditions.forEach((exp, idx) => {
+        const div = document.createElement("div");
+        div.style.marginTop = "5px";
+        const progress = Math.min(100, (exp.progress / exp.duration) * 100);
+        div.innerHTML = `
+            <span>${exp.name}</span>
+            <div style="background:#333; height:10px; width:100%;"><div style="background:#2ecc71; height:100%; width:${progress}%"></div></div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+window.startExpedition = function(expId) {
+    const expData = gameState.expeditions.find(e => e.id === expId);
+    if (!expData) return;
+
+    // Check cost
+    for (let res in expData.cost) {
+        if ((gameState.resources[res] || 0) < expData.cost[res]) {
+            alert("Not enough " + res);
+            return;
+        }
+    }
+
+    // Deduct
+    for (let res in expData.cost) {
+        gameState.resources[res] -= expData.cost[res];
+    }
+
+    // Start
+    if (!gameState.activeExpeditions) gameState.activeExpeditions = [];
+    gameState.activeExpeditions.push({
+        id: expId,
+        name: expData.name,
+        duration: expData.duration,
+        progress: 0
+    });
+
+    updateUI();
+    renderActiveExpeditions();
+};
+
+function completeExpedition(exp) {
+    // Remove from active
+    gameState.activeExpeditions = gameState.activeExpeditions.filter(e => e !== exp);
+
+    // Grant Reward
+    const roll = Math.random();
+    let msg = `Expedition '${exp.name}' returned!\n`;
+
+    if (exp.id === "exp_scout") {
+        const amount = Math.floor(50 + Math.random() * 50);
+        gameState.resources.wood += amount;
+        msg += `Found ${amount} Wood.`;
+    } else {
+        const amount = Math.floor(10 + Math.random() * 20);
+        gameState.resources.relicShards += amount;
+        msg += `Found ${amount} Relic Shards.`;
+    }
+
+    alert(msg);
+    updateUI();
+    renderActiveExpeditions();
+}
+
+// Attach to global for safety
+window.renderExpeditions = renderExpeditions;
+window.renderActiveExpeditions = renderActiveExpeditions;
+window.completeExpedition = completeExpedition;
+
+// --- Global Event Bindings (Critical for DOM Access) ---
+window.buyResearch = buyResearch;
+window.claimQuest = claimQuest;
+window.cloudLogin = cloudLogin;
+window.renderStoryModal = renderStoryModal;
+window.startExpedition = startExpedition;
+window.manualClick = manualClick;
+window.buyBuilding = buyBuilding;
+window.saveGame = saveGame;
+window.performPrestige = performPrestige;
+// Other UI helpers already attached in their definitions or shims
