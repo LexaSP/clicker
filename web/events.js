@@ -5,6 +5,7 @@ export const RANDOM_EVENTS = [
         id: "wandering_merchant",
         title: "Wandering Merchant",
         text: "A merchant passes by, offering goods for a price.",
+        minEra: 0, // Stone Age
         minEra: "Stone Age",
         trigger: (state) => state.resources.clicks >= 500 && Math.random() < 0.1,
         options: [
@@ -27,6 +28,7 @@ export const RANDOM_EVENTS = [
         id: "scientific_breakthrough",
         title: "Scientific Breakthrough!",
         text: "Your researchers have a moment of clarity.",
+        minEra: 6, // Modern Age (Needs Lab)
         minEra: "Modern Age",
         trigger: (state) => state.buildings["Lab"].count > 0 && Math.random() < 0.05,
         options: [
@@ -52,6 +54,7 @@ export const RANDOM_EVENTS = [
         id: "cultural_festival",
         title: "Cultural Festival",
         text: "The people want to celebrate their heritage.",
+        minEra: 1, // Bronze Age (era !== "Stone Age")
         minEra: "Bronze Age",
         trigger: (state) => state.era !== "Stone Age" && Math.random() < 0.05,
         options: [
@@ -74,6 +77,7 @@ export const RANDOM_EVENTS = [
         id: "strange_artifact",
         title: "Strange Artifact",
         text: "Explorers found something glowing in the dirt.",
+        minEra: 1, // Bronze Age (Expeditions unlock)
         minEra: "Bronze Age",
         trigger: (state) => state.stats.expeditionsCompleted > 0 && Math.random() < 0.02,
         options: [
@@ -95,6 +99,16 @@ export const RANDOM_EVENTS = [
     }
 ];
 
+// Helper to check era index for events
+const ERA_NAMES = [
+    "Stone Age", "Bronze Age", "Iron Age", "Middle Ages", "Renaissance",
+    "Industrial Age", "Modern Age", "Information Age", "Future Age"
+];
+
+function getEraIndex(eraName) {
+    return ERA_NAMES.indexOf(eraName);
+}
+
 export class EventController {
     constructor(gameState) {
         this.gameState = gameState;
@@ -106,7 +120,13 @@ export class EventController {
 
         // Try to trigger one
         // 1% chance per tick check (called e.g. every second)
+        const currentEraIdx = getEraIndex(this.gameState.era);
+
         for (let event of RANDOM_EVENTS) {
+            // Strict Era Check
+            const eventMinEra = (event.minEra !== undefined) ? event.minEra : 99;
+            if (currentEraIdx < eventMinEra) continue;
+
             if (event.trigger(this.gameState)) {
                 this.triggerEvent(event);
                 break; // Only one at a time

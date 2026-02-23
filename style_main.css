@@ -254,28 +254,12 @@ button:not(.tab-btn):not(#click-btn) {
     border-radius: var(--radius-sm);
     font-size: 0.9rem;
     margin-bottom: 5px;
-    transition: all 0.2s ease-in-out;
-    backface-visibility: hidden; /* Fix for potential jitter on scale */
-    transform: translateZ(0); /* Hardware accel */
 }
 
 button:not(.tab-btn):not(#click-btn):hover {
     background: rgba(255,255,255,0.15);
     border-color: rgba(255,255,255,0.3);
-    transform: scale(1.05);
-}
-
-/* Specific fix for Sidebar Ascension Buttons to ensure they catch the rule */
-#ascension-list button {
-    transition: all 0.2s ease-in-out;
-}
-#ascension-list button:hover {
-    transform: scale(1.05);
-}
-
-/* Prevent child elements from intercepting clicks */
-button > * {
-    pointer-events: none;
+    transform: translateY(-1px);
 }
 
 button:not(.tab-btn):not(#click-btn):active {
@@ -380,8 +364,8 @@ button:not(.tab-btn):not(#click-btn):active {
     border-radius: var(--radius-md) !important;
     padding: 15px !important;
     text-align: left !important;
-    display: flex;
-    flex-direction: column;
+    display: flex !important;
+    flex-direction: column !important;
     transition: all 0.2s ease !important;
     color: var(--text-main) !important;
     width: 100%;
@@ -392,7 +376,7 @@ button:not(.tab-btn):not(#click-btn):active {
 }
 
 .building-btn:hover, .recipe-card:hover, .civ-card:hover {
-    transform: scale(1.02);
+    transform: translateY(-3px);
     border-color: rgba(255, 255, 255, 0.3) !important;
     box-shadow: 0 8px 20px rgba(0,0,0,0.4);
     background: rgba(255,255,255,0.08) !important;
@@ -452,12 +436,6 @@ button:not(.tab-btn):not(#click-btn):active {
     overflow: hidden; /* For panning */
 }
 
-#tech-tree-svg {
-    z-index: 1; /* Below nodes */
-    pointer-events: none;
-}
-
-/* Tech Nodes (Assuming absolute positioning by JS) */
 /* Tech Nodes */
 .tech-node {
     position: absolute;
@@ -475,9 +453,6 @@ button:not(.tab-btn):not(#click-btn):active {
     text-align: center;
     font-size: 0.75rem;
     cursor: pointer;
-    transition: var(--trans-fast);
-    z-index: 10; /* Above SVG lines */
-    box-shadow: 0 0 10px rgba(0,0,0,0.5);
     transition: all 0.3s ease;
     z-index: 5;
     box-shadow: var(--shadow-soft);
@@ -698,7 +673,7 @@ button:not(.tab-btn):not(#click-btn):active {
 }
 
 .tutorial-actions button:hover {
-    transform: scale(1.05);
+    transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
 }
 

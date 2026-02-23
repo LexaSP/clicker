@@ -60,8 +60,6 @@ async function initCloudSave() {
                         if (cloudData) {
                             if (confirm("Found a cloud save! Load it? This will overwrite your local save.")) {
                                 Object.assign(gameState, cloudData);
-                                // Ensure legacy saves are migrated (Era strings to numbers)
-                                migrateSaveData(gameState);
                                 localStorage.setItem("hc_web_save", JSON.stringify(gameState));
                                 updateUI();
                                 alert("Cloud save loaded!");
@@ -220,28 +218,8 @@ let gameState = {
     campaign: { completed: [] }, // Story progress
 
     // Upgrades / Buildings (NERFED & REBALANCED)
-    // Era indices: Stone=0, Bronze=1, Iron=2, Middle=3, Ren=4, Ind=5, Mod=6, Info=7, Future=8
     buildings: {
         // Ancient
-        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.15, production: 0.5, icon: "👆", era: 0 },
-        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.15, production: 1, icon: "🧺", era: 0, produces: { food: 0.5, wood: 0.1 } },
-        "Farm": { count: 0, baseCost: 250, priceRatio: 1.15, production: 3, icon: "🌾", era: 1, produces: { food: 2 } },
-        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.20, production: 10, icon: "⛏️", era: 1, upkeep: { wood: 1 }, produces: { stone: 0.5, iron: 0.1 } },
-        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.20, production: 25, icon: "🔨", era: 2, upkeep: { stone: 2 }, produces: { steel: 0.05 } },
-
-        // Classical/Medieval
-        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.25, production: 50, icon: "💧", era: 2, produces: { food: 5 } },
-        "University": { count: 0, baseCost: 50000, priceRatio: 1.25, production: 100, icon: "🎓", era: 3 }, // Knowledge handled separately
-        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.30, production: 250, icon: "🏦", era: 4 }, // Money handled separately
-
-        // Industrial/Modern
-        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.30, production: 800, icon: "🏭", era: 5, upkeep: { iron: 2, energy: 5 }, produces: { oil: 0.1, steel: 0.5 } },
-        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.35, production: 1500, icon: "🔬", era: 6 }, // Knowledge
-        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.40, production: 5000, icon: "⚡", era: 6, upkeep: { wood: 5 }, produces: { energy: 10 } },
-
-        // Future
-        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.45, production: 20000, icon: "🖥️", era: 7 },
-        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.50, production: 100000, icon: "⚛️", era: 8, produces: { energy: 100 } }
         "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.30, production: 0.2, icon: "👆", era: 0 }, // Stone Age
         "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.30, production: 0.5, icon: "🧺", era: 0, produces: { food: 0.25, wood: 0.05 } }, // Stone Age
         "Farm": { count: 0, baseCost: 250, priceRatio: 1.30, production: 1.5, icon: "🌾", era: 1, produces: { food: 1 } }, // Bronze Age
@@ -342,16 +320,15 @@ async function init() {
             gameState.reroll.lastReset = now;
         }
 
-        // Generate quests if needed (Synchronous, before UI)
-        if (!gameState.quests || gameState.quests.length === 0) {
+        // Generate quests if needed
+        if (gameState.quests.length === 0) {
             generateDailyQuests();
         }
 
         // 2. UI Initialization (Synchronous - Critical for display)
         // Must happen BEFORE visibility updates
         initBuildingsUI();
-        initUI(); // This calls renderResearchTree, injectDynamicTabs, and initAscensionUI
-        renderQuestList(); // Initial render of quests
+        initUI(); // This calls renderResearchTree and injectDynamicTabs
         initTutorials(gameState);
 
         // 3. Apply Visibility Logic
@@ -966,8 +943,6 @@ window.manualClick = function(event) {
         checkQuestProgress("shards", 1);
     }
     updateUI();
-    // Force immediate quest UI update for responsiveness
-    updateQuestUI();
 };
 
 window.buyBuilding = function(name) {
@@ -1014,7 +989,6 @@ window.buyBuilding = function(name) {
 
         checkQuestProgress("purchases", 1);
         updateUI();
-        updateQuestUI();
     }
 };
 
@@ -1105,9 +1079,6 @@ function loadGame() {
             const savedState = JSON.parse(save);
             Object.assign(gameState, savedState);
 
-            // Perform Migration
-            migrateSaveData(gameState);
-
             // Offline Progress
             if (gameState.lastSaveTime) {
                 const now = Date.now();
@@ -1119,34 +1090,6 @@ function loadGame() {
         } catch (e) {
             console.error("Failed to load save", e);
         }
-    }
-}
-
-function migrateSaveData(state) {
-    // Migration: Convert String eras to Numeric eras
-    if (state.buildings) {
-        Object.keys(state.buildings).forEach(key => {
-            const b = state.buildings[key];
-            if (typeof b.era === "string") {
-                const idx = ERA_DATA.findIndex(e => e.name === b.era);
-                if (idx !== -1) {
-                    b.era = idx;
-                    console.log(`Migrated ${key} era from "${b.era}" to ${idx}`);
-                } else {
-                    // Fallback map if exact name doesn't match
-                    const fallbackMap = {
-                        "Stone Age": 0, "Bronze Age": 1, "Iron Age": 2, "Middle Ages": 3,
-                        "Renaissance": 4, "Industrial Age": 5, "Modern Age": 6,
-                        "Information Age": 7, "Future Age": 8
-                    };
-                    if (fallbackMap[b.era] !== undefined) {
-                        b.era = fallbackMap[b.era];
-                    } else {
-                        b.era = 99; // Hide if unknown
-                    }
-                }
-            }
-        });
     }
 }
 
@@ -1276,55 +1219,6 @@ function calculateOfflineProgress(seconds) {
 function initUI() {
     renderResearchTree();
     injectDynamicTabs();
-    initAscensionUI();
-}
-
-function initAscensionUI() {
-    const ascContainer = document.getElementById("ascension-list");
-    if (!ascContainer) return;
-
-    ascContainer.innerHTML = ""; // Clear initial placeholder
-
-    // Challenge Button
-    const chalBtn = document.createElement("button");
-    chalBtn.id = "btn-challenge-menu";
-    chalBtn.onclick = () => renderChallengeMenu();
-    chalBtn.style.width = "100%";
-    chalBtn.style.marginBottom = "10px";
-    chalBtn.style.background = "#8e44ad";
-    chalBtn.innerText = "⚔️ Challenge Modes";
-    ascContainer.appendChild(chalBtn);
-
-    // Active Challenge Label (Hidden by default)
-    const activeChalDiv = document.createElement("div");
-    activeChalDiv.id = "active-challenge-label";
-    activeChalDiv.style.background = "#c0392b";
-    activeChalDiv.style.padding = "5px";
-    activeChalDiv.style.marginBottom = "10px";
-    activeChalDiv.style.borderRadius = "4px";
-    activeChalDiv.style.display = "none"; // Hidden initially
-    ascContainer.appendChild(activeChalDiv);
-
-    // Tree Button
-    const treeBtn = document.createElement("button");
-    treeBtn.id = "btn-ascension-tree";
-    treeBtn.innerText = "Open Ascension Tree 🌌";
-    treeBtn.style.width = "100%";
-    treeBtn.style.background = "radial-gradient(circle, #8e44ad, #2c3e50)";
-    treeBtn.onclick = () => renderAscensionTree();
-    ascContainer.appendChild(treeBtn);
-
-    // Stellar Map Button (Hidden by default)
-    const starBtn = document.createElement("button");
-    starBtn.id = "btn-stellar-map";
-    starBtn.innerText = "Stellar Map ✨";
-    starBtn.style.width = "100%";
-    starBtn.style.marginTop = "5px";
-    starBtn.style.background = "#000";
-    starBtn.style.border = "1px solid #f1c40f";
-    starBtn.onclick = () => renderConstellationMenu();
-    starBtn.style.display = "none";
-    ascContainer.appendChild(starBtn);
 }
 
 function injectDynamicTabs() {
@@ -1400,7 +1294,6 @@ function checkEraProgress() {
 function updateVisibility() {
     const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
 
-    // Feature unlocks
     for (let id in FEATURE_UNLOCKS) {
         const req = FEATURE_UNLOCKS[id];
         const reqEraIdx = ERA_DATA.findIndex(e => e.name === req.era);
@@ -1427,24 +1320,6 @@ function updateVisibility() {
         }
     }
 
-    // STRICT ERA GATING FOR BUILDINGS
-    Object.keys(gameState.buildings).forEach(key => {
-        const b = gameState.buildings[key];
-        const btn = document.getElementById(`btn-${key}`);
-        if (btn) {
-            // Default to era 99 if missing to prevent rendering
-            const buildingEra = (b.era !== undefined) ? b.era : 99;
-
-            if (currentEraIdx >= buildingEra) {
-                 if (btn.style.display === "none") {
-                    btn.style.display = "flex"; // Re-enable display
-                 }
-            } else {
-                 btn.style.display = "none";
-            }
-        }
-    });
-
     // Mods button in UI
     const modBtn = document.querySelector("button[onclick*='renderModdingMenu']");
     if (modBtn) {
@@ -1456,9 +1331,17 @@ function updateVisibility() {
         }
     }
 
-    // STRICT ERA 1 VISIBILITY FALLBACK (Explicit overrides)
+    // STRICT ERA 1 VISIBILITY FALLBACK
+    // Explicitly unhide Era 1 buildings if logic fails
     const clickBtn = document.getElementById("click-btn");
     if (clickBtn) clickBtn.style.display = "block";
+
+    // AutoClicker and Gatherer
+    const autoBtn = document.getElementById("btn-AutoClicker");
+    if (autoBtn) autoBtn.style.display = "flex"; // Using flex as per style.css
+
+    const gatherBtn = document.getElementById("btn-Gatherer");
+    if (gatherBtn) gatherBtn.style.display = "flex";
 
     // Tech Root
     // Rendered via renderResearchTree, but ensure the tab is visible
@@ -1682,8 +1565,6 @@ window.uploadSave = function(input) {
             const data = JSON.parse(json);
             if (data.resources && data.buildings) {
                 Object.assign(gameState, data);
-                // Migrate
-                migrateSaveData(gameState);
                 saveGame();
                 location.reload();
             } else {
@@ -1711,8 +1592,6 @@ window.importSaveString = function() {
         const data = JSON.parse(json);
         if (data.resources && data.buildings) {
             Object.assign(gameState, data);
-            // Migrate
-            migrateSaveData(gameState);
             saveGame();
             location.reload();
         } else {
@@ -1805,21 +1684,6 @@ window.performPrestige = function(challengeId = null) {
     gameState.activeExpeditions = [];
     gameState.wonders = []; // Reset wonders
 
-    // Reset Buildings & Costs (STRICT NUMERIC ERAS)
-    gameState.buildings = {
-        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.15, production: 0.5, icon: "👆", era: 0 },
-        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.15, production: 1, icon: "🧺", era: 0 },
-        "Farm": { count: 0, baseCost: 250, priceRatio: 1.15, production: 3, icon: "🌾", era: 1 },
-        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.20, production: 10, icon: "⛏️", era: 1, upkeep: { wood: 1 } },
-        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.20, production: 25, icon: "🔨", era: 2, upkeep: { stone: 2 } },
-        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.25, production: 50, icon: "💧", era: 2 },
-        "University": { count: 0, baseCost: 50000, priceRatio: 1.25, production: 100, icon: "🎓", era: 3 },
-        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.30, production: 250, icon: "🏦", era: 4 },
-        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.30, production: 800, icon: "🏭", era: 5, upkeep: { iron: 2, energy: 5 } },
-        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.35, production: 1500, icon: "🔬", era: 6 },
-        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.40, production: 5000, icon: "⚡", era: 6, upkeep: { wood: 5 } },
-        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.45, production: 20000, icon: "🖥️", era: 7 },
-        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.50, production: 100000, icon: "⚛️", era: 8 }
     // Reset Buildings & Costs
     // NERFED & REBALANCED for Prestige Reset as well
     gameState.buildings = {
@@ -1930,9 +1794,6 @@ function initBuildingsUI() {
 
     list.innerHTML = "";
 
-    // Get current era index for STRICT INITIAL RENDER GATING
-    const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
-
     Object.keys(gameState.buildings).forEach(name => {
         const b = gameState.buildings[name];
 
@@ -1943,16 +1804,7 @@ function initBuildingsUI() {
         btn.style.width = "100%";
         btn.style.marginBottom = "5px";
         btn.style.padding = "10px";
-
-        // RENDER-LEVEL GATING: Set initial display state
-        // Default to era 99 if missing
-        const buildingEra = (b.era !== undefined) ? b.era : 99;
-        if (currentEraIdx >= buildingEra) {
-            btn.style.display = "flex";
-        } else {
-            btn.style.display = "none";
-        }
-
+        btn.style.display = "flex";
         btn.style.alignItems = "center";
         btn.style.textAlign = "left";
         btn.style.justifyContent = "flex-start";
@@ -2102,25 +1954,15 @@ function updateUI() {
     }
 
     // Prestige: Challenges & Ascension Tree
-    // (Logic moved to initAscensionUI to prevent DOM thrashing)
-    const activeChalDiv = document.getElementById("active-challenge-label");
-    if (activeChalDiv) {
+    const ascContainer = document.getElementById("ascension-list");
+    if (ascContainer) {
+        ascContainer.innerHTML = `<button onclick="renderChallengeMenu()" style="width:100%; margin-bottom:10px; background:#8e44ad;">⚔️ Challenge Modes</button>`;
+
         if (gameState.activeChallenge) {
             const c = CHALLENGES.find(x => x.id === gameState.activeChallenge);
-            activeChalDiv.style.display = "block";
-            activeChalDiv.innerText = `ACTIVE: ${c ? c.name : 'Unknown'}`;
-        } else {
-            activeChalDiv.style.display = "none";
+            ascContainer.innerHTML += `<div style="background:#c0392b; padding:5px; margin-bottom:10px; border-radius:4px;">ACTIVE: ${c ? c.name : 'Unknown'}</div>`;
         }
-    }
 
-    const starBtn = document.getElementById("btn-stellar-map");
-    if (starBtn) {
-        if (gameState.era === "Future Age" || (gameState.space && gameState.space.planets.length > 0)) {
-            starBtn.style.display = "block";
-        } else {
-            starBtn.style.display = "none";
-        }
         // Render Tree Button
         const treeBtn = document.createElement("button");
         treeBtn.innerText = "Open Ascension Tree 🌌";
@@ -2238,14 +2080,6 @@ window.renderResearchTree = function() {
     svg.style.width = Math.max(container.clientWidth, maxX + 200) + "px";
     svg.style.height = Math.max(container.clientHeight, maxY + 200) + "px";
 
-    // Ensure pointer-events: none on SVG to prevent blocking clicks
-    svg.style.pointerEvents = "none";
-
-    // Ensure container is relative for absolute children
-    if (getComputedStyle(container).position === "static") {
-        container.style.position = "relative";
-    }
-
     allResearch.forEach(tech => {
         if (!positions[tech.id]) return;
 
@@ -2260,12 +2094,8 @@ window.renderResearchTree = function() {
                     const end = positions[tech.id];
 
                     // Curved Path Logic (Bezier)
-                    // Coordinates are relative to container due to absolute positioning of nodes and SVG
-                    // Start point: Center right of source node
-                    const p1 = { x: start.x + 60, y: start.y + 30 }; // Node width is 60px
-                    // End point: Center left of target node
+                    const p1 = { x: start.x + 150, y: start.y + 30 };
                     const p2 = { x: end.x, y: end.y + 30 };
-
                     const cp1 = { x: p1.x + 50, y: p1.y };
                     const cp2 = { x: p2.x - 50, y: p2.y };
 
@@ -2276,9 +2106,6 @@ window.renderResearchTree = function() {
                     path.setAttribute("stroke", isDone ? "#2ecc71" : "#555");
                     path.setAttribute("stroke-width", "2");
                     path.setAttribute("class", "tech-line");
-                    // Ensure lines don't block clicks either
-                    path.style.pointerEvents = "none";
-
                     if (isDone) path.classList.add("active");
                     svg.appendChild(path);
                 }
@@ -2394,69 +2221,3 @@ if (document.readyState === 'loading') {
 } else {
     init();
 }
-
-function renderQuestList() {
-    const list = document.getElementById("quest-list");
-    if (!list) return;
-
-    if (!gameState.quests || gameState.quests.length === 0) {
-        list.innerHTML = "<p>No quests available.</p>";
-        return;
-    }
-
-    list.innerHTML = "";
-    gameState.quests.forEach(q => {
-        const div = document.createElement("div");
-        div.id = `quest-${q.id}`;
-        div.className = "quest-item";
-        div.style.marginBottom = "8px";
-        div.style.padding = "8px";
-        div.style.background = "rgba(255,255,255,0.05)";
-        div.style.borderRadius = "4px";
-
-        div.innerHTML = `
-            <div style="display:flex; justify-content:space-between; font-size:0.9rem;">
-                <span>${q.title}</span>
-                <span id="quest-status-${q.id}">${q.completed ? (q.claimed ? '✅' : '🎁') : ''}</span>
-            </div>
-            <div style="background:#333; height:6px; width:100%; margin-top:5px; border-radius:3px; overflow:hidden;">
-                <div id="quest-bar-${q.id}" style="height:100%; width:${(q.progress / q.target) * 100}%; background:#f1c40f; transition: width 0.2s;"></div>
-            </div>
-            <div style="display:flex; justify-content:space-between; margin-top:2px;">
-                <small id="quest-text-${q.id}">${Math.floor(q.progress)} / ${q.target}</small>
-                ${!q.claimed && q.completed ? `<button onclick="claimQuest('${q.id}')" style="padding:2px 6px; font-size:0.7rem;">Claim</button>` : ''}
-            </div>
-        `;
-        list.appendChild(div);
-    });
-}
-
-function updateQuestUI() {
-    if (!gameState.quests) return;
-
-    gameState.quests.forEach(q => {
-        // Direct DOM update by ID to avoid thrashing
-        const bar = document.getElementById(`quest-bar-${q.id}`);
-        const text = document.getElementById(`quest-text-${q.id}`);
-        const status = document.getElementById(`quest-status-${q.id}`);
-        const item = document.getElementById(`quest-${q.id}`);
-
-        if (bar) bar.style.width = `${Math.min(100, (q.progress / q.target) * 100)}%`;
-        if (text) text.innerText = `${Math.floor(q.progress)} / ${q.target}`;
-
-        // If state changed to completed and button missing, re-render specific item?
-        // Or just handle the claim button visibility.
-        // For simplicity, if completion state changes, we might want to re-render just that item or toggle class.
-        // But the button insertion is HTML structure change.
-        if (q.completed && !q.claimed) {
-             if (item && !item.querySelector("button")) {
-                 // Lazy re-render or inject button
-                 renderQuestList(); // Re-render all to be safe and simple for now, or optimize later.
-             }
-        }
-    });
-}
-
-// Expose functions to window if needed or just keep in module scope
-window.renderQuestList = renderQuestList;
-window.updateQuestUI = updateQuestUI;
