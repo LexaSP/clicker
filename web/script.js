@@ -274,7 +274,7 @@ const ERA_DATA = [
 // --- Unlocks Config (Strict) ---
 const FEATURE_UNLOCKS = {
     // Static Tabs (IDs in index.html)
-    "tab-btn-expeditions": { era: "Future Age" }, // QUARANTINED: MVP logic pending
+    "tab-btn-expeditions": { era: "Bronze Age" },
     "tab-btn-war": { era: "Future Age" }, // QUARANTINED: MVP logic pending
     "tab-btn-government": { era: "Future Age" }, // QUARANTINED: MVP logic pending
     "tab-btn-crafting": { era: "Iron Age" },
@@ -569,12 +569,19 @@ function tick(dt) {
     }
 
     // Expedition Progress
-    [...gameState.activeExpeditions].forEach((exp, index) => {
-        exp.progress += dt;
-        if (exp.progress >= exp.duration) {
-            completeExpedition(exp);
-        }
-    });
+    if (gameState.activeExpeditions) {
+        [...gameState.activeExpeditions].forEach((exp, index) => {
+            exp.progress += dt;
+            if (exp.progress >= exp.duration) {
+                // Ensure completeExpedition is defined before calling
+                if (typeof completeExpedition === 'function') {
+                    completeExpedition(exp);
+                } else if (window.completeExpedition) {
+                    window.completeExpedition(exp);
+                }
+            }
+        });
+    }
 
     // Leaderboard Rewards
     checkLeaderboardRewards(gameState);
@@ -1373,6 +1380,13 @@ function injectDynamicTabs() {
     createTab("tab-btn-diplomacy", "Diplomacy 🤝", "diplomacy-view", `<h3>Foreign Relations ${helpBtn('diplomacy')}</h3><div id="diplomacy-list"></div><hr><h3>Espionage Agency</h3><div id="espionage-list"></div><hr><h3>World Congress 🌐</h3><div id="congress-list"></div>`);
     createTab("tab-btn-religion", "Religion 🛐", "religion-view", `<h3>Faith & Dogmas ${helpBtn('religion')}</h3><div id="religion-ui"></div><hr><h3>Museum 🎨</h3><div id="museum-list"></div>`);
 
+    // Ensure Expeditions view content is populated if empty
+    const expView = document.getElementById("expeditions-view");
+    if (expView) {
+         // Render the dynamic list
+         if (window.renderExpeditions) window.renderExpeditions();
+    }
+
     // Campaign Widget (Top of content?)
     // We can inject it into main-area or a specific tab. Let's put it in main area for visibility?
     // Or just a button. Let's add a "Story" button to the sidebar.
@@ -1417,14 +1431,16 @@ function updateVisibility() {
 
         const el = document.getElementById(id);
         if (el) {
+            // Retroactive Locking: Even if it was visible before, if currentEra < reqEra, FORCE HIDE
             if (currentEraIdx >= reqEraIdx) {
                 // Show only if hidden, to avoid flicker or style resets
                 if (el.style.display === "none") {
                     el.style.display = "inline-block";
                 }
             } else {
-                // STRICT HIDING
+                // STRICT HIDING / RETROACTIVE LOCK
                 el.style.display = "none";
+                el.style.setProperty("display", "none", "important"); // Force override
 
                 // ALSO Hide the view content if it's currently active to prevent ghost views
                 // Derive view ID from btn ID (heuristic: tab-btn-X -> X-view)
@@ -1432,6 +1448,12 @@ function updateVisibility() {
                 const viewEl = document.getElementById(viewId);
                 if (viewEl) {
                     viewEl.style.display = "none";
+                    viewEl.style.setProperty("display", "none", "important");
+                }
+
+                // If this tab was active, switch to Research
+                if (el.classList.contains("active")) {
+                    showTab("research");
                 }
             }
         }
@@ -2535,3 +2557,129 @@ window.buyAscensionPerkWrapper = function(perkId) {
         alert(result.msg);
     }
 }
+
+/* EXPEDITIONS SYSTEM */
+function renderExpeditions() {
+    const list = document.getElementById("expedition-list");
+    if (!list) return;
+
+    if (!gameState.expeditions || gameState.expeditions.length === 0) {
+        // Fallback or init
+        // For MVP, hardcode some available expeditions if none exist
+        gameState.expeditions = [
+            { id: "exp_scout", name: "Scout Wilderness", cost: { food: 50 }, duration: 5, rewardDesc: "Random Resources" },
+            { id: "exp_ruins", name: "Explore Ruins", cost: { food: 200, money: 50 }, duration: 15, rewardDesc: "Relic Chance" }
+        ];
+    }
+
+    list.innerHTML = "";
+    gameState.expeditions.forEach(exp => {
+        const div = document.createElement("div");
+        div.className = "expedition-card";
+        div.style.border = "1px solid #7f8c8d";
+        div.style.padding = "10px";
+        div.style.marginBottom = "10px";
+        div.style.background = "rgba(0,0,0,0.3)";
+        div.innerHTML = `
+            <strong>${exp.name}</strong><br>
+            <small>Cost: ${Object.entries(exp.cost).map(([k,v]) => `${v} ${k}`).join(", ")}</small><br>
+            <small>Duration: ${exp.duration}s</small><br>
+            <button onclick="startExpedition('${exp.id}')" style="margin-top:5px;">Send Expedition</button>
+        `;
+        list.appendChild(div);
+    });
+
+    renderActiveExpeditions();
+}
+
+function renderActiveExpeditions() {
+    const list = document.getElementById("active-expedition-list");
+    if (!list) return;
+
+    list.innerHTML = "";
+    if (!gameState.activeExpeditions || gameState.activeExpeditions.length === 0) {
+        list.innerHTML = "<p>No active expeditions.</p>";
+        return;
+    }
+
+    gameState.activeExpeditions.forEach((exp, idx) => {
+        const div = document.createElement("div");
+        div.style.marginTop = "5px";
+        const progress = Math.min(100, (exp.progress / exp.duration) * 100);
+        div.innerHTML = `
+            <span>${exp.name}</span>
+            <div style="background:#333; height:10px; width:100%;"><div style="background:#2ecc71; height:100%; width:${progress}%"></div></div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+window.startExpedition = function(expId) {
+    const expData = gameState.expeditions.find(e => e.id === expId);
+    if (!expData) return;
+
+    // Check cost
+    for (let res in expData.cost) {
+        if ((gameState.resources[res] || 0) < expData.cost[res]) {
+            alert("Not enough " + res);
+            return;
+        }
+    }
+
+    // Deduct
+    for (let res in expData.cost) {
+        gameState.resources[res] -= expData.cost[res];
+    }
+
+    // Start
+    if (!gameState.activeExpeditions) gameState.activeExpeditions = [];
+    gameState.activeExpeditions.push({
+        id: expId,
+        name: expData.name,
+        duration: expData.duration,
+        progress: 0
+    });
+
+    updateUI();
+    renderActiveExpeditions();
+};
+
+function completeExpedition(exp) {
+    // Remove from active
+    gameState.activeExpeditions = gameState.activeExpeditions.filter(e => e !== exp);
+
+    // Grant Reward
+    const roll = Math.random();
+    let msg = `Expedition '${exp.name}' returned!\n`;
+
+    if (exp.id === "exp_scout") {
+        const amount = Math.floor(50 + Math.random() * 50);
+        gameState.resources.wood += amount;
+        msg += `Found ${amount} Wood.`;
+    } else {
+        const amount = Math.floor(10 + Math.random() * 20);
+        gameState.resources.relicShards += amount;
+        msg += `Found ${amount} Relic Shards.`;
+    }
+
+    alert(msg);
+    updateUI();
+    renderActiveExpeditions();
+}
+
+// Attach to global for safety
+window.renderExpeditions = renderExpeditions;
+window.renderActiveExpeditions = renderActiveExpeditions;
+window.completeExpedition = completeExpedition;
+
+// --- Global Event Bindings (Critical for DOM Access) ---
+window.buyResearch = buyResearch;
+window.claimQuest = claimQuest;
+window.cloudLogin = cloudLogin;
+window.renderStoryModal = renderStoryModal;
+window.startExpedition = startExpedition;
+window.manualClick = manualClick;
+window.buyBuilding = buyBuilding;
+window.saveGame = saveGame;
+window.performPrestige = performPrestige;
+// Other UI helpers already attached in their definitions or shims
