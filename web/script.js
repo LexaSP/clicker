@@ -122,11 +122,11 @@ window.cloudLogin = async function() {
         try {
             await firebaseModule.login();
         } catch (e) {
-            console.warn("Cloud login error:", e);
-            alert("Cloud services are currently unavailable. Please use 'Save to File' in the Settings menu.");
+            console.error("Login failed:", e);
+            alert("Login failed: " + e.message);
         }
     } else {
-        alert("Cloud services are currently unavailable. Please use 'Save to File' in the Settings menu.");
+        alert("Cloud module not initialized.");
     }
 };
 
