@@ -1,12 +1,34 @@
 // congress.js
 // Global resolutions and voting
 
+const ERA_LEVELS = {
+    "Stone Age": 0,
+    "Bronze Age": 1,
+    "Iron Age": 2,
+    "Middle Ages": 3,
+    "Renaissance": 4,
+    "Industrial Age": 5,
+    "Modern Age": 6,
+    "Information Age": 7,
+    "Future Age": 8
+};
+
 export const RESOLUTIONS = [
     { id: "world_peace", name: "Global Peace Treaty", desc: "Army Cost -50%, Happiness +20%", minEra: 6, effect: { army_cost: 0.5, happiness: 1.2 } },
     { id: "science_funding", name: "International Science Fund", desc: "Knowledge +25%, Money -10%", minEra: 6, effect: { knowledge_mult: 1.25, money_mult: 0.9 } },
     { id: "trade_embargo", name: "Trade Regulations", desc: "Money +20%, Production -10%", minEra: 6, effect: { money_mult: 1.2, production_mult: 0.9 } },
     { id: "cultural_heritage", name: "Cultural Heritage Act", desc: "Culture +30%, Knowledge -10%", minEra: 6, effect: { culture_mult: 1.3, knowledge_mult: 0.9 } },
     { id: "space_race", name: "Space Cooperation", desc: "Space Prod +50%, Earth Prod -10%", minEra: 7, effect: { space_mult: 1.5, production_mult: 0.9 } }
+    // Era 1 (Stone Age)
+    { id: "tribal_chief", name: "Elect Tribal Chief", desc: "Production +10%, Happiness +5%", minEra: "Stone Age", effect: { production_mult: 1.1, happiness: 1.05 } },
+    { id: "ration_berries", name: "Ration Berries", desc: "Food +20%, Happiness -5%", minEra: "Stone Age", effect: { food_mult: 1.2, happiness: 0.95 } },
+
+    // later eras
+    { id: "cultural_heritage", name: "Cultural Heritage Act", desc: "Culture +30%, Knowledge -10%", minEra: "Middle Ages", effect: { culture_mult: 1.3, knowledge_mult: 0.9 } },
+    { id: "trade_embargo", name: "Trade Regulations", desc: "Money +20%, Production -10%", minEra: "Renaissance", effect: { money_mult: 1.2, production_mult: 0.9 } },
+    { id: "science_funding", name: "International Science Fund", desc: "Knowledge +25%, Money -10%", minEra: "Industrial Age", effect: { knowledge_mult: 1.25, money_mult: 0.9 } },
+    { id: "world_peace", name: "Global Peace Treaty", desc: "Army Cost -50%, Happiness +20%", minEra: "Modern Age", effect: { army_cost: 0.5, happiness: 1.2 } },
+    { id: "space_race", name: "Space Cooperation", desc: "Space Prod +50%, Earth Prod -10%", minEra: "Future Age", effect: { space_mult: 1.5, production_mult: 0.9 } }
 ];
 
 // Helper to check era index for events
@@ -66,6 +88,12 @@ function startSession(state) {
 
     if (available.length === 0) {
         cong.timer = 60; // Wait and retry
+    // Filter by Era
+    const currentEraLvl = ERA_LEVELS[state.era] || 0;
+    const available = RESOLUTIONS.filter(r => (ERA_LEVELS[r.minEra] || 0) <= currentEraLvl);
+
+    if (available.length === 0) {
+        cong.timer = 60; // Retry later
         return;
     }
 
@@ -76,9 +104,6 @@ function startSession(state) {
     cong.timer = 60; // 60s to vote
     cong.playerVote = null;
     cong.votes = { yes: 0, no: 0 };
-
-    // Notify
-    // alert(`📢 WORLD CONGRESS IN SESSION!\nVoting on: ${res.name}`); // Maybe too intrusive?
 }
 
 export function vote(state, option) {
@@ -96,6 +121,7 @@ function resolveSession(state) {
 
     if (!res) {
         cong.sessionActive = false;
+        cong.activeResolution = null;
         return;
     }
 
