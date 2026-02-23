@@ -2347,7 +2347,7 @@ function renderQuestList() {
             </div>
             <div style="display:flex; justify-content:space-between; margin-top:2px;">
                 <small id="quest-text-${q.id}">${Math.floor(q.progress)} / ${q.target}</small>
-                ${!q.claimed && q.completed ? `<button onclick="claimQuest('${q.id}')" style="padding:2px 6px; font-size:0.7rem;">Claim</button>` : ''}
+                ${!q.claimed && q.completed ? `<button class="claim-btn" onclick="claimQuest('${q.id}')" style="padding:2px 6px; font-size:0.7rem;">Claim</button>` : ''}
             </div>
         `;
         list.appendChild(div);
@@ -2383,3 +2383,90 @@ function updateQuestUI() {
 // Expose functions to window if needed or just keep in module scope
 window.renderQuestList = renderQuestList;
 window.updateQuestUI = updateQuestUI;
+
+window.renderAscensionTree = function() {
+    if (document.getElementById("ascension-modal")) {
+        // Toggle visibility if exists? Or remove?
+        // Let's just remove to re-render or close
+        document.body.removeChild(document.getElementById("ascension-modal"));
+        return;
+    }
+
+    const modal = document.createElement("div");
+    modal.id = "ascension-modal";
+    modal.className = "modal-overlay";
+
+    // Build Perk HTML
+    let perksHtml = "";
+    // Note: ASCENSION_TREE is imported but we need to iterate it.
+    // Assuming ASCENSION_TREE is globally available or imported.
+    // It is imported in script.js.
+
+    // We need to access ASCENSION_TREE here. It was imported.
+    // But since I'm appending this to script.js, I might not have access to the import inside this function scope
+    // if I was using `cat`. Wait, `cat` appends to the file, so it's in the module scope.
+
+    // However, I need to make sure I don't break the module.
+    // Let's assume ASCENSION_TREE is available.
+
+    if (typeof ASCENSION_TREE !== 'undefined') {
+        ASCENSION_TREE.forEach(perk => {
+            const owned = gameState.ascensionPerks.includes(perk.id);
+            const available = perk.req.every(r => gameState.ascensionPerks.includes(r));
+
+            perksHtml += `
+                <div class="perk-node" style="
+                    border: 2px solid ${owned ? '#2ecc71' : (available ? '#f1c40f' : '#7f8c8d')};
+                    background: ${owned ? 'rgba(46, 204, 113, 0.2)' : 'rgba(0,0,0,0.5)'};
+                    padding: 10px;
+                    margin: 5px;
+                    width: 200px;
+                    display: inline-block;
+                    vertical-align: top;
+                    cursor: ${available && !owned ? 'pointer' : 'default'};
+                    opacity: ${available || owned ? 1 : 0.5};
+                " onclick="${available && !owned ? `buyAscensionPerkWrapper('${perk.id}')` : ''}">
+                    <strong>${perk.name}</strong><br>
+                    <small>${perk.desc}</small><br>
+                    <small style="color: gold">Cost: ${perk.cost} SE</small>
+                </div>
+            `;
+        });
+    } else {
+        perksHtml = "<p>Error: Ascension Tree data not found.</p>";
+    }
+
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 900px; max-height: 80vh; overflow-y: auto;">
+            <h2>Ascension Tree 🌌</h2>
+            <p>Spend Symbols of Era (SE) to gain permanent multiverse upgrades.</p>
+            <p>Available SE: <span id="modal-se-display">${gameState.resources.symbolsOfEra}</span></p>
+            <div id="ascension-tree-container" style="text-align: center;">
+                ${perksHtml}
+            </div>
+            <button onclick="document.body.removeChild(document.getElementById('ascension-modal'))" style="margin-top: 20px; background: #c0392b;">Close</button>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+window.buyAscensionPerkWrapper = function(perkId) {
+    // We need to import buyAscensionPerk logic or use the one exposed?
+    // script.js imports { buyAscensionPerk } from './ascension.js'.
+    // It's in module scope.
+
+    // We need to verify if buyAscensionPerk is accessible.
+    // Since we are in the same file (script.js), yes.
+
+    const result = buyAscensionPerk(gameState, perkId);
+    if (result.success) {
+        alert(result.msg);
+        // Re-render
+        document.body.removeChild(document.getElementById("ascension-modal"));
+        renderAscensionTree();
+        updateUI();
+    } else {
+        alert(result.msg);
+    }
+}
