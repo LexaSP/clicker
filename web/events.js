@@ -5,6 +5,7 @@ export const RANDOM_EVENTS = [
         id: "wandering_merchant",
         title: "Wandering Merchant",
         text: "A merchant passes by, offering goods for a price.",
+        minEra: "Stone Age",
         trigger: (state) => state.resources.clicks >= 500 && Math.random() < 0.1,
         options: [
             {
@@ -26,6 +27,7 @@ export const RANDOM_EVENTS = [
         id: "scientific_breakthrough",
         title: "Scientific Breakthrough!",
         text: "Your researchers have a moment of clarity.",
+        minEra: "Modern Age",
         trigger: (state) => state.buildings["Lab"].count > 0 && Math.random() < 0.05,
         options: [
             {
@@ -50,6 +52,7 @@ export const RANDOM_EVENTS = [
         id: "cultural_festival",
         title: "Cultural Festival",
         text: "The people want to celebrate their heritage.",
+        minEra: "Bronze Age",
         trigger: (state) => state.era !== "Stone Age" && Math.random() < 0.05,
         options: [
             {
@@ -71,6 +74,7 @@ export const RANDOM_EVENTS = [
         id: "strange_artifact",
         title: "Strange Artifact",
         text: "Explorers found something glowing in the dirt.",
+        minEra: "Bronze Age",
         trigger: (state) => state.stats.expeditionsCompleted > 0 && Math.random() < 0.02,
         options: [
             {

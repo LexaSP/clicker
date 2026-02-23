@@ -596,7 +596,15 @@ function checkStoryEvents() {
     // NERFED: 5% -> 1% chance per check (15s)
     if (Math.random() > 0.01) return;
 
-    const possible = RANDOM_EVENTS.filter(evt => evt.trigger && evt.trigger(gameState));
+    const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
+
+    const possible = RANDOM_EVENTS.filter(evt => {
+        const evtEraIdx = ERA_DATA.findIndex(e => e.name === evt.minEra);
+        // Default to Stone Age (0) if not specified
+        const minIdx = evtEraIdx === -1 ? 0 : evtEraIdx;
+        return minIdx <= currentEraIdx && evt.trigger && evt.trigger(gameState);
+    });
+
     if (possible.length === 0) return;
 
     // Pick one
@@ -715,25 +723,19 @@ function clickGoldenRelic() {
     if (roll < 0.5) {
         // Frenzy: x7 for 30s
         alert("GOLDEN RELIC! x7 Production for 30 seconds!");
-        // We need a way to store temp buffs.
-        // For simplicity, let's just dump resources for now or add a temp multiplier.
-        // Let's add a temp multiplier to gameState.
         if (!gameState.tempMultiplier) gameState.tempMultiplier = 1;
         gameState.tempMultiplier *= 7;
         setTimeout(() => {
             gameState.tempMultiplier /= 7;
         }, 30000);
     } else {
-        // Lump Sum: 15 mins of production
-        let production = 0;
-        production += gameState.buildings["AutoClicker"].count * gameState.buildings["AutoClicker"].production;
-        production += gameState.buildings["Farm"].count * gameState.buildings["Farm"].production;
-        production += gameState.buildings["Mine"].count * gameState.buildings["Mine"].production;
-        let gain = Math.max(100, production * 900); // 15 mins
+        // Lump Sum: 1 Minute of Production (Nerfed)
+        const cps = calculateProduction(gameState, 0, false);
+        let gain = Math.floor(Math.max(10, cps * 60));
 
         gameState.resources.clicks += gain;
         gameState.resources.lifetimeClicks += gain;
-        alert(`GOLDEN RELIC! Found ${Math.floor(gain)} Clicks!`);
+        alert(`GOLDEN RELIC! Found ${formatNumber(gain)} Clicks!`);
     }
     updateUI();
 }
@@ -894,7 +896,7 @@ window.manualClick = function(event) {
 
     if (window.audioController) window.audioController.playClick();
 
-    // Base Click Value + Synergy (10% of CpS)
+    // Base Click Value is STRICTLY 1
     const cps = calculateProduction(gameState, 0, false);
 
     // Track Max Production for Leaderboard
@@ -902,7 +904,7 @@ window.manualClick = function(event) {
         gameState.stats.maxProduction = cps;
     }
 
-    let clickValue = 1 + (gameState.inventory.length * 0.1) + (cps * 0.1);
+    let clickValue = 1;
 
     clickValue *= getGlobalMultiplier("click", "clicks");
 
