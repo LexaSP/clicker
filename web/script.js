@@ -220,25 +220,25 @@ let gameState = {
     // Upgrades / Buildings (NERFED & REBALANCED)
     buildings: {
         // Ancient
-        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.30, production: 0.2, icon: "👆", era: "Stone Age" },
-        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.30, production: 0.5, icon: "🧺", era: "Stone Age", produces: { food: 0.25, wood: 0.05 } },
-        "Farm": { count: 0, baseCost: 250, priceRatio: 1.30, production: 1.5, icon: "🌾", era: "Bronze Age", produces: { food: 1 } },
-        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.30, production: 5, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 }, produces: { stone: 0.25, iron: 0.05 } },
-        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.30, production: 12.5, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 }, produces: { steel: 0.02 } },
+        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.30, production: 0.2, icon: "👆", era: 0 }, // Stone Age
+        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.30, production: 0.5, icon: "🧺", era: 0, produces: { food: 0.25, wood: 0.05 } }, // Stone Age
+        "Farm": { count: 0, baseCost: 250, priceRatio: 1.30, production: 1.5, icon: "🌾", era: 1, produces: { food: 1 } }, // Bronze Age
+        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.30, production: 5, icon: "⛏️", era: 1, upkeep: { wood: 1 }, produces: { stone: 0.25, iron: 0.05 } }, // Bronze Age
+        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.30, production: 12.5, icon: "🔨", era: 2, upkeep: { stone: 2 }, produces: { steel: 0.02 } }, // Iron Age
 
         // Classical/Medieval
-        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.35, production: 25, icon: "💧", era: "Iron Age", produces: { food: 2.5 } },
-        "University": { count: 0, baseCost: 50000, priceRatio: 1.35, production: 50, icon: "🎓", era: "Middle Ages" }, // Knowledge handled separately
-        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.35, production: 125, icon: "🏦", era: "Renaissance" }, // Money handled separately
+        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.35, production: 25, icon: "💧", era: 2, produces: { food: 2.5 } }, // Iron Age
+        "University": { count: 0, baseCost: 50000, priceRatio: 1.35, production: 50, icon: "🎓", era: 3 }, // Middle Ages
+        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.35, production: 125, icon: "🏦", era: 4 }, // Renaissance
 
         // Industrial/Modern
-        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.40, production: 400, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 }, produces: { oil: 0.05, steel: 0.25 } },
-        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.45, production: 750, icon: "🔬", era: "Modern Age" }, // Knowledge
-        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.50, production: 2500, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 }, produces: { energy: 5 } },
+        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.40, production: 400, icon: "🏭", era: 5, upkeep: { iron: 2, energy: 5 }, produces: { oil: 0.05, steel: 0.25 } }, // Industrial Age
+        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.45, production: 750, icon: "🔬", era: 6 }, // Modern Age
+        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.50, production: 2500, icon: "⚡", era: 6, upkeep: { wood: 5 }, produces: { energy: 5 } }, // Modern Age
 
         // Future
-        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.55, production: 10000, icon: "🖥️", era: "Information Age" },
-        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.60, production: 50000, icon: "⚛️", era: "Future Age", produces: { energy: 50 } }
+        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.55, production: 10000, icon: "🖥️", era: 7 }, // Information Age
+        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.60, production: 50000, icon: "⚛️", era: 8, produces: { energy: 50 } } // Future Age
     },
 
     era: "Stone Age",
@@ -998,13 +998,18 @@ window.buyResearch = function(techId) {
     }
 
     const tech = allResearch.find(t => t.id === techId);
-    if (!tech) return;
+    if (!tech) {
+        console.error("buyResearch: Tech not found!", techId);
+        return;
+    }
 
     let costMult = getGlobalMultiplier("cost", "knowledge"); // Tech cost is usually knowledge
     const cost = Math.floor(tech.cost * costMult);
 
     const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
-    const costType = tech.costType || "knowledge"; // Default to knowledge (was clicks? No, original plan said clicks/knowledge mix)
+    const costType = tech.costType || "knowledge"; // Default to knowledge
+
+    console.log(`Attempting to buy ${techId}. Cost: ${cost} ${costType}. Reqs Met: ${reqMet}`);
 
     // Previously we used clicks as placeholder. Now we switch to knowledge/culture.
     // If user has enough resources
@@ -1019,11 +1024,14 @@ window.buyResearch = function(techId) {
         } else if (costType === "clicks" && gameState.resources.clicks >= cost) { // Legacy/Early
              gameState.resources.clicks -= cost;
              purchased = true;
+        } else {
+            console.log("Not enough resources.");
         }
 
         if (purchased) {
             if (window.audioController) window.audioController.playUnlock();
             gameState.researched.push(techId);
+            console.log(`Purchased ${techId}`);
 
             // Stats
             if (!gameState.stats) gameState.stats = {};
@@ -1031,7 +1039,11 @@ window.buyResearch = function(techId) {
             gameState.stats.techsResearched++;
 
             updateUI();
+            // Force redraw of tree
+            renderResearchTree();
         }
+    } else {
+        console.log("Requirements not met or already researched.");
     }
 };
 
@@ -1339,9 +1351,8 @@ function updateVisibility() {
         const b = gameState.buildings[name];
         const btn = document.getElementById(`btn-${name}`);
         if (btn) {
-            const bEraIdx = ERA_DATA.findIndex(e => e.name === b.era);
-            // Hide if building era is in the future
-            if (bEraIdx > currentEraIdx) {
+            // b.era is now a number index. currentEraIdx is also a number index.
+            if (b.era > currentEraIdx) {
                 btn.style.setProperty("display", "none", "important");
             } else {
                 btn.style.setProperty("display", "flex", "important");
@@ -1674,19 +1685,19 @@ window.performPrestige = function(challengeId = null) {
     // Reset Buildings & Costs
     // NERFED & REBALANCED for Prestige Reset as well
     gameState.buildings = {
-        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.30, production: 0.2, icon: "👆", era: "Stone Age" },
-        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.30, production: 0.5, icon: "🧺", era: "Stone Age" },
-        "Farm": { count: 0, baseCost: 250, priceRatio: 1.30, production: 1.5, icon: "🌾", era: "Bronze Age" },
-        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.30, production: 5, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 } },
-        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.30, production: 12.5, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 } },
-        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.35, production: 25, icon: "💧", era: "Iron Age" },
-        "University": { count: 0, baseCost: 50000, priceRatio: 1.35, production: 50, icon: "🎓", era: "Middle Ages" },
-        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.35, production: 125, icon: "🏦", era: "Renaissance" },
-        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.40, production: 400, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 } },
-        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.45, production: 750, icon: "🔬", era: "Modern Age" },
-        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.50, production: 2500, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 } },
-        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.55, production: 10000, icon: "🖥️", era: "Information Age" },
-        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.60, production: 50000, icon: "⚛️", era: "Future Age" }
+        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.30, production: 0.2, icon: "👆", era: 0 }, // Stone Age
+        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.30, production: 0.5, icon: "🧺", era: 0 }, // Stone Age
+        "Farm": { count: 0, baseCost: 250, priceRatio: 1.30, production: 1.5, icon: "🌾", era: 1 }, // Bronze Age
+        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.30, production: 5, icon: "⛏️", era: 1, upkeep: { wood: 1 } }, // Bronze Age
+        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.30, production: 12.5, icon: "🔨", era: 2, upkeep: { stone: 2 } }, // Iron Age
+        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.35, production: 25, icon: "💧", era: 2 }, // Iron Age
+        "University": { count: 0, baseCost: 50000, priceRatio: 1.35, production: 50, icon: "🎓", era: 3 }, // Middle Ages
+        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.35, production: 125, icon: "🏦", era: 4 }, // Renaissance
+        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.40, production: 400, icon: "🏭", era: 5, upkeep: { iron: 2, energy: 5 } }, // Industrial Age
+        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.45, production: 750, icon: "🔬", era: 6 }, // Modern Age
+        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.50, production: 2500, icon: "⚡", era: 6, upkeep: { wood: 5 } }, // Modern Age
+        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.55, production: 10000, icon: "🖥️", era: 7 }, // Information Age
+        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.60, production: 50000, icon: "⚛️", era: 8 } // Future Age
     };
 
     // Apply Ascension Start Bonuses
