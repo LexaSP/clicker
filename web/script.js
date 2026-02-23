@@ -220,25 +220,25 @@ let gameState = {
     // Upgrades / Buildings (NERFED & REBALANCED)
     buildings: {
         // Ancient
-        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.15, production: 0.5, icon: "👆", era: "Stone Age" },
-        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.15, production: 1, icon: "🧺", era: "Stone Age", produces: { food: 0.5, wood: 0.1 } },
-        "Farm": { count: 0, baseCost: 250, priceRatio: 1.15, production: 3, icon: "🌾", era: "Bronze Age", produces: { food: 2 } },
-        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.20, production: 10, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 }, produces: { stone: 0.5, iron: 0.1 } },
-        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.20, production: 25, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 }, produces: { steel: 0.05 } },
+        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.30, production: 0.2, icon: "👆", era: "Stone Age" },
+        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.30, production: 0.5, icon: "🧺", era: "Stone Age", produces: { food: 0.25, wood: 0.05 } },
+        "Farm": { count: 0, baseCost: 250, priceRatio: 1.30, production: 1.5, icon: "🌾", era: "Bronze Age", produces: { food: 1 } },
+        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.30, production: 5, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 }, produces: { stone: 0.25, iron: 0.05 } },
+        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.30, production: 12.5, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 }, produces: { steel: 0.02 } },
 
         // Classical/Medieval
-        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.25, production: 50, icon: "💧", era: "Iron Age", produces: { food: 5 } },
-        "University": { count: 0, baseCost: 50000, priceRatio: 1.25, production: 100, icon: "🎓", era: "Middle Ages" }, // Knowledge handled separately
-        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.30, production: 250, icon: "🏦", era: "Renaissance" }, // Money handled separately
+        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.35, production: 25, icon: "💧", era: "Iron Age", produces: { food: 2.5 } },
+        "University": { count: 0, baseCost: 50000, priceRatio: 1.35, production: 50, icon: "🎓", era: "Middle Ages" }, // Knowledge handled separately
+        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.35, production: 125, icon: "🏦", era: "Renaissance" }, // Money handled separately
 
         // Industrial/Modern
-        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.30, production: 800, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 }, produces: { oil: 0.1, steel: 0.5 } },
-        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.35, production: 1500, icon: "🔬", era: "Modern Age" }, // Knowledge
-        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.40, production: 5000, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 }, produces: { energy: 10 } },
+        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.40, production: 400, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 }, produces: { oil: 0.05, steel: 0.25 } },
+        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.45, production: 750, icon: "🔬", era: "Modern Age" }, // Knowledge
+        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.50, production: 2500, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 }, produces: { energy: 5 } },
 
         // Future
-        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.45, production: 20000, icon: "🖥️", era: "Information Age" },
-        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.50, production: 100000, icon: "⚛️", era: "Future Age", produces: { energy: 100 } }
+        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.55, production: 10000, icon: "🖥️", era: "Information Age" },
+        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.60, production: 50000, icon: "⚛️", era: "Future Age", produces: { energy: 50 } }
     },
 
     era: "Stone Age",
@@ -570,10 +570,10 @@ function tick(dt) {
     // Leaderboard Rewards
     checkLeaderboardRewards(gameState);
 
-    // Golden Relic Spawner
-    let goldenChance = 0.005;
+    // Golden Relic Spawner (NERFED: 0.005 -> 0.001)
+    let goldenChance = 0.001;
     if (gameState.prestigeUpgrades && gameState.prestigeUpgrades["golden_freq"]) {
-        goldenChance += gameState.prestigeUpgrades["golden_freq"].level * 0.002;
+        goldenChance += gameState.prestigeUpgrades["golden_freq"].level * 0.001;
     }
 
     if (Math.random() < goldenChance) {
@@ -593,8 +593,8 @@ function tick(dt) {
 }
 
 function checkStoryEvents() {
-    // 5% chance per check (15s)
-    if (Math.random() > 0.05) return;
+    // NERFED: 5% -> 1% chance per check (15s)
+    if (Math.random() > 0.01) return;
 
     const possible = RANDOM_EVENTS.filter(evt => evt.trigger && evt.trigger(gameState));
     if (possible.length === 0) return;
@@ -1333,6 +1333,31 @@ function updateVisibility() {
     // Rendered via renderResearchTree, but ensure the tab is visible
     const resTab = document.getElementById("tab-btn-research");
     if (resTab) resTab.style.display = "inline-block";
+
+    // --- NEW: Era-Gating for Buildings ---
+    Object.keys(gameState.buildings).forEach(name => {
+        const b = gameState.buildings[name];
+        const btn = document.getElementById(`btn-${name}`);
+        if (btn) {
+            const bEraIdx = ERA_DATA.findIndex(e => e.name === b.era);
+            // Hide if building era is in the future
+            if (bEraIdx > currentEraIdx) {
+                btn.style.setProperty("display", "none", "important");
+            } else {
+                btn.style.setProperty("display", "flex", "important");
+            }
+        }
+    });
+
+    // --- NEW: Stellar Map Lockdown ---
+    const starBtn = document.getElementById("btn-stellar-map");
+    if (starBtn) {
+        if (gameState.era === "Future Age" || (gameState.space && gameState.space.planets.length > 0)) {
+            starBtn.style.display = "block";
+        } else {
+            starBtn.style.display = "none";
+        }
+    }
 }
 
 function advanceEra(era) {
@@ -1647,23 +1672,21 @@ window.performPrestige = function(challengeId = null) {
     gameState.wonders = []; // Reset wonders
 
     // Reset Buildings & Costs
-    // We need to restore base values. Since we don't have a separate config,
-    // we'll re-initialize specific buildings manually or use a helper.
-    // Hard-resetting to known base values:
+    // NERFED & REBALANCED for Prestige Reset as well
     gameState.buildings = {
-        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.15, production: 0.5, icon: "👆", era: "Stone Age" },
-        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.15, production: 1, icon: "🧺", era: "Stone Age" },
-        "Farm": { count: 0, baseCost: 250, priceRatio: 1.15, production: 3, icon: "🌾", era: "Bronze Age" },
-        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.20, production: 10, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 } },
-        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.20, production: 25, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 } },
-        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.25, production: 50, icon: "💧", era: "Iron Age" },
-        "University": { count: 0, baseCost: 50000, priceRatio: 1.25, production: 100, icon: "🎓", era: "Middle Ages" },
-        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.30, production: 250, icon: "🏦", era: "Renaissance" },
-        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.30, production: 800, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 } },
-        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.35, production: 1500, icon: "🔬", era: "Modern Age" },
-        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.40, production: 5000, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 } },
-        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.45, production: 20000, icon: "🖥️", era: "Information Age" },
-        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.50, production: 100000, icon: "⚛️", era: "Future Age" }
+        "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.30, production: 0.2, icon: "👆", era: "Stone Age" },
+        "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.30, production: 0.5, icon: "🧺", era: "Stone Age" },
+        "Farm": { count: 0, baseCost: 250, priceRatio: 1.30, production: 1.5, icon: "🌾", era: "Bronze Age" },
+        "Mine": { count: 0, baseCost: 1000, priceRatio: 1.30, production: 5, icon: "⛏️", era: "Bronze Age", upkeep: { wood: 1 } },
+        "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.30, production: 12.5, icon: "🔨", era: "Iron Age", upkeep: { stone: 2 } },
+        "Aqueduct": { count: 0, baseCost: 15000, priceRatio: 1.35, production: 25, icon: "💧", era: "Iron Age" },
+        "University": { count: 0, baseCost: 50000, priceRatio: 1.35, production: 50, icon: "🎓", era: "Middle Ages" },
+        "Bank": { count: 0, baseCost: 250000, priceRatio: 1.35, production: 125, icon: "🏦", era: "Renaissance" },
+        "Factory": { count: 0, baseCost: 1000000, priceRatio: 1.40, production: 400, icon: "🏭", era: "Industrial Age", upkeep: { iron: 2, energy: 5 } },
+        "Lab": { count: 0, baseCost: 5000000, priceRatio: 1.45, production: 750, icon: "🔬", era: "Modern Age" },
+        "PowerPlant": { count: 0, baseCost: 25000000, priceRatio: 1.50, production: 2500, icon: "⚡", era: "Modern Age", upkeep: { wood: 5 } },
+        "Supercomputer": { count: 0, baseCost: 100000000, priceRatio: 1.55, production: 10000, icon: "🖥️", era: "Information Age" },
+        "FusionReactor": { count: 0, baseCost: 1000000000, priceRatio: 1.60, production: 50000, icon: "⚛️", era: "Future Age" }
     };
 
     // Apply Ascension Start Bonuses
@@ -1936,16 +1959,17 @@ function updateUI() {
         ascContainer.appendChild(treeBtn);
 
         // Constellations
-        if (gameState.era === "Future Age" || (gameState.space && gameState.space.planets.length > 0)) {
-            const starBtn = document.createElement("button");
-            starBtn.innerText = "Stellar Map ✨";
-            starBtn.style.width = "100%";
-            starBtn.style.marginTop = "5px";
-            starBtn.style.background = "#000";
-            starBtn.style.border = "1px solid #f1c40f";
-            starBtn.onclick = () => renderConstellationMenu();
-            ascContainer.appendChild(starBtn);
-        }
+        const starBtn = document.createElement("button");
+        starBtn.id = "btn-stellar-map"; // Added ID for easier targeting
+        starBtn.innerText = "Stellar Map ✨";
+        starBtn.style.width = "100%";
+        starBtn.style.marginTop = "5px";
+        starBtn.style.background = "#000";
+        starBtn.style.border = "1px solid #f1c40f";
+        starBtn.onclick = () => renderConstellationMenu();
+        // Default hidden, controlled by updateVisibility
+        starBtn.style.display = "none";
+        ascContainer.appendChild(starBtn);
     }
 }
 
