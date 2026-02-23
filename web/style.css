@@ -442,6 +442,11 @@ button:not(.tab-btn):not(#click-btn):active {
     overflow: hidden; /* For panning */
 }
 
+#tech-tree-svg {
+    z-index: 1; /* Below nodes */
+    pointer-events: none;
+}
+
 /* Tech Nodes (Assuming absolute positioning by JS) */
 .tech-node {
     position: absolute;
@@ -455,7 +460,7 @@ button:not(.tab-btn):not(#click-btn):active {
     justify-content: center;
     cursor: pointer;
     transition: var(--trans-fast);
-    z-index: 5;
+    z-index: 10; /* Above SVG lines */
     box-shadow: 0 0 10px rgba(0,0,0,0.5);
 }
 

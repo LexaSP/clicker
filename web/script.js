@@ -2141,6 +2141,14 @@ window.renderResearchTree = function() {
     svg.style.width = Math.max(container.clientWidth, maxX + 200) + "px";
     svg.style.height = Math.max(container.clientHeight, maxY + 200) + "px";
 
+    // Ensure pointer-events: none on SVG to prevent blocking clicks
+    svg.style.pointerEvents = "none";
+
+    // Ensure container is relative for absolute children
+    if (getComputedStyle(container).position === "static") {
+        container.style.position = "relative";
+    }
+
     allResearch.forEach(tech => {
         if (!positions[tech.id]) return;
 
@@ -2155,8 +2163,12 @@ window.renderResearchTree = function() {
                     const end = positions[tech.id];
 
                     // Curved Path Logic (Bezier)
-                    const p1 = { x: start.x + 150, y: start.y + 30 };
+                    // Coordinates are relative to container due to absolute positioning of nodes and SVG
+                    // Start point: Center right of source node
+                    const p1 = { x: start.x + 60, y: start.y + 30 }; // Node width is 60px
+                    // End point: Center left of target node
                     const p2 = { x: end.x, y: end.y + 30 };
+
                     const cp1 = { x: p1.x + 50, y: p1.y };
                     const cp2 = { x: p2.x - 50, y: p2.y };
 
@@ -2167,6 +2179,9 @@ window.renderResearchTree = function() {
                     path.setAttribute("stroke", isDone ? "#2ecc71" : "#555");
                     path.setAttribute("stroke-width", "2");
                     path.setAttribute("class", "tech-line");
+                    // Ensure lines don't block clicks either
+                    path.style.pointerEvents = "none";
+
                     if (isDone) path.classList.add("active");
                     svg.appendChild(path);
                 }
