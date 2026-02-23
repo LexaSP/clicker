@@ -331,15 +331,8 @@ async function init() {
         initUI(); // This calls renderResearchTree and injectDynamicTabs
         initTutorials(gameState);
 
-        // 3. Force Initial Visibility (Strict Fallback)
-        // Ensure buttons and lists are visible before logic tries to hide them
-        const list = document.getElementById("building-list");
-        if (list) list.style.display = "grid";
-
-        const researchTab = document.getElementById("tab-btn-research");
-        if (researchTab) researchTab.style.display = "inline-block";
-
-        updateVisibility(); // Apply logic
+        // 3. Apply Visibility Logic
+        updateVisibility();
 
         // 4. Start Game Loop
         startGameLoop();
@@ -1943,14 +1936,16 @@ function updateUI() {
         ascContainer.appendChild(treeBtn);
 
         // Constellations
-        const starBtn = document.createElement("button");
-        starBtn.innerText = "Stellar Map ✨";
-        starBtn.style.width = "100%";
-        starBtn.style.marginTop = "5px";
-        starBtn.style.background = "#000";
-        starBtn.style.border = "1px solid #f1c40f";
-        starBtn.onclick = () => renderConstellationMenu();
-        ascContainer.appendChild(starBtn);
+        if (gameState.era === "Future Age" || (gameState.space && gameState.space.planets.length > 0)) {
+            const starBtn = document.createElement("button");
+            starBtn.innerText = "Stellar Map ✨";
+            starBtn.style.width = "100%";
+            starBtn.style.marginTop = "5px";
+            starBtn.style.background = "#000";
+            starBtn.style.border = "1px solid #f1c40f";
+            starBtn.onclick = () => renderConstellationMenu();
+            ascContainer.appendChild(starBtn);
+        }
     }
 }
 
@@ -2184,4 +2179,8 @@ window.scanNewPlanet = function() {
 };
 
 // Start
-init();
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
