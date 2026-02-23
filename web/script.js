@@ -30,116 +30,120 @@ import { renderModdingMenu } from './modding.js';
 import { initConstellations, getConstellationMultiplier, renderConstellationMenu } from './constellations.js';
 import { checkTutorials, initTutorials } from './tutorial.js';
 
+// Firebase Static Imports (CDN)
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
 // Expose to window for HTML onClick
 window.renderLeaderboardModal = renderLeaderboardModal;
 window.renderModdingMenu = renderModdingMenu;
 
-// --- Cloud Save (Dynamic Import) ---
-let firebaseModule = null;
-let firebaseAuthModule = null;
+// --- Firebase Init ---
+const firebaseConfig = {
+    apiKey: "AIzaSyAjJT6Mk68KUXDF_4I1u_onNxmlW_CpBHI",
+    authDomain: "history-clicker.firebaseapp.com",
+    projectId: "history-clicker",
+    storageBucket: "history-clicker.firebasestorage.app",
+    messagingSenderId: "608395890047",
+    appId: "1:608395890047:web:744f343a3ccc9e118c1e4a",
+    measurementId: "G-5MDQ8YJJX4"
+};
 
-async function initCloudSave() {
-    try {
-        console.log("Attempting to initialize Cloud Save...");
-        // Dynamic import to handle offline/sandbox environments where external URLs might fail
-        firebaseModule = await import('./firebase-db.js');
+let app, auth, db;
+let currentUser = null;
 
-        firebaseAuthModule = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js");
+try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    console.log("Firebase Initialized (Static)");
 
-        if (firebaseModule && firebaseAuthModule) {
-             firebaseAuthModule.onAuthStateChanged(firebaseModule.auth, async (user) => {
-                const btn = document.getElementById("btn-cloud-login");
-                if (user) {
-                    currentUser = user;
-                    console.log("Logged in as:", user.displayName);
-                    if (btn) btn.innerText = "Logout (" + (user.displayName || "User") + ")";
-
-                    // Attempt to load cloud save
-                    try {
-                        const cloudData = await firebaseModule.loadFromCloud(user.uid);
-                        if (cloudData) {
-                            if (confirm("Found a cloud save! Load it? This will overwrite your local save.")) {
-                                Object.assign(gameState, cloudData);
-                                // Ensure legacy saves are migrated (Era strings to numbers)
-                                migrateSaveData(gameState);
-                                localStorage.setItem("hc_web_save", JSON.stringify(gameState));
-                                updateUI();
-                                alert("Cloud save loaded!");
-                            }
-                        }
-                    } catch (err) {
-                        console.error("Failed to load cloud save:", err);
-                    }
-                } else {
-                    currentUser = null;
-                    console.log("Logged out");
-                    if (btn) btn.innerText = "Cloud Login";
-                }
-            });
-            // Inject Button into Sidebar
-            injectCloudButton();
-        }
-
-    } catch (e) {
-        console.warn("Cloud Save disabled (Offline/Error):", e);
+    // Auth Listener
+    onAuthStateChanged(auth, async (user) => {
         const btn = document.getElementById("btn-cloud-login");
-        if (btn) btn.style.display = "none";
-    }
-}
+        if (user) {
+            currentUser = user;
+            console.log("Logged in as:", user.displayName);
+            if (btn) btn.innerText = "Logout (" + (user.displayName || "User") + ")";
 
-function injectCloudButton() {
-    const sidebar = document.getElementById("sidebar");
-    if (sidebar && !document.getElementById("btn-cloud-login")) {
-        const btn = document.createElement("button");
-        btn.id = "btn-cloud-login";
-        btn.style.width = "100%";
-        btn.style.padding = "10px";
-        btn.style.marginBottom = "10px";
-        btn.style.marginTop = "10px";
-        btn.style.background = "#3498db";
-        btn.style.color = "white";
-        btn.style.border = "none";
-        btn.style.cursor = "pointer";
-        btn.style.fontWeight = "bold";
-
-        btn.innerText = "Cloud Login";
-        btn.onclick = () => {
-            if (currentUser) window.cloudLogout();
-            else window.cloudLogin();
-        };
-
-        const storyBtn = document.getElementById("btn-story");
-        if (storyBtn) {
-            sidebar.insertBefore(btn, storyBtn);
+            // Auto Load check
+            if (confirm("Logged in! Load cloud save? (This will overwrite local progress)")) {
+                await loadFromCloud();
+            }
         } else {
-            sidebar.prepend(btn);
+            currentUser = null;
+            console.log("Logged out");
+            if (btn) btn.innerText = "Cloud Login";
         }
-    }
+    });
+
+} catch (e) {
+    console.warn("Firebase Init Failed:", e);
 }
 
+// --- Cloud Functions ---
 window.cloudLogin = async function() {
-    if (firebaseModule) {
-        try {
-            await firebaseModule.login();
-        } catch (e) {
-            console.error("Login failed:", e);
-            alert("Login failed: " + e.message);
-        }
-    } else {
-        alert("Cloud module not initialized.");
+    if (!auth) { alert("Cloud service unavailable."); return; }
+    try {
+        const provider = new GoogleAuthProvider();
+        await signInWithPopup(auth, provider);
+    } catch (e) {
+        console.error("Login failed:", e);
+        alert("Login failed: " + e.message);
     }
 };
 
 window.cloudLogout = async function() {
-    if (firebaseModule) {
-        try {
-            await firebaseModule.logout();
-            alert("Logged out.");
-        } catch (e) {
-            alert("Logout failed: " + e.message);
-        }
+    if (!auth) return;
+    try {
+        await signOut(auth);
+        alert("Logged out.");
+    } catch (e) {
+        alert("Logout failed: " + e.message);
     }
 };
+
+async function saveToCloud() {
+    if (!currentUser || !db) return;
+    try {
+        const userRef = doc(db, "users", currentUser.uid);
+        // Save nested in 'saveData' field or directly? usually separate doc or field.
+        // Let's save as 'saveData' field to avoid overwriting user meta if any.
+        // Actually, user explicitly asked for: users/${user.uid}/saveData/gameState
+        // This implies a subcollection 'saveData' with document 'gameState'? Or a field?
+        // Let's assume subcollection structure based on "users/${uid}/saveData/gameState" path string style.
+        // Or it means doc "gameState" inside collection "saveData" inside doc "uid" inside "users".
+        // Let's try: collection(db, "users", uid, "saveData"), doc("gameState")
+        const saveRef = doc(db, "users", currentUser.uid, "saveData", "gameState");
+        await setDoc(saveRef, gameState);
+        console.log("Cloud Save Complete");
+    } catch (e) {
+        console.error("Cloud Save Error:", e);
+    }
+}
+
+async function loadFromCloud() {
+    if (!currentUser || !db) return;
+    try {
+        const saveRef = doc(db, "users", currentUser.uid, "saveData", "gameState");
+        const docSnap = await getDoc(saveRef);
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            Object.assign(gameState, data);
+            migrateSaveData(gameState);
+            saveGame(); // Save locally
+            updateUI();
+            alert("Cloud save loaded successfully!");
+        } else {
+            alert("No cloud save found.");
+        }
+    } catch (e) {
+        console.error("Cloud Load Error:", e);
+        alert("Failed to load cloud save.");
+    }
+}
+
 
 // --- Helpers ---
 function formatNumber(num) {
@@ -163,8 +167,6 @@ function spawnFloatingText(x, y, text, color = "#fff") {
 }
 
 // --- Game State ---
-let currentUser = null;
-
 let gameState = {
     resources: {
         clicks: 0,
@@ -328,17 +330,16 @@ async function init() {
         }
 
         // Generate quests if needed (Synchronous, before UI)
-        // Ensure this happens AFTER loadGame so we check the loaded state
         if (!gameState.quests || gameState.quests.length === 0) {
             generateDailyQuests();
         }
 
         // 2. UI Initialization (Synchronous - Critical for display)
-        // Must happen BEFORE visibility updates
         initBuildingsUI();
         initUI(); // This calls renderResearchTree, injectDynamicTabs, and initAscensionUI
-        renderQuestList(); // Initial render of quests
+        renderQuestList();
         initTutorials(gameState);
+        injectCloudButton(); // Inject the cloud button
 
         // 3. Apply Visibility Logic
         updateVisibility();
@@ -359,13 +360,39 @@ async function init() {
 
         console.log("Game Core Initialized Successfully");
 
-        // 6. Non-Blocking Async Features (Cloud Save)
-        // This is wrapped to NOT block the game if it fails
-        initCloudSave().catch(e => console.warn("Cloud init failed gracefully:", e));
-
     } catch (e) {
         console.error("CRITICAL INIT ERROR:", e);
         alert("Game Initialization Failed! Check console.");
+    }
+}
+
+function injectCloudButton() {
+    const sidebar = document.getElementById("sidebar");
+    if (sidebar && !document.getElementById("btn-cloud-login")) {
+        const btn = document.createElement("button");
+        btn.id = "btn-cloud-login";
+        btn.style.width = "100%";
+        btn.style.padding = "10px";
+        btn.style.marginBottom = "10px";
+        btn.style.marginTop = "10px";
+        btn.style.background = "#3498db";
+        btn.style.color = "white";
+        btn.style.border = "none";
+        btn.style.cursor = "pointer";
+        btn.style.fontWeight = "bold";
+
+        btn.innerText = "Cloud Login";
+        btn.onclick = () => {
+            if (currentUser) window.cloudLogout();
+            else window.cloudLogin();
+        };
+
+        const storyBtn = document.getElementById("btn-story");
+        if (storyBtn) {
+            sidebar.insertBefore(btn, storyBtn);
+        } else {
+            sidebar.prepend(btn);
+        }
     }
 }
 
@@ -1053,42 +1080,53 @@ window.buyResearch = function(techId) {
     const tech = allResearch.find(t => t.id === techId);
     if (!tech) return;
 
+    // Strict Prerequisite Logic
+    // Must research all requirements before buying
+    const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
+
+    if (!reqMet) {
+        console.warn("Requirements not met for", tech.name);
+        return;
+    }
+
+    // Already Researched?
+    if (gameState.researched.includes(techId)) {
+        return;
+    }
+
     let costMult = getGlobalMultiplier("cost", "knowledge"); // Tech cost is usually knowledge
     const cost = Math.floor(tech.cost * costMult);
 
-    const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
     const costType = tech.costType || "knowledge"; // Default to knowledge (was clicks? No, original plan said clicks/knowledge mix)
 
     // Previously we used clicks as placeholder. Now we switch to knowledge/culture.
     // If user has enough resources
-    if (reqMet && !gameState.researched.includes(techId)) {
-        let purchased = false;
-        if (costType === "knowledge" && gameState.resources.knowledge >= cost) {
-            gameState.resources.knowledge -= cost;
-            purchased = true;
-        } else if (costType === "culture" && gameState.resources.culture >= cost) {
-            gameState.resources.culture -= cost;
-            purchased = true;
-        } else if (costType === "clicks" && gameState.resources.clicks >= cost) { // Legacy/Early
-             gameState.resources.clicks -= cost;
-             purchased = true;
-        }
+    let purchased = false;
+    if (costType === "knowledge" && gameState.resources.knowledge >= cost) {
+        gameState.resources.knowledge -= cost;
+        purchased = true;
+    } else if (costType === "culture" && gameState.resources.culture >= cost) {
+        gameState.resources.culture -= cost;
+        purchased = true;
+    } else if (costType === "clicks" && gameState.resources.clicks >= cost) { // Legacy/Early
+         gameState.resources.clicks -= cost;
+         purchased = true;
+    }
 
-        if (purchased) {
-            if (window.audioController) window.audioController.playUnlock();
-            gameState.researched.push(techId);
+    if (purchased) {
+        if (window.audioController) window.audioController.playUnlock();
+        gameState.researched.push(techId);
 
-            // Stats
-            if (!gameState.stats) gameState.stats = {};
-            if (!gameState.stats.techsResearched) gameState.stats.techsResearched = 0;
-            gameState.stats.techsResearched++;
+        // Stats
+        if (!gameState.stats) gameState.stats = {};
+        if (!gameState.stats.techsResearched) gameState.stats.techsResearched = 0;
+        gameState.stats.techsResearched++;
 
-            updateUI();
+        updateUI();
 
-            // Force Reactivity
-            renderResearchTree();
-            updateVisibility(); // Show unlocked stuff
-        }
+        // Force Reactivity
+        renderResearchTree();
+        updateVisibility(); // Show unlocked stuff
     }
 };
 
@@ -1096,8 +1134,8 @@ window.buyResearch = function(techId) {
 window.saveGame = function() {
     gameState.lastSaveTime = Date.now();
     localStorage.setItem("hc_web_save", JSON.stringify(gameState));
-    if (currentUser && firebaseModule) {
-        firebaseModule.saveToCloud(currentUser.uid, gameState);
+    if (currentUser) {
+        saveToCloud().catch(console.error);
     }
     console.log("Game Saved");
 }
@@ -1623,12 +1661,6 @@ window.selectCiv = function(eraName, idx) {
             const bKey = reward.name;
             if (gameState.buildings[bKey]) {
                 gameState.buildings[bKey].count += reward.count;
-                // Update cost for next one to reflect "free" ones?
-                // Usually free buildings don't increase cost of next purchase, OR they do.
-                // Let's assume they act as if purchased for scaling to prevent exploit,
-                // OR better, just free bonus. Let's keep cost separate in current simple logic.
-                // But wait, our buy logic uses count to calc cost. So this will increase cost.
-                // That's fair for balance.
                 msg += `+${reward.count} ${bKey}`;
             }
         } else if (reward.type === "resource") {
@@ -1655,7 +1687,6 @@ window.selectCiv = function(eraName, idx) {
 function calculatePrestigeGain() {
     if (gameState.resources.lifetimeClicks < 100000) return 0;
     // New Formula: (Lifetime / 1M)^0.5
-    // 1M -> 1 SE, 4M -> 2 SE, 100M -> 10 SE, 10B -> 100 SE
     let gain = Math.floor(Math.pow(gameState.resources.lifetimeClicks / 1000000, 0.5));
 
     // Ascension Boost
@@ -2001,15 +2032,28 @@ function renderBuildings(container) {
         const countEl = document.getElementById(`count-${name}`);
         if (countEl) countEl.innerText = b.count;
 
-        // Update Production Text (Base vs Total)
+        // Update Production Text (Base vs Total) - INCLUDING SECONDARY RESOURCES
         const prodEl = document.getElementById(`prod-text-${name}`);
         if (prodEl) {
             const totalProd = b.production * b.count;
-            if (b.count > 0) {
-                prodEl.innerText = `Prod: ${b.production} Click | Total: ${formatNumber(totalProd)}`;
-            } else {
-                prodEl.innerText = `Prod: ${b.production} Click`;
+            let displayStr = `Prod: ${b.production} Click (Total: ${formatNumber(totalProd)})`;
+
+            // Append Secondary Resources
+            if (b.produces) {
+                let secStr = "";
+                for (let res in b.produces) {
+                    const secTotal = b.produces[res] * b.count;
+                    // Format: 0.5 food (Total: 8.5)
+                    // If multiple: 0.5 food (Total: 8.5), 0.1 wood (Total: 1.7)
+                    if (secStr !== "") secStr += ", ";
+                    secStr += `${b.produces[res]} ${res} (Total: ${formatNumber(secTotal)})`;
+                }
+                if (secStr) {
+                    displayStr += `<br><span style="color:#2ecc71">Produces: ${secStr}</span>`;
+                }
             }
+
+            prodEl.innerHTML = displayStr;
         }
 
         const btn = document.getElementById(`btn-${name}`);
@@ -2031,12 +2075,6 @@ function updateUI() {
     if (buildingContainer) {
         let list = document.getElementById("building-list");
         if (!list) {
-            // Clear hardcoded static buttons first if they exist
-            // This assumes buildings-container is the wrapper for them
-            // We want to replace the inner content with our dynamic list
-            // But main-area has other stuff.
-            // Let's look for a specific wrapper. In index.html usually there's a div.
-            // If we can't find it, we create one in main-area.
             list = document.createElement("div");
             list.id = "building-list";
             list.style.width = "100%";
@@ -2117,7 +2155,6 @@ function updateUI() {
     }
 
     // Prestige: Challenges & Ascension Tree
-    // (Logic moved to initAscensionUI to prevent DOM thrashing)
     const activeChalDiv = document.getElementById("active-challenge-label");
     if (activeChalDiv) {
         if (gameState.activeChallenge) {
@@ -2175,7 +2212,8 @@ window.renderResearchTree = function() {
         svg.style.width = "100%";
         svg.style.height = "100%";
         svg.style.position = "absolute";
-        svg.style.pointerEvents = "none";
+        svg.style.pointerEvents = "none"; // CRITICAL: Ensure clicks pass through
+        svg.style.zIndex = "0"; // Behind nodes
         container.appendChild(svg);
     }
     svg.innerHTML = "";
@@ -2190,6 +2228,7 @@ window.renderResearchTree = function() {
     const ERA_WIDTH = 250;
     const NODE_HEIGHT = 80;
 
+    // Clear old nodes but keep SVG
     Array.from(container.children).forEach(child => {
         if (child.id !== "tech-tree-svg") container.removeChild(child);
     });
@@ -2218,10 +2257,12 @@ window.renderResearchTree = function() {
 
             if (isVisible) {
                 const div = document.createElement("div");
+                div.id = `tech-node-${tech.id}`; // CRITICAL: ID for line connection
                 div.className = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
                 div.innerHTML = `<span style="font-size:16px">${tech.icon || '🔬'}</span><br>${tech.name}<br><small>(${formatNumber(tech.cost)})</small>`;
                 div.style.left = `${x}px`;
                 div.style.top = `${y}px`;
+                div.style.zIndex = "10"; // Above lines
                 div.onclick = () => window.buyResearch(tech.id);
                 container.appendChild(div);
             }
@@ -2233,8 +2274,6 @@ window.renderResearchTree = function() {
     svg.style.width = Math.max(container.clientWidth, maxX + 200) + "px";
     svg.style.height = Math.max(container.clientHeight, maxY + 200) + "px";
 
-    // Ensure pointer-events: none on SVG to prevent blocking clicks
-    svg.style.pointerEvents = "none";
 
     // Ensure container is relative for absolute children
     if (getComputedStyle(container).position === "static") {
@@ -2246,7 +2285,10 @@ window.renderResearchTree = function() {
     setTimeout(() => {
         try {
             if (!container) return;
+            // Recalculate container rect in case of scroll/resize
             const containerRect = container.getBoundingClientRect();
+            const scrollLeft = container.scrollLeft;
+            const scrollTop = container.scrollTop;
 
             allResearch.forEach(tech => {
                 if (!positions[tech.id]) return;
@@ -2258,18 +2300,27 @@ window.renderResearchTree = function() {
                 if (isVisible) {
                     tech.requirements.forEach(reqId => {
                         if (positions[reqId]) {
-                            const startNode = document.getElementById(`tech-node-${reqId}`);
-                            const endNode = document.getElementById(`tech-node-${tech.id}`);
+                            // Using cached positions first for stability, or DOM?
+                            // Let's use cached positions relative to container origin (0,0)
+                            // because getBoundingClientRect depends on current scroll which is tricky.
+                            // Actually, we placed them at absolute coordinates (x,y) inside the container.
+                            // So we can just use those coordinates!
 
-                            if (startNode && endNode) {
-                                const parentRect = startNode.getBoundingClientRect();
-                                const childRect = endNode.getBoundingClientRect();
+                            const startPos = positions[reqId];
+                            const endPos = positions[tech.id];
 
-                                // Calculate relative to container with scroll adjustment
-                                const x1 = parentRect.left + parentRect.width / 2 - containerRect.left + container.scrollLeft;
-                                const y1 = parentRect.top + parentRect.height / 2 - containerRect.top + container.scrollTop;
-                                const x2 = childRect.left + childRect.width / 2 - containerRect.left + container.scrollLeft;
-                                const y2 = childRect.top + childRect.height / 2 - containerRect.top + container.scrollTop;
+                            if (startPos && endPos) {
+                                // Center of the node (approx width 120, height 80 based on CSS usually)
+                                // Let's get actual dimensions if possible or assume default size
+                                // .tech-node is usually absolute positioned.
+                                // Let's use the coordinates we assigned + offset.
+                                const nodeWidth = 120; // Est
+                                const nodeHeight = 80; // Est
+
+                                const x1 = startPos.x + nodeWidth; // Right edge of parent
+                                const y1 = startPos.y + nodeHeight / 2; // Middle height
+                                const x2 = endPos.x; // Left edge of child
+                                const y2 = endPos.y + nodeHeight / 2; // Middle height
 
                                 // Curved Path Logic (Bezier)
                                 const cp1 = { x: x1 + 50, y: y1 };
@@ -2282,7 +2333,7 @@ window.renderResearchTree = function() {
                                 path.setAttribute("stroke", isDone ? "#2ecc71" : "#555");
                                 path.setAttribute("stroke-width", "2");
                                 path.setAttribute("class", "tech-line");
-                                path.style.pointerEvents = "none";
+                                path.style.pointerEvents = "none"; // Ensure clicks pass through
 
                                 if (isDone) path.classList.add("active");
                                 svg.appendChild(path);
@@ -2454,27 +2505,20 @@ function updateQuestUI() {
         if (bar) bar.style.width = `${Math.min(100, (q.progress / q.target) * 100)}%`;
         if (text) text.innerText = `${Math.floor(q.progress)} / ${q.target}`;
 
-        // If state changed to completed and button missing, re-render specific item?
-        // Or just handle the claim button visibility.
-        // For simplicity, if completion state changes, we might want to re-render just that item or toggle class.
-        // But the button insertion is HTML structure change.
         if (q.completed && !q.claimed) {
              if (item && !item.querySelector("button")) {
-                 // Lazy re-render or inject button
-                 renderQuestList(); // Re-render all to be safe and simple for now, or optimize later.
+                 renderQuestList();
              }
         }
     });
 }
 
-// Expose functions to window if needed or just keep in module scope
+// Expose functions to window
 window.renderQuestList = renderQuestList;
 window.updateQuestUI = updateQuestUI;
 
 window.renderAscensionTree = function() {
     if (document.getElementById("ascension-modal")) {
-        // Toggle visibility if exists? Or remove?
-        // Let's just remove to re-render or close
         document.body.removeChild(document.getElementById("ascension-modal"));
         return;
     }
@@ -2483,19 +2527,7 @@ window.renderAscensionTree = function() {
     modal.id = "ascension-modal";
     modal.className = "modal-overlay";
 
-    // Build Perk HTML
     let perksHtml = "";
-    // Note: ASCENSION_TREE is imported but we need to iterate it.
-    // Assuming ASCENSION_TREE is globally available or imported.
-    // It is imported in script.js.
-
-    // We need to access ASCENSION_TREE here. It was imported.
-    // But since I'm appending this to script.js, I might not have access to the import inside this function scope
-    // if I was using `cat`. Wait, `cat` appends to the file, so it's in the module scope.
-
-    // However, I need to make sure I don't break the module.
-    // Let's assume ASCENSION_TREE is available.
-
     if (typeof ASCENSION_TREE !== 'undefined') {
         ASCENSION_TREE.forEach(perk => {
             const owned = gameState.ascensionPerks.includes(perk.id);
@@ -2539,17 +2571,9 @@ window.renderAscensionTree = function() {
 }
 
 window.buyAscensionPerkWrapper = function(perkId) {
-    // We need to import buyAscensionPerk logic or use the one exposed?
-    // script.js imports { buyAscensionPerk } from './ascension.js'.
-    // It's in module scope.
-
-    // We need to verify if buyAscensionPerk is accessible.
-    // Since we are in the same file (script.js), yes.
-
     const result = buyAscensionPerk(gameState, perkId);
     if (result.success) {
         alert(result.msg);
-        // Re-render
         document.body.removeChild(document.getElementById("ascension-modal"));
         renderAscensionTree();
         updateUI();
@@ -2565,7 +2589,6 @@ function renderExpeditions() {
 
     if (!gameState.expeditions || gameState.expeditions.length === 0) {
         // Fallback or init
-        // For MVP, hardcode some available expeditions if none exist
         gameState.expeditions = [
             { id: "exp_scout", name: "Scout Wilderness", cost: { food: 50 }, duration: 5, rewardDesc: "Random Resources" },
             { id: "exp_ruins", name: "Explore Ruins", cost: { food: 200, money: 50 }, duration: 15, rewardDesc: "Relic Chance" }
@@ -2667,11 +2690,6 @@ function completeExpedition(exp) {
     renderActiveExpeditions();
 }
 
-// Attach to global for safety
-window.renderExpeditions = renderExpeditions;
-window.renderActiveExpeditions = renderActiveExpeditions;
-window.completeExpedition = completeExpedition;
-
 // --- Global Event Bindings (Critical for DOM Access) ---
 window.buyResearch = buyResearch;
 window.claimQuest = claimQuest;
@@ -2682,4 +2700,4 @@ window.manualClick = manualClick;
 window.buyBuilding = buyBuilding;
 window.saveGame = saveGame;
 window.performPrestige = performPrestige;
-// Other UI helpers already attached in their definitions or shims
+window.buyAscensionPerkWrapper = buyAscensionPerkWrapper;
