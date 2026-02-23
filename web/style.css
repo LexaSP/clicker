@@ -364,8 +364,8 @@ button:not(.tab-btn):not(#click-btn):active {
     border-radius: var(--radius-md) !important;
     padding: 15px !important;
     text-align: left !important;
-    display: flex !important;
-    flex-direction: column !important;
+    display: flex;
+    flex-direction: column;
     transition: all 0.2s ease !important;
     color: var(--text-main) !important;
     width: 100%;

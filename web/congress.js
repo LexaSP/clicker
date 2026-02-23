@@ -2,12 +2,22 @@
 // Global resolutions and voting
 
 export const RESOLUTIONS = [
-    { id: "world_peace", name: "Global Peace Treaty", desc: "Army Cost -50%, Happiness +20%", effect: { army_cost: 0.5, happiness: 1.2 } },
-    { id: "science_funding", name: "International Science Fund", desc: "Knowledge +25%, Money -10%", effect: { knowledge_mult: 1.25, money_mult: 0.9 } },
-    { id: "trade_embargo", name: "Trade Regulations", desc: "Money +20%, Production -10%", effect: { money_mult: 1.2, production_mult: 0.9 } },
-    { id: "cultural_heritage", name: "Cultural Heritage Act", desc: "Culture +30%, Knowledge -10%", effect: { culture_mult: 1.3, knowledge_mult: 0.9 } },
-    { id: "space_race", name: "Space Cooperation", desc: "Space Prod +50%, Earth Prod -10%", effect: { space_mult: 1.5, production_mult: 0.9 } }
+    { id: "world_peace", name: "Global Peace Treaty", desc: "Army Cost -50%, Happiness +20%", minEra: 6, effect: { army_cost: 0.5, happiness: 1.2 } },
+    { id: "science_funding", name: "International Science Fund", desc: "Knowledge +25%, Money -10%", minEra: 6, effect: { knowledge_mult: 1.25, money_mult: 0.9 } },
+    { id: "trade_embargo", name: "Trade Regulations", desc: "Money +20%, Production -10%", minEra: 6, effect: { money_mult: 1.2, production_mult: 0.9 } },
+    { id: "cultural_heritage", name: "Cultural Heritage Act", desc: "Culture +30%, Knowledge -10%", minEra: 6, effect: { culture_mult: 1.3, knowledge_mult: 0.9 } },
+    { id: "space_race", name: "Space Cooperation", desc: "Space Prod +50%, Earth Prod -10%", minEra: 7, effect: { space_mult: 1.5, production_mult: 0.9 } }
 ];
+
+// Helper to check era index for events
+const ERA_NAMES = [
+    "Stone Age", "Bronze Age", "Iron Age", "Middle Ages", "Renaissance",
+    "Industrial Age", "Modern Age", "Information Age", "Future Age"
+];
+
+function getEraIndex(eraName) {
+    return ERA_NAMES.indexOf(eraName);
+}
 
 export function initCongress(state) {
     if (!state.congress) {
@@ -26,6 +36,11 @@ export function updateCongress(state, dt) {
     initCongress(state);
     const cong = state.congress;
 
+    // Strict Era Check: Don't run congress until Modern Age (Era 6)
+    // Though the button is hidden, logic shouldn't run either.
+    const currentEraIdx = getEraIndex(state.era);
+    if (currentEraIdx < 6) return;
+
     if (cong.sessionActive) {
         cong.timer -= dt;
         if (cong.timer <= 0) {
@@ -41,7 +56,20 @@ export function updateCongress(state, dt) {
 
 function startSession(state) {
     const cong = state.congress;
-    const res = RESOLUTIONS[Math.floor(Math.random() * RESOLUTIONS.length)];
+
+    // Filter available resolutions by Era
+    const currentEraIdx = getEraIndex(state.era);
+    const available = RESOLUTIONS.filter(r => {
+        const minEra = (r.minEra !== undefined) ? r.minEra : 99;
+        return currentEraIdx >= minEra;
+    });
+
+    if (available.length === 0) {
+        cong.timer = 60; // Wait and retry
+        return;
+    }
+
+    const res = available[Math.floor(Math.random() * available.length)];
 
     cong.activeResolution = res.id;
     cong.sessionActive = true;
@@ -65,6 +93,11 @@ export function vote(state, option) {
 function resolveSession(state) {
     const cong = state.congress;
     const res = RESOLUTIONS.find(r => r.id === cong.activeResolution);
+
+    if (!res) {
+        cong.sessionActive = false;
+        return;
+    }
 
     // Simulate AI votes
     // 5 AI nations?
