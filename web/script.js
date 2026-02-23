@@ -40,42 +40,43 @@ let firebaseAuthModule = null;
 
 async function initCloudSave() {
     try {
+        console.log("Attempting to initialize Cloud Save...");
         // Dynamic import to handle offline/sandbox environments where external URLs might fail
         firebaseModule = await import('./firebase-db.js');
-        // We also need onAuthStateChanged, which might be exported or we can get it from auth module if exposed
-        // The previous code imported it directly from CDN. Let's try to see if firebase-db exports it or if we can use it via the module.
-        // Looking at firebase-db.js memory: it exports auth, db, login, logout, saveToCloud, loadFromCloud.
-        // It does NOT export onAuthStateChanged.
-        // So we need to import it from CDN dynamically too.
 
         firebaseAuthModule = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js");
 
-        firebaseAuthModule.onAuthStateChanged(firebaseModule.auth, async (user) => {
-            const btn = document.getElementById("btn-cloud-login");
-            if (user) {
-                currentUser = user;
-                console.log("Logged in as:", user.displayName);
-                if (btn) btn.innerText = "Logout (" + (user.displayName || "User") + ")";
+        if (firebaseModule && firebaseAuthModule) {
+             firebaseAuthModule.onAuthStateChanged(firebaseModule.auth, async (user) => {
+                const btn = document.getElementById("btn-cloud-login");
+                if (user) {
+                    currentUser = user;
+                    console.log("Logged in as:", user.displayName);
+                    if (btn) btn.innerText = "Logout (" + (user.displayName || "User") + ")";
 
-                // Attempt to load cloud save
-                const cloudData = await firebaseModule.loadFromCloud(user.uid);
-                if (cloudData) {
-                    if (confirm("Found a cloud save! Load it? This will overwrite your local save.")) {
-                        Object.assign(gameState, cloudData);
-                        localStorage.setItem("hc_web_save", JSON.stringify(gameState));
-                        updateUI();
-                        alert("Cloud save loaded!");
+                    // Attempt to load cloud save
+                    try {
+                        const cloudData = await firebaseModule.loadFromCloud(user.uid);
+                        if (cloudData) {
+                            if (confirm("Found a cloud save! Load it? This will overwrite your local save.")) {
+                                Object.assign(gameState, cloudData);
+                                localStorage.setItem("hc_web_save", JSON.stringify(gameState));
+                                updateUI();
+                                alert("Cloud save loaded!");
+                            }
+                        }
+                    } catch (err) {
+                        console.error("Failed to load cloud save:", err);
                     }
+                } else {
+                    currentUser = null;
+                    console.log("Logged out");
+                    if (btn) btn.innerText = "Cloud Login";
                 }
-            } else {
-                currentUser = null;
-                console.log("Logged out");
-                if (btn) btn.innerText = "Cloud Login";
-            }
-        });
-
-        // Inject Button into Sidebar
-        injectCloudButton();
+            });
+            // Inject Button into Sidebar
+            injectCloudButton();
+        }
 
     } catch (e) {
         console.warn("Cloud Save disabled (Offline/Error):", e);
@@ -297,6 +298,7 @@ let allRecipes = [];
 async function init() {
     console.log("Initializing Game...");
 
+    // 1. Critical Logic Setup (Synchronous)
     try {
         // Load Content
         allRelics = generateRelics();
@@ -323,29 +325,27 @@ async function init() {
             generateDailyQuests();
         }
 
-        // --- VISIBILITY FIX: Ensure UI is populated BEFORE we show/hide things ---
-        // Populate Building List (Required for Era 1 visibility)
+        // 2. UI Initialization (Synchronous - Critical for display)
+        // Must happen BEFORE visibility updates
         initBuildingsUI();
-
-        // Start Loop
-        startGameLoop();
-
-        // Init UI Components
         initUI(); // This calls renderResearchTree and injectDynamicTabs
-
-        // --- STRICT VISIBILITY UPDATE ---
-        updateVisibility();
-
-        // Cloud Save (Async, non-blocking)
-        initCloudSave();
-
-        // Tutorials
         initTutorials(gameState);
 
-        // Init Audio
-        window.audioController = new AudioController();
+        // 3. Force Initial Visibility (Strict Fallback)
+        // Ensure buttons and lists are visible before logic tries to hide them
+        const list = document.getElementById("building-list");
+        if (list) list.style.display = "grid";
 
-        // Init Visuals (Map Engine)
+        const researchTab = document.getElementById("tab-btn-research");
+        if (researchTab) researchTab.style.display = "inline-block";
+
+        updateVisibility(); // Apply logic
+
+        // 4. Start Game Loop
+        startGameLoop();
+
+        // 5. Init Audio/Visuals
+        window.audioController = new AudioController();
         window.mapEngine = new MapEngine();
 
         // Expose
@@ -355,11 +355,15 @@ async function init() {
         // Event Tick
         setInterval(() => checkStoryEvents(), 15000);
 
-        console.log("Game Initialized Successfully");
+        console.log("Game Core Initialized Successfully");
+
+        // 6. Non-Blocking Async Features (Cloud Save)
+        // This is wrapped to NOT block the game if it fails
+        initCloudSave().catch(e => console.warn("Cloud init failed gracefully:", e));
 
     } catch (e) {
         console.error("CRITICAL INIT ERROR:", e);
-        alert("Game Initialization Failed! Please reload or reset save.");
+        alert("Game Initialization Failed! Check console.");
     }
 }
 
@@ -1320,17 +1324,22 @@ function updateVisibility() {
         }
     }
 
-    // Explicitly Ensure Era 1 Baseline Elements are Visible
-    const buildingList = document.getElementById("building-list");
-    if (buildingList) {
-        buildingList.style.display = "grid"; // or whatever CSS uses
-    }
+    // STRICT ERA 1 VISIBILITY FALLBACK
+    // Explicitly unhide Era 1 buildings if logic fails
+    const clickBtn = document.getElementById("click-btn");
+    if (clickBtn) clickBtn.style.display = "block";
 
-    // Explicitly show Research Tab if hidden by accident (though not in FEATURE_UNLOCKS)
-    const researchTab = document.getElementById("tab-btn-research");
-    if (researchTab) researchTab.style.display = "inline-block";
-    const researchView = document.getElementById("research-view");
-    if (researchView && researchView.classList.contains('active')) researchView.style.display = "block";
+    // AutoClicker and Gatherer
+    const autoBtn = document.getElementById("btn-AutoClicker");
+    if (autoBtn) autoBtn.style.display = "flex"; // Using flex as per style.css
+
+    const gatherBtn = document.getElementById("btn-Gatherer");
+    if (gatherBtn) gatherBtn.style.display = "flex";
+
+    // Tech Root
+    // Rendered via renderResearchTree, but ensure the tab is visible
+    const resTab = document.getElementById("tab-btn-research");
+    if (resTab) resTab.style.display = "inline-block";
 }
 
 function advanceEra(era) {
@@ -2018,7 +2027,8 @@ window.renderResearchTree = function() {
 
             const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
             const isDone = gameState.researched.includes(tech.id);
-            const isAvailable = reqMet;
+            // ROOT NODE LOGIC: If no requirements, it is available by default
+            const isAvailable = reqMet || tech.requirements.length === 0;
             const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r));
 
             if (isVisible) {
