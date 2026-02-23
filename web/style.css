@@ -254,12 +254,18 @@ button:not(.tab-btn):not(#click-btn) {
     border-radius: var(--radius-sm);
     font-size: 0.9rem;
     margin-bottom: 5px;
+    transition: all 0.2s ease-in-out;
 }
 
 button:not(.tab-btn):not(#click-btn):hover {
     background: rgba(255,255,255,0.15);
     border-color: rgba(255,255,255,0.3);
-    transform: translateY(-1px);
+    transform: scale(1.05);
+}
+
+/* Prevent child elements from intercepting clicks */
+button > * {
+    pointer-events: none;
 }
 
 button:not(.tab-btn):not(#click-btn):active {
@@ -376,7 +382,7 @@ button:not(.tab-btn):not(#click-btn):active {
 }
 
 .building-btn:hover, .recipe-card:hover, .civ-card:hover {
-    transform: translateY(-3px);
+    transform: scale(1.02);
     border-color: rgba(255, 255, 255, 0.3) !important;
     box-shadow: 0 8px 20px rgba(0,0,0,0.4);
     background: rgba(255,255,255,0.08) !important;
@@ -651,7 +657,7 @@ button:not(.tab-btn):not(#click-btn):active {
 }
 
 .tutorial-actions button:hover {
-    transform: translateY(-2px);
+    transform: scale(1.05);
     box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
 }
 

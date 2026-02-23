@@ -1239,6 +1239,55 @@ function calculateOfflineProgress(seconds) {
 function initUI() {
     renderResearchTree();
     injectDynamicTabs();
+    initAscensionUI();
+}
+
+function initAscensionUI() {
+    const ascContainer = document.getElementById("ascension-list");
+    if (!ascContainer) return;
+
+    ascContainer.innerHTML = ""; // Clear initial placeholder
+
+    // Challenge Button
+    const chalBtn = document.createElement("button");
+    chalBtn.id = "btn-challenge-menu";
+    chalBtn.onclick = () => renderChallengeMenu();
+    chalBtn.style.width = "100%";
+    chalBtn.style.marginBottom = "10px";
+    chalBtn.style.background = "#8e44ad";
+    chalBtn.innerText = "⚔️ Challenge Modes";
+    ascContainer.appendChild(chalBtn);
+
+    // Active Challenge Label (Hidden by default)
+    const activeChalDiv = document.createElement("div");
+    activeChalDiv.id = "active-challenge-label";
+    activeChalDiv.style.background = "#c0392b";
+    activeChalDiv.style.padding = "5px";
+    activeChalDiv.style.marginBottom = "10px";
+    activeChalDiv.style.borderRadius = "4px";
+    activeChalDiv.style.display = "none"; // Hidden initially
+    ascContainer.appendChild(activeChalDiv);
+
+    // Tree Button
+    const treeBtn = document.createElement("button");
+    treeBtn.id = "btn-ascension-tree";
+    treeBtn.innerText = "Open Ascension Tree 🌌";
+    treeBtn.style.width = "100%";
+    treeBtn.style.background = "radial-gradient(circle, #8e44ad, #2c3e50)";
+    treeBtn.onclick = () => renderAscensionTree();
+    ascContainer.appendChild(treeBtn);
+
+    // Stellar Map Button (Hidden by default)
+    const starBtn = document.createElement("button");
+    starBtn.id = "btn-stellar-map";
+    starBtn.innerText = "Stellar Map ✨";
+    starBtn.style.width = "100%";
+    starBtn.style.marginTop = "5px";
+    starBtn.style.background = "#000";
+    starBtn.style.border = "1px solid #f1c40f";
+    starBtn.onclick = () => renderConstellationMenu();
+    starBtn.style.display = "none";
+    ascContainer.appendChild(starBtn);
 }
 
 function injectDynamicTabs() {
@@ -1976,33 +2025,24 @@ function updateUI() {
     }
 
     // Prestige: Challenges & Ascension Tree
-    const ascContainer = document.getElementById("ascension-list");
-    if (ascContainer) {
-        ascContainer.innerHTML = `<button onclick="renderChallengeMenu()" style="width:100%; margin-bottom:10px; background:#8e44ad;">⚔️ Challenge Modes</button>`;
-
+    // (Logic moved to initAscensionUI to prevent DOM thrashing)
+    const activeChalDiv = document.getElementById("active-challenge-label");
+    if (activeChalDiv) {
         if (gameState.activeChallenge) {
             const c = CHALLENGES.find(x => x.id === gameState.activeChallenge);
-            ascContainer.innerHTML += `<div style="background:#c0392b; padding:5px; margin-bottom:10px; border-radius:4px;">ACTIVE: ${c ? c.name : 'Unknown'}</div>`;
+            activeChalDiv.style.display = "block";
+            activeChalDiv.innerText = `ACTIVE: ${c ? c.name : 'Unknown'}`;
+        } else {
+            activeChalDiv.style.display = "none";
         }
+    }
 
-        // Render Tree Button
-        const treeBtn = document.createElement("button");
-        treeBtn.innerText = "Open Ascension Tree 🌌";
-        treeBtn.style.width = "100%";
-        treeBtn.style.background = "radial-gradient(circle, #8e44ad, #2c3e50)";
-        treeBtn.onclick = () => renderAscensionTree();
-        ascContainer.appendChild(treeBtn);
-
-        // Constellations
+    const starBtn = document.getElementById("btn-stellar-map");
+    if (starBtn) {
         if (gameState.era === "Future Age" || (gameState.space && gameState.space.planets.length > 0)) {
-            const starBtn = document.createElement("button");
-            starBtn.innerText = "Stellar Map ✨";
-            starBtn.style.width = "100%";
-            starBtn.style.marginTop = "5px";
-            starBtn.style.background = "#000";
-            starBtn.style.border = "1px solid #f1c40f";
-            starBtn.onclick = () => renderConstellationMenu();
-            ascContainer.appendChild(starBtn);
+            starBtn.style.display = "block";
+        } else {
+            starBtn.style.display = "none";
         }
     }
 }
