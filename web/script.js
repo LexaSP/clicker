@@ -122,8 +122,11 @@ window.cloudLogin = async function() {
         try {
             await firebaseModule.login();
         } catch (e) {
-            alert("Login failed: " + e.message);
+            console.warn("Cloud login error:", e);
+            alert("Cloud services are currently unavailable. Please use 'Save to File' in the Settings menu.");
         }
+    } else {
+        alert("Cloud services are currently unavailable. Please use 'Save to File' in the Settings menu.");
     }
 };
 
@@ -270,9 +273,9 @@ const ERA_DATA = [
 // --- Unlocks Config (Strict) ---
 const FEATURE_UNLOCKS = {
     // Static Tabs (IDs in index.html)
-    "tab-btn-expeditions": { era: "Bronze Age" },
-    "tab-btn-war": { era: "Iron Age" },
-    "tab-btn-government": { era: "Middle Ages" },
+    "tab-btn-expeditions": { era: "Future Age" }, // QUARANTINED: MVP logic pending
+    "tab-btn-war": { era: "Future Age" }, // QUARANTINED: MVP logic pending
+    "tab-btn-government": { era: "Future Age" }, // QUARANTINED: MVP logic pending
     "tab-btn-crafting": { era: "Iron Age" },
     "tab-btn-heroes": { era: "Middle Ages" },
 
@@ -597,6 +600,37 @@ function tick(dt) {
     }
 }
 
+window.renderStoryModal = function() {
+    if (document.getElementById("story-modal")) return;
+
+    const modal = document.createElement("div");
+    modal.id = "story-modal";
+    modal.className = "modal-overlay";
+
+    // Content based on Era
+    let title = gameState.era;
+    let desc = "The story of your civilization...";
+
+    if (title === "Stone Age") desc = "Your tribe wanders the wilderness, gathering berries and hunting wild beasts. The first sparks of consciousness ignite.";
+    if (title === "Bronze Age") desc = "Metalworking changes everything. City-states rise from the dust, and the first empires are born.";
+    if (title === "Iron Age") desc = "Tools of war and agriculture become stronger. The world connects through conquest and trade.";
+    if (title === "Middle Ages") desc = "Knights and castles dominate the land. Faith and feudalism bind society together.";
+    if (title === "Renaissance") desc = "Art, science, and exploration flourish. The old ways are questioned as new horizons open.";
+    if (title === "Industrial Age") desc = "Steam and steel drive the engines of progress. Factories rise, and the world shrinks.";
+    if (title === "Modern Age") desc = "Electricity, flight, and the atom. Humanity reaches for the stars.";
+    if (title === "Information Age") desc = "Data flows like water. The world is a global village connected by light.";
+    if (title === "Future Age") desc = "Beyond the boundaries of Earth. The cosmos awaits.";
+
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 600px;">
+            <h2>📜 Chronicles of the ${title}</h2>
+            <p style="font-size: 1.1em; line-height: 1.6; margin: 20px 0;">${desc}</p>
+            <button onclick="document.body.removeChild(document.getElementById('story-modal'))" style="background: #c0392b;">Close</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+};
+
 function checkStoryEvents() {
     // 5% chance per check (15s)
     if (Math.random() > 0.05) return;
@@ -801,6 +835,9 @@ window.claimQuest = function(questId) {
         if (q.reward.knowledge) gameState.resources.knowledge += q.reward.knowledge;
         if (q.reward.se) gameState.resources.symbolsOfEra += q.reward.se;
         updateUI();
+        // Force Reactivity
+        if (window.renderQuestList) window.renderQuestList();
+        else if (window.updateQuestUI) window.updateQuestUI();
     }
 };
 
@@ -1039,6 +1076,10 @@ window.buyResearch = function(techId) {
             gameState.stats.techsResearched++;
 
             updateUI();
+
+            // Force Reactivity
+            renderResearchTree();
+            updateVisibility(); // Show unlocked stuff
         }
     }
 };
@@ -1341,7 +1382,7 @@ function injectDynamicTabs() {
             storyBtn = document.createElement("button");
             storyBtn.id = "btn-story";
             storyBtn.innerText = "📜 Story";
-            storyBtn.onclick = () => renderCampaignModal();
+            storyBtn.onclick = () => window.renderStoryModal();
             storyBtn.style.width = "100%";
             storyBtn.style.padding = "10px";
             storyBtn.style.marginBottom = "10px";
@@ -1983,6 +2024,17 @@ function updateUI() {
     document.getElementById("res-knowledge").innerText = formatNumber(gameState.resources.knowledge);
     document.getElementById("res-culture").innerText = formatNumber(gameState.resources.culture);
     document.getElementById("res-shards").innerText = gameState.resources.relicShards;
+
+    // Population UI
+    const popEl = document.getElementById("res-population");
+    if (popEl) {
+        const housing = 10 +
+            (gameState.buildings["Gatherer"].count * 2) +
+            (gameState.buildings["Farm"].count * 5) +
+            (gameState.buildings["Aqueduct"].count * 20);
+        popEl.innerText = `${Math.floor(gameState.resources.population)} / ${housing}`;
+        popEl.title = "Population grows if Food > 0. Requires housing.";
+    }
 
     // Loot resources
     const lootContainer = document.getElementById("loot-resources");
