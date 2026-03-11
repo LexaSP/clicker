@@ -23,6 +23,7 @@
             <div class="resource">
                 <span>Clicks:</span>
                 <span id="res-clicks">0</span>
+            <div style="font-size:12px;color:#95a5a6;margin-top:2px" id="res-cps">0/s | ✋ 1/click</div>
             </div>
             <div class="resource">
                 <span>Knowledge:</span>
@@ -62,6 +63,13 @@
             <h1>History Clicker</h1>
 
             <!-- FIX 2: removed inline onclick — event listener added in JS below -->
+            <div id="bulk-toggle" style="display:flex;gap:4px;margin:6px 0;justify-content:center">
+                <span style="color:#aaa;font-size:12px;line-height:28px">Buy:</span>
+                <button id="buy-toggle-1"   onclick="window.setBuyAmount(1)"   style="padding:3px 10px;background:#f39c12;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">×1</button>
+                <button id="buy-toggle-10"  onclick="window.setBuyAmount(10)"  style="padding:3px 10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">×10</button>
+                <button id="buy-toggle-100" onclick="window.setBuyAmount(100)" style="padding:3px 10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">×100</button>
+                <button id="buy-toggle-0"   onclick="window.setBuyAmount(0)"   style="padding:3px 10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">Max</button>
+            </div>
             <button id="click-btn">CLICK!</button>
 
             <div id="buildings-container">
