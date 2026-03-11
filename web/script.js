@@ -2115,18 +2115,6 @@ window.buyPrestigeUpgrade = function(id) {
     renderPrestigeUpgrades();
     updateUI();
     return; // legacy code below is skipped
-    const up = gameState.prestigeUpgrades[id]; // LEGACY (dead code below)
-    if (!up) return;
-
-    // Cost scaling? Static for now based on definition
-    const cost = up.cost * (up.level + 1);
-
-    if (gameState.resources.symbolsOfEra >= cost && up.level < up.max) {
-        if (window.audioController) window.audioController.playBuy();
-        gameState.resources.symbolsOfEra -= cost;
-        up.level++;
-        updateUI();
-    }
 };
 
 window.performPrestige = function(challengeId = null) {
