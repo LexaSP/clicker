@@ -148,20 +148,6 @@ function formatNumber(num) {
     return Math.floor(num);
 }
 
-function addLog(msg) {
-    const log = document.getElementById("game-log");
-    if (!log) return;
-    const p = document.createElement("p");
-    p.style.margin = "2px 0";
-    p.style.fontSize = "12px";
-    p.style.borderBottom = "1px solid #333";
-    p.style.paddingBottom = "2px";
-    p.innerHTML = `<span style="color:#888;font-size:10px">${new Date().toLocaleTimeString()}</span> ${msg}`;
-    log.prepend(p);
-    // Cap log at 50 entries
-    while (log.children.length > 50) log.removeChild(log.lastChild);
-}
-
 function spawnFloatingText(x, y, text, color = "#fff") {
     const el = document.createElement("div");
     el.innerText = text;
@@ -269,8 +255,6 @@ let gameState = {
     },
 
     reroll: { count: 0, cost: 100, lastReset: Date.now() },
-    prestigeUpgrades: {}, // FIX 6: was missing, caused TypeError in buyPrestigeUpgrade
-    buildingUpgrades: {}, // Per-building upgrade tiers
     lastSaveTime: Date.now()
 };
 
@@ -287,28 +271,27 @@ const ERA_DATA = [
     { name: "Future Age", threshold: 10000000000, className: "era-future" }
 ];
 
-// --- Unlocks Config ---
-// Era = fallback era (if player somehow reaches era without the tech).
-// Primary unlock is via tech effect type:"unlock_tab" in content-gen.js
-// Lower era gates mean tech-unlock is the REAL gate; era is just a safety net.
+// --- Unlocks Config (Strict) ---
 const FEATURE_UNLOCKS = {
-    // These tabs unlock via specific TECHNOLOGIES (see content-gen.js)
-    "tab-btn-expeditions": { era: "Bronze Age"    }, // tech_sailing
-    "tab-btn-government":  { era: "Stone Age"     }, // tech_tribe — unlocked very early
-    "tab-btn-crafting":    { era: "Middle Ages"   }, // tech_guilds
-    "tab-btn-heroes":      { era: "Middle Ages"   }, // tech_heroes_age
-    "tab-btn-war":         { era: "Iron Age"      }, // tech_legions
-    "tab-btn-trade":       { era: "Bronze Age"    }, // tech_trade
-    "tab-btn-diplomacy":   { era: "Renaissance"   }, // tech_diplomacy_ren
-    "tab-btn-governors":   { era: "Industrial Age"}, // tech_governors_t
-    "tab-btn-cabinet":     { era: "Modern Age"    }, // tech_cabinet
-    "tab-btn-congress":    { era: "Modern Age"    }, // tech_congress_t
-    "tab-btn-space":       { era: "Future Age"    }, // tech_mars (info age) or era gate
-    // These use era gate only (no specific tech unlock)
-    "tab-btn-wonders":     { era: "Bronze Age"    },
-    "tab-btn-religion":    { era: "Middle Ages"   },
-    "tab-btn-leaderboard": { era: "Stone Age"     },
-    "tab-btn-mods":        { era: "Future Age"    }
+    // Static Tabs (IDs in index.html)
+    "tab-btn-expeditions": { era: "Bronze Age" },
+    "tab-btn-war": { era: "Future Age" }, // QUARANTINED: MVP logic pending
+    "tab-btn-government": { era: "Future Age" }, // QUARANTINED: MVP logic pending
+    "tab-btn-crafting": { era: "Iron Age" },
+    "tab-btn-heroes": { era: "Middle Ages" },
+
+    // Dynamic/Panel Buttons
+    "tab-btn-trade": { era: "Iron Age" },
+    "tab-btn-wonders": { era: "Middle Ages" },
+    "tab-btn-religion": { era: "Middle Ages" },
+    "tab-btn-diplomacy": { era: "Renaissance" },
+    "tab-btn-espionage": { era: "Renaissance" },
+    "tab-btn-governors": { era: "Industrial Age" },
+    "tab-btn-cabinet": { era: "Modern Age" },
+    "tab-btn-congress": { era: "Modern Age" },
+    "tab-btn-space": { era: "Future Age" },
+    "tab-btn-leaderboard": { era: "Bronze Age" },
+    "tab-btn-mods": { era: "Future Age" }
 };
 
 // --- Content ---
@@ -367,13 +350,6 @@ async function init() {
         window.audioController = new AudioController();
         window.mapEngine = new MapEngine();
 
-        // FIX 2: Init subsystems that were imported but never called
-        initEspionage(gameState);
-        initStockMarket(gameState);
-        initCongress(gameState);
-        initMuseum(gameState);
-        initConstellations(gameState);
-
         // Expose
         window.gameState = gameState;
         window.allResearch = allResearch;
@@ -414,147 +390,108 @@ function startGameLoop() {
 }
 
 
-// ── MILESTONE SYSTEM ─────────────────────────────────────────────────────────
-// Classic clicker: owning N of a building multiplies its output
+// ─── MILESTONE BONUSES ────────────────────────────────────────────────────────
+// Каждое кратное 10/25/50/100/200/500 зданий удваивает его производство
 const MILESTONE_TIERS = [10, 25, 50, 100, 200, 500];
 
-function getBuildingMilestoneMult(buildingName, count) {
-    let mult = 1.0;
-    for (const tier of MILESTONE_TIERS) {
-        if (count >= tier) mult *= 2;
-        else break;
-    }
-    return mult;
+function getBuildingMilestoneMult(count) {
+    let m = 1;
+    for (const t of MILESTONE_TIERS) { if (count >= t) m *= 2; else break; }
+    return m;
 }
-
 function getNextMilestone(count) {
-    for (const tier of MILESTONE_TIERS) {
-        if (count < tier) return tier;
-    }
-    return null; // maxed all milestones
+    for (const t of MILESTONE_TIERS) { if (count < t) return t; }
+    return null;
 }
 
+// ─── BUILDING UPGRADE SYSTEM ──────────────────────────────────────────────────
+// Кнопка ⬆️ рядом с каждым зданием, каждый тир × 2 к производству
+// Стоимость: baseCost × 10 × tier^2.5. Переживает prestiges.
 
-// ── BUILDING UPGRADE SYSTEM ───────────────────────────────────────────────────
-// Each building has purchasable upgrades that double its output.
-// Cost scales as: baseCost × 10 × (tier^2.5)
-// This is the primary "spend clicks for power" loop beyond buying more buildings.
-
-function getBuildingUpgradeCost(buildingName, currentTier) {
-    const b = gameState.buildings[buildingName];
+function getBuildingUpgradeCost(name, tier) {
+    const b = gameState.buildings[name];
     if (!b) return Infinity;
-    const tier = currentTier + 1;
-    return Math.floor(b.baseCost * 10 * Math.pow(tier, 2.5));
+    return Math.floor(b.baseCost * 10 * Math.pow(tier + 1, 2.5));
 }
-
-function getBuildingUpgradeMultiplier(buildingName) {
-    const tier = (gameState.buildingUpgrades && gameState.buildingUpgrades[buildingName]) || 0;
-    return Math.pow(2, tier); // each tier doubles output
+function getBuildingUpgradeMult(name) {
+    if (!gameState.buildingUpgrades) return 1;
+    return Math.pow(2, gameState.buildingUpgrades[name] || 0);
 }
-
-window.buyBuildingUpgrade = function(buildingName) {
-    if (!gameState.buildingUpgrades) gameState.buildingUpgrades = {};
-    const currentTier = gameState.buildingUpgrades[buildingName] || 0;
-    const cost = getBuildingUpgradeCost(buildingName, currentTier);
-
-    if (gameState.resources.clicks >= cost) {
-        gameState.resources.clicks -= cost;
-        gameState.buildingUpgrades[buildingName] = currentTier + 1;
-        const newMult = Math.pow(2, currentTier + 1);
-        addLog(`⬆️ ${buildingName} upgraded to tier ${currentTier+1} → ×${newMult} output!`);
-        updateUI();
-    }
-};
-
-function renderBuildingUpgrade(name) {
+window.buyBuildingUpgrade = function(name) {
     if (!gameState.buildingUpgrades) gameState.buildingUpgrades = {};
     const tier = gameState.buildingUpgrades[name] || 0;
-    const nextCost = getBuildingUpgradeCost(name, tier);
-    const canAfford = gameState.resources.clicks >= nextCost;
-    const mult = Math.pow(2, tier);
-    const icon = tier === 0 ? "⬆️" : `⬆️×${mult}`;
-    return `<button
-        onclick="window.buyBuildingUpgrade('${name}')"
-        style="margin-left:6px;padding:2px 7px;font-size:11px;background:${canAfford?'#8e44ad':'#555'};color:#fff;border:none;border-radius:4px;cursor:${canAfford?'pointer':'default'}"
-        title="Upgrade ${name}: doubles its output (tier ${tier}→${tier+1}). Cost: ${formatNumber(nextCost)} clicks"
-    >${icon} Upgrade (${formatNumber(nextCost)})</button>`;
-}
-
-
-// ── BULK BUY SYSTEM ───────────────────────────────────────────────────────────
-// Players can toggle buy mode: x1, x10, x100, Max
-let buyAmount = 1; // global: 1, 10, 100, or 0 (=max)
-
-function getBulkCost(buildingName, amount) {
-    const b = gameState.buildings[buildingName];
-    if (!b) return Infinity;
-    const costMult = getGlobalMultiplier("cost", null);
-    // Sum of geometric series: baseCost * ratio^n + ratio^(n+1) + ... + ratio^(n+amount-1)
-    const r = b.priceRatio;
-    const n = b.count;
-    if (Math.abs(r - 1) < 0.001) return Math.floor(b.baseCost * amount * costMult);
-    return Math.floor(b.baseCost * (Math.pow(r, n) * (Math.pow(r, amount) - 1) / (r - 1)) * costMult);
-}
-
-function getMaxBuyAmount(buildingName) {
-    const b = gameState.buildings[buildingName];
-    if (!b) return 0;
-    let amount = 0;
-    let total = 0;
-    const costMult = getGlobalMultiplier("cost", null);
-    while (true) {
-        const nextCost = Math.floor(b.baseCost * Math.pow(b.priceRatio, b.count + amount) * costMult);
-        if (total + nextCost > gameState.resources.clicks) break;
-        total += nextCost;
-        amount++;
-        if (amount > 10000) break; // safety
+    const cost = getBuildingUpgradeCost(name, tier);
+    if (gameState.resources.clicks < cost) return;
+    gameState.resources.clicks -= cost;
+    gameState.buildingUpgrades[name] = tier + 1;
+    updateUI();
+    const msg = document.getElementById('game-log');
+    if (msg) {
+        const p = document.createElement('p');
+        p.style.cssText = 'margin:2px 0;font-size:11px;border-bottom:1px solid #333;padding:2px 0';
+        p.textContent = `⬆️ ${name} upgraded to tier ${tier+1} (×${Math.pow(2,tier+1)} output)`;
+        msg.prepend(p);
+        while (msg.children.length > 40) msg.removeChild(msg.lastChild);
     }
-    return amount;
-}
-
-window.setBuyAmount = function(n) {
-    buyAmount = n;
-    // Update toggle buttons
-    [1, 10, 100, 0].forEach(v => {
-        const btn = document.getElementById(`buy-toggle-${v}`);
-        if (btn) btn.style.background = (v === n) ? "#f39c12" : "#333";
-    });
-    updateUI(); // refresh cost displays
 };
 
+// ─── BULK BUY ─────────────────────────────────────────────────────────────────
+let buyAmount = 1; // 1 | 10 | 100 | 0=max
+
+function getBulkCost(name, n) {
+    const b = gameState.buildings[name];
+    if (!b || n <= 0) return Infinity;
+    const r = b.priceRatio;
+    const cm = getGlobalMultiplier("cost", null);
+    // геометрическая сумма: baseCost * r^count * (r^n - 1) / (r - 1)
+    return Math.floor(b.baseCost * Math.pow(r, b.count) * (Math.pow(r, n) - 1) / (r - 1) * cm);
+}
+function calcMaxBuy(name) {
+    const b = gameState.buildings[name];
+    if (!b) return 0;
+    let n = 0, total = 0;
+    const cm = getGlobalMultiplier("cost", null);
+    while (true) {
+        const c = Math.floor(b.baseCost * Math.pow(b.priceRatio, b.count + n) * cm);
+        if (total + c > gameState.resources.clicks) break;
+        total += c; n++;
+        if (n > 5000) break;
+    }
+    return n;
+}
+window.setBuyAmount = function(n) {
+    buyAmount = n;
+    [1,10,100,0].forEach(v => {
+        const btn = document.getElementById('buy-toggle-'+v);
+        if (btn) btn.style.background = v === n ? '#f39c12' : '#555';
+    });
+    updateUI();
+};
 window.buyBulkBuilding = function(name) {
     const b = gameState.buildings[name];
     if (!b) return;
-
-    const challengeLimit = (gameState.activeChallenge === "one_city");
-    const amount = buyAmount === 0 ? getMaxBuyAmount(name) : buyAmount;
-    if (amount <= 0) return;
-    if (challengeLimit && b.count + amount > 1) {
-        alert("Challenge: Max 1 of each building!"); return;
+    if (gameState.activeChallenge === 'one_city' && b.count >= 1) {
+        alert('Challenge: Max 1 of each building!'); return;
     }
-
-    const totalCost = getBulkCost(name, amount);
-    if (gameState.resources.clicks < totalCost) return;
-
+    const n = buyAmount === 0 ? calcMaxBuy(name) : buyAmount;
+    if (n <= 0) return;
+    const cost = n === 1
+        ? Math.floor(b.baseCost * Math.pow(b.priceRatio, b.count) * getGlobalMultiplier("cost", null))
+        : getBulkCost(name, n);
+    if (gameState.resources.clicks < cost) return;
     if (window.audioController) window.audioController.playBuy();
-    gameState.resources.clicks -= totalCost;
-    b.count += amount;
-
-    const btn = document.getElementById(`btn-${name}`);
-    if (btn) {
-        const rect = btn.getBoundingClientRect();
-        spawnFloatingText(rect.left + rect.width/2, rect.top, `-${formatNumber(totalCost)} 🖱️`, "#e74c3c");
-    }
-    if (amount > 1) spawnFloatingText(window.innerWidth/2, 200, `+${amount}× ${name}!`, "#2ecc71");
-
+    gameState.resources.clicks -= cost;
+    b.count += n;
     if (!gameState.stats) gameState.stats = {};
-    if (!gameState.stats.buildingsBought) gameState.stats.buildingsBought = 0;
-    gameState.stats.buildingsBought += amount;
-
+    gameState.stats.buildingsBought = (gameState.stats.buildingsBought || 0) + n;
     if (window.mapEngine && b.icon) window.mapEngine.addBuilding(name, b.icon);
-    checkQuestProgress("purchases", amount);
-    updateUI();
-    updateQuestUI();
+    checkQuestProgress('purchases', n);
+    const btn = document.getElementById('btn-'+name);
+    if (btn) {
+        const r = btn.getBoundingClientRect();
+        spawnFloatingText(r.left + r.width/2, r.top, '-'+formatNumber(cost)+' 🖱️', '#e74c3c');
+    }
+    updateUI(); updateQuestUI();
 };
 
 function calculateProduction(state, dt = 0, applyCosts = false) {
@@ -593,18 +530,17 @@ function calculateProduction(state, dt = 0, applyCosts = false) {
                 }
             }
 
-            // Produce Clicks
-            const mMult = getBuildingMilestoneMult(key, b.count);
-            const upgMult = getBuildingUpgradeMultiplier(key);
-            production += b.count * b.production * efficiency * mMult * upgMult;
+            // Produce Clicks (with milestone + upgrade multipliers)
+            const _ms = getBuildingMilestoneMult(b.count);
+            const _up = getBuildingUpgradeMult(key);
+            production += b.count * b.production * efficiency * _ms * _up;
 
             // Produce Unique Resources (Population logic is separate)
             if (applyCosts && b.produces) {
                 for (let res in b.produces) {
                     const amount = b.produces[res] * b.count * dt * efficiency;
                     if (state.resources[res] !== undefined) {
-                        const eraIdx = ERA_DATA.findIndex(e => e.name === state.era);
-                        const max = state.maxStorage || Math.max(10000, 1000 * Math.pow(5, eraIdx));
+                        const max = state.maxStorage || 10000;
                         state.resources[res] = Math.min(max, state.resources[res] + amount);
                     }
                 }
@@ -626,25 +562,12 @@ function tick(dt) {
     // Production
     const currentProduction = calculateProduction(gameState, dt, true);
 
-    // Knowledge — base 0.1/s from start + tech flat bonuses + buildings
-    let knowledgeProd = 0.1; // Base trickle so early game is playable
-    gameState.researched.forEach(techId => {
-        const tech = (window.allResearch || []).find(t => t.id === techId);
-        if (tech && tech.effect.type === "knowledge_flat") knowledgeProd += tech.effect.value;
-    });
-    if (gameState.buildings["University"])   knowledgeProd += gameState.buildings["University"].count   * gameState.buildings["University"].production;
-    if (gameState.buildings["Lab"])          knowledgeProd += gameState.buildings["Lab"].count          * gameState.buildings["Lab"].production;
-    if (gameState.buildings["Supercomputer"])knowledgeProd += gameState.buildings["Supercomputer"].count* gameState.buildings["Supercomputer"].production;
+    // Knowledge
+    let knowledgeProd = 0;
+    if (gameState.buildings["University"]) knowledgeProd += gameState.buildings["University"].count * gameState.buildings["University"].production;
+    if (gameState.buildings["Lab"]) knowledgeProd += gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
+    if (gameState.buildings["Supercomputer"]) knowledgeProd += gameState.buildings["Supercomputer"].count * gameState.buildings["Supercomputer"].production;
     knowledgeProd *= getGlobalMultiplier("production_mult", "knowledge");
-
-    // Culture — base 0.05/s from start + tech flat bonuses
-    let cultureProd = 0.05;
-    gameState.researched.forEach(techId => {
-        const tech = (window.allResearch || []).find(t => t.id === techId);
-        if (tech && tech.effect.type === "culture_flat") cultureProd += tech.effect.value;
-    });
-    cultureProd *= getGlobalMultiplier("production_mult", "culture");
-    gameState.resources.culture += cultureProd * dt;
 
     // Money
     let moneyProd = 0;
@@ -653,13 +576,12 @@ function tick(dt) {
 
     // Population Growth Logic
     // Max Pop = Base 10 + Housing from buildings
-    // Housing = base + buildings + tech housing_bonus effects
-    let techHousingBonus = 0;
-    gameState.researched.forEach(id => {
+    let _techHousing = 0;
+    (gameState.researched||[]).forEach(id => {
         const t = (window.allResearch||[]).find(x=>x.id===id);
-        if (t && t.effect.type === "housing_bonus") techHousingBonus += t.effect.value;
+        if (t && t.effect && t.effect.type==="housing_bonus") _techHousing += t.effect.value;
     });
-    const housing = 10 + techHousingBonus +
+    const housing = 10 + _techHousing +
         (gameState.buildings["Gatherer"].count * 2) +
         (gameState.buildings["Farm"].count * 5) +
         (gameState.buildings["Aqueduct"].count * 20);
@@ -695,8 +617,7 @@ function tick(dt) {
             if (["money", "knowledge", "clicks", "culture"].includes(res)) {
                 gameState.resources[res] += val;
             } else {
-                const eraIdx2 = ERA_DATA.findIndex(e => e.name === gameState.era);
-                const max = gameState.maxStorage || Math.max(10000, 1000 * Math.pow(5, eraIdx2));
+                const max = gameState.maxStorage || 10000;
                 gameState.resources[res] = Math.min(max, gameState.resources[res] + val);
             }
         }
@@ -1054,47 +975,23 @@ function getGlobalMultiplier(type, resource = null) {
             mult -= (relic.effect.value / 100);
         }
     });
-    // Prestige upgrades (permanent across runs)
-    if (gameState.prestigeUpgrades) {
+    // Prestige upgrades
+    if (window.PRESTIGE_UPGRADES && gameState.prestigeUpgrades) {
         PRESTIGE_UPGRADES.forEach(up => {
-            const level = (gameState.prestigeUpgrades[up.id] && gameState.prestigeUpgrades[up.id].level) || 0;
-            if (level === 0) return;
-            const e = up.effect;
-            const val = e.value(level);
-            if (type === "click" && e.type === "click_mult") mult *= val;
-            if (type === "production" && e.type === "production_mult") mult *= val;
-            if (type === "cost" && e.type === "cost_reduction") mult *= val;
-            if (type === "production_mult" && resource === "knowledge" && e.type === "knowledge_mult") mult *= val;
+            const lv = (gameState.prestigeUpgrades[up.id] && gameState.prestigeUpgrades[up.id].level)||0;
+            if (!lv) return;
+            const v = up.eff.val(lv);
+            if (type==="click" && up.eff.type==="click_mult") mult *= v;
+            if (type==="production" && up.eff.type==="prod_mult") mult *= v;
+            if (type==="cost" && up.eff.type==="cost_reduction") mult *= v;
         });
     }
 
-    // Techs — handle all effect types from new tech tree
+    // Techs
     gameState.researched.forEach(techId => {
         const tech = allResearch.find(t => t.id === techId);
-        if (!tech) return;
-        const e = tech.effect;
-
-        if (type === "production" || type === "production_mult") {
-            if (e.type === "production_multiplier") mult *= e.value;
-            if (e.type === "production_mult" && (!resource || e.resource === resource)) mult *= e.value;
-        }
-        if (type === "production_mult" && resource === "knowledge") {
-            if (e.type === "knowledge_mult") mult *= e.value;
-        }
-        if (type === "production_mult" && resource === "money") {
-            if (e.type === "money_mult") mult *= e.value;
-        }
-        if (type === "production_mult" && resource === "culture") {
-            if (e.type === "culture_mult") mult *= e.value;
-        }
-        if (type === "cost") {
-            if (e.type === "building_cost_reduction") mult *= e.value;
-        }
-        if (type === "click") {
-            if (e.type === "click_mult") mult *= e.value;
-        }
-        if (type === "army") {
-            if (e.type === "army_mult") mult *= e.value;
+        if (tech && tech.effect.type === "production_multiplier" && type === "production") {
+            mult *= tech.effect.value;
         }
     });
 
@@ -1179,12 +1076,10 @@ window.manualClick = function(event) {
         gameState.stats.maxProduction = cps;
     }
 
-    // Click value: base grows with total buildings owned
-    // Every 5 buildings you own adds +1 base click (natural progression)
-    const totalBuildings = Object.values(gameState.buildings).reduce((s,b) => s + b.count, 0);
-    const buildingBonus = Math.floor(totalBuildings / 5);
-    // Synergy: 15% of CpS (up from 10%, and flooring is moved to end)
-    let clickValue = (1 + buildingBonus) + (cps * 0.15);
+    // Base click: +1 per 5 buildings owned + 15% of CpS synergy
+    const _totalB = Object.values(gameState.buildings).reduce((s,b)=>s+b.count,0);
+    let clickValue = (1 + Math.floor(_totalB / 5)) + (cps * 0.15);
+    clickValue += (gameState.inventory.length * 0.05); // small relic bonus
 
     clickValue *= getGlobalMultiplier("click", "clicks");
 
@@ -1315,33 +1210,11 @@ window.buyResearch = function(techId) {
             if (!gameState.stats.techsResearched) gameState.stats.techsResearched = 0;
             gameState.stats.techsResearched++;
 
-            // Apply immediate one-time effects
-            const e = tech.effect;
-            if (e.type === "unlock_tab") {
-                // Handled by updateVisibility — just log
-                console.log(`Tech unlocked tab: ${e.tab}`);
-                addLog(`🔓 Unlocked: ${e.tab.replace("tab-btn-", "").toUpperCase()} tab!`);
-            }
-            if (e.type === "unlock_space_tab") {
-                addLog("🚀 Space Exploration unlocked!");
-            }
-            if (e.type === "building_unlock") {
-                addLog(`🏗️ Building unlocked: ${e.building}`);
-            }
-            if (e.type === "trigger_victory") {
-                setTimeout(() => renderVictoryModal(), 500);
-            }
-            if (e.type === "housing_bonus") {
-                // Applied via getHousing() which reads research
-            }
-            if (e.type === "prestige_bonus") {
-                addLog(`✨ Prestige SE multiplier increased!`);
-            }
-
-            addLog(`🔬 Researched: ${tech.name} — ${tech.effectDesc || ''}`);
             updateUI();
+
+            // Force Reactivity
             renderResearchTree();
-            updateVisibility();
+            updateVisibility(); // Show unlocked stuff
         }
     }
 };
@@ -1518,8 +1391,7 @@ function calculateOfflineProgress(seconds) {
             }
         } else {
             // Physical: Clamp [0, maxStorage]
-            const _eraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
-            const max = gameState.maxStorage || Math.max(10000, 1000 * Math.pow(5, _eraIdx));
+            const max = gameState.maxStorage || 10000;
             gameState.resources[res] = Math.max(0, Math.min(max, gameState.resources[res]));
         }
     }
@@ -1635,9 +1507,6 @@ function injectDynamicTabs() {
     createTab("tab-btn-diplomacy", "Diplomacy 🤝", "diplomacy-view", `<h3>Foreign Relations ${helpBtn('diplomacy')}</h3><div id="diplomacy-list"></div><hr><h3>Espionage Agency</h3><div id="espionage-list"></div><hr><h3>World Congress 🌐</h3><div id="congress-list"></div>`);
     createTab("tab-btn-religion", "Religion 🛐", "religion-view", `<h3>Faith & Dogmas ${helpBtn('religion')}</h3><div id="religion-ui"></div><hr><h3>Museum 🎨</h3><div id="museum-list"></div>`);
 
-    // FIX 8: Space tab was in FEATURE_UNLOCKS but never created as a dynamic tab
-    createTab("tab-btn-space", "Space 🚀", "space-view", `<h3>Space Exploration 🌌 ${helpBtn('space')}</h3><p>Reach the Future Age to unlock space.</p><div id="planet-list"></div>`);
-
     // Ensure Expeditions view content is populated if empty
     const expView = document.getElementById("expeditions-view");
     if (expView) {
@@ -1682,53 +1551,40 @@ function checkEraProgress() {
 function updateVisibility() {
     const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
 
-    // Feature unlocks — check BOTH era gate AND tech research unlock
-    // Tabs can be unlocked either by era OR by specific tech research
-    const techUnlockedTabs = new Set();
-    gameState.researched.forEach(techId => {
-        const tech = (window.allResearch || []).find(t => t.id === techId);
-        if (tech && tech.effect) {
-            if (tech.effect.type === "unlock_tab") techUnlockedTabs.add(tech.effect.tab);
-            if (tech.effect.type === "unlock_space_tab") techUnlockedTabs.add("tab-btn-space");
-        }
-    });
-
+    // Feature unlocks
     for (let id in FEATURE_UNLOCKS) {
         const req = FEATURE_UNLOCKS[id];
         const reqEraIdx = ERA_DATA.findIndex(e => e.name === req.era);
-        const unlockedByTech = techUnlockedTabs.has(id);
-        const unlockedByEra  = currentEraIdx >= reqEraIdx;
-        const shouldShow     = unlockedByTech || unlockedByEra;
 
         const el = document.getElementById(id);
         if (el) {
-            if (shouldShow) {
-                if (el.style.display === "none" || el.style.display === "") {
-                    el.style.removeProperty("display");
+            // Retroactive Locking: Even if it was visible before, if currentEra < reqEra, FORCE HIDE
+            if (currentEraIdx >= reqEraIdx) {
+                // Show only if hidden, to avoid flicker or style resets
+                if (el.style.display === "none") {
                     el.style.display = "inline-block";
                 }
             } else {
+                // STRICT HIDING / RETROACTIVE LOCK
                 el.style.display = "none";
-                el.style.setProperty("display", "none", "important");
+                el.style.setProperty("display", "none", "important"); // Force override
+
+                // ALSO Hide the view content if it's currently active to prevent ghost views
+                // Derive view ID from btn ID (heuristic: tab-btn-X -> X-view)
                 const viewId = id.replace("tab-btn-", "") + "-view";
                 const viewEl = document.getElementById(viewId);
                 if (viewEl) {
                     viewEl.style.display = "none";
                     viewEl.style.setProperty("display", "none", "important");
                 }
-                if (el.classList.contains("active")) showTab("research");
+
+                // If this tab was active, switch to Research
+                if (el.classList.contains("active")) {
+                    showTab("research");
+                }
             }
         }
     }
-
-    // Also check dynamic tabs created by injectDynamicTabs
-    techUnlockedTabs.forEach(tabId => {
-        const el = document.getElementById(tabId);
-        if (el && el.style.display === "none") {
-            el.style.removeProperty("display");
-            el.style.display = "inline-block";
-        }
-    });
 
     // STRICT ERA GATING FOR BUILDINGS
     Object.keys(gameState.buildings).forEach(key => {
@@ -1925,15 +1781,9 @@ window.selectCiv = function(eraName, idx) {
 
 function calculatePrestigeGain() {
     if (gameState.resources.lifetimeClicks < 100000) return 0;
+    // New Formula: (Lifetime / 1M)^0.5
+    // 1M -> 1 SE, 4M -> 2 SE, 100M -> 10 SE, 10B -> 100 SE
     let gain = Math.floor(Math.pow(gameState.resources.lifetimeClicks / 1000000, 0.5));
-
-    // Tech prestige_bonus multipliers
-    let techPrestigeMult = 1.0;
-    gameState.researched.forEach(techId => {
-        const tech = (window.allResearch || []).find(t => t.id === techId);
-        if (tech && tech.effect.type === "prestige_bonus") techPrestigeMult *= tech.effect.value;
-    });
-    gain = Math.floor(gain * techPrestigeMult);
 
     // Ascension Boost
     const pMult = getAscensionMultiplier(gameState, "prestige_gain", null);
@@ -2045,76 +1895,73 @@ window.showStats = function() {
 };
 
 
-// ── PRESTIGE UPGRADES ────────────────────────────────────────────────────────
-// Spent with SE (Symbols of Era) from prestige. Permanent across runs.
+// ─── PRESTIGE UPGRADE SYSTEM ──────────────────────────────────────────────────
 const PRESTIGE_UPGRADES = [
-    { id: "click_power",    name: "Click Power",      icon: "👆", maxLevel: 10, costPerLevel: 1,  desc: (l) => `+${l*25}% manual click value`,         effect: { type: "click_mult",        value: (l) => 1 + l * 0.25 } },
-    { id: "cps_boost",      name: "Auto Production",  icon: "⚙️", maxLevel: 10, costPerLevel: 1,  desc: (l) => `+${l*20}% all building production`,    effect: { type: "production_mult",   value: (l) => 1 + l * 0.20 } },
-    { id: "start_clicks",   name: "Head Start",       icon: "🚀", maxLevel: 5,  costPerLevel: 2,  desc: (l) => `Start with ${formatNumber(l*500)} clicks`, effect: { type: "start_bonus",    value: (l) => l * 500 } },
-    { id: "golden_freq",    name: "Golden Relics",    icon: "✨", maxLevel: 10, costPerLevel: 1,  desc: (l) => `+${l*10}% golden relic spawn chance`,   effect: { type: "golden_chance",     value: (l) => l * 0.002 } },
-    { id: "cost_reduce",    name: "Cheaper Buildings",icon: "💸", maxLevel: 5,  costPerLevel: 2,  desc: (l) => `-${l*8}% all building costs`,           effect: { type: "cost_reduction",    value: (l) => 1 - l * 0.08 } },
-    { id: "research_speed", name: "Quick Research",   icon: "🔬", maxLevel: 5,  costPerLevel: 3,  desc: (l) => `-${l*10}% all research costs`,          effect: { type: "research_discount", value: (l) => 1 - l * 0.10 } },
-    { id: "knowledge_boost",name: "Enlightenment",    icon: "🧠", maxLevel: 10, costPerLevel: 2,  desc: (l) => `+${l*30}% knowledge gain`,              effect: { type: "knowledge_mult",    value: (l) => 1 + l * 0.30 } },
-    { id: "culture_boost",  name: "Cultural Legacy",  icon: "🎭", maxLevel: 10, costPerLevel: 2,  desc: (l) => `+${l*30}% culture gain`,                effect: { type: "culture_mult_p",    value: (l) => 1 + l * 0.30 } },
-    { id: "crit_chance",    name: "Precision",        icon: "🎯", maxLevel: 5,  costPerLevel: 2,  desc: (l) => `+${l*5}% crit chance`,                  effect: { type: "crit_chance_p",     value: (l) => l * 0.05 } },
-    { id: "prestige_gain",  name: "Historian",        icon: "📜", maxLevel: 5,  costPerLevel: 5,  desc: (l) => `+${l*20}% SE gained from prestige`,     effect: { type: "prestige_gain",     value: (l) => 1 + l * 0.20 } },
+    { id:"click_power",     name:"Click Power",       icon:"👆", max:10, cost:1, desc:l=>`+${l*25}% click value`,       eff:{type:"click_mult",      val:l=>1+l*0.25} },
+    { id:"cps_boost",       name:"Auto Production",   icon:"⚙️", max:10, cost:1, desc:l=>`+${l*20}% building output`,   eff:{type:"prod_mult",       val:l=>1+l*0.20} },
+    { id:"start_clicks",    name:"Head Start",        icon:"🚀", max:5,  cost:2, desc:l=>`Start with ${l*500} clicks`,  eff:{type:"start_bonus",     val:l=>l*500}    },
+    { id:"golden_freq",     name:"Golden Relics",     icon:"✨", max:10, cost:1, desc:l=>`+${l*10}% golden chance`,     eff:{type:"golden_chance",   val:l=>l*0.002}  },
+    { id:"cost_reduce",     name:"Cheap Buildings",   icon:"💸", max:5,  cost:2, desc:l=>`-${l*8}% build costs`,        eff:{type:"cost_reduction",  val:l=>1-l*0.08} },
+    { id:"knowledge_boost", name:"Enlightenment",     icon:"🧠", max:10, cost:2, desc:l=>`+${l*30}% knowledge`,         eff:{type:"know_mult",       val:l=>1+l*0.30} },
+    { id:"culture_boost",   name:"Cultural Legacy",   icon:"🎭", max:10, cost:2, desc:l=>`+${l*30}% culture`,           eff:{type:"cult_mult",       val:l=>1+l*0.30} },
+    { id:"prestige_gain",   name:"Historian",         icon:"📜", max:5,  cost:5, desc:l=>`+${l*20}% SE from prestige`,  eff:{type:"prestige_gain",   val:l=>1+l*0.20} },
 ];
 
-function renderPrestigeUpgrades() {
+function renderPrestigePanel() {
     const container = document.getElementById("prestige-upgrades");
     if (!container) return;
     if (!gameState.prestigeUpgrades) gameState.prestigeUpgrades = {};
     const se = gameState.resources.se || 0;
 
-    let html = `<div style="margin-bottom:8px;color:#f39c12;font-size:13px">🌟 Symbols of Era: <b>${se}</b></div>`;
-    html += `<div style="display:flex;flex-wrap:wrap;gap:6px">`;
-
+    let html = `<div style="margin:4px 0;color:#f39c12;font-weight:bold">🌟 SE available: ${se}</div>`;
+    html += `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">`;
     PRESTIGE_UPGRADES.forEach(up => {
-        const level = (gameState.prestigeUpgrades[up.id] && gameState.prestigeUpgrades[up.id].level) || 0;
-        const maxed = level >= up.maxLevel;
-        const cost = maxed ? 0 : up.costPerLevel;
-        const canAfford = !maxed && se >= cost;
-        const desc = up.desc(level);
-        const nextDesc = maxed ? "MAXED" : up.desc(level + 1);
-
-        html += `<div style="
-            background:${maxed?'#1a4a1a':canAfford?'#2c2c4e':'#2a2a2a'};
-            border:1px solid ${maxed?'#2ecc71':canAfford?'#8e44ad':'#555'};
-            border-radius:6px;padding:8px;min-width:140px;max-width:160px;
-            font-size:11px;text-align:center;
-        ">
-            <div style="font-size:20px">${up.icon}</div>
-            <div style="font-weight:bold;color:#eee;margin:3px 0">${up.name}</div>
-            <div style="color:#aaa;margin-bottom:4px">Lv ${level}/${up.maxLevel}</div>
-            <div style="color:#7fb3d3;margin-bottom:4px;font-size:10px">${level > 0 ? desc : 'Not purchased'}</div>
-            ${!maxed ? `
-            <div style="color:#f1c40f;font-size:10px;margin-bottom:4px">Next: ${nextDesc}</div>
-            <button onclick="window.buyPrestigeUpgrade('${up.id}')"
-                style="width:100%;padding:3px;background:${canAfford?'#8e44ad':'#444'};color:#fff;border:none;border-radius:3px;cursor:${canAfford?'pointer':'default'};font-size:11px"
-            >${canAfford?`Buy (${cost} SE)`:`Need ${cost} SE`}</button>
-            ` : `<div style="color:#2ecc71;font-size:12px">✅ MAXED</div>`}
+        const lv = (gameState.prestigeUpgrades[up.id] && gameState.prestigeUpgrades[up.id].level) || 0;
+        const maxed = lv >= up.max;
+        const canBuy = !maxed && se >= up.cost;
+        html += `<div style="background:${maxed?'#1a3a1a':canBuy?'#2a1a4a':'#222'};border:1px solid ${maxed?'#2ecc71':canBuy?'#8e44ad':'#444'};border-radius:6px;padding:6px 8px;min-width:130px;font-size:11px;text-align:center">
+            <div style="font-size:18px">${up.icon}</div>
+            <div style="font-weight:bold;color:#eee">${up.name}</div>
+            <div style="color:#888;font-size:10px">Lv ${lv}/${up.max}</div>
+            <div style="color:#7ec8e3;font-size:10px;margin:2px 0">${lv>0?up.desc(lv):'—'}</div>
+            ${maxed
+                ? `<div style="color:#2ecc71">✅ MAXED</div>`
+                : `<div style="color:#f1c40f;font-size:10px">Next: ${up.desc(lv+1)}</div>
+                   <button onclick="window.buyPrestigeUpgradeNew('${up.id}')"
+                     style="margin-top:4px;width:100%;padding:2px 0;background:${canBuy?'#8e44ad':'#444'};color:#fff;border:none;border-radius:3px;cursor:${canBuy?'pointer':'default'};font-size:10px"
+                   >${canBuy?`Buy (${up.cost} SE)`:`Need ${up.cost} SE`}</button>`
+            }
         </div>`;
     });
-
     html += `</div>`;
     container.innerHTML = html;
 }
+window.buyPrestigeUpgradeNew = function(id) {
+    const up = PRESTIGE_UPGRADES.find(u=>u.id===id);
+    if (!up) return;
+    if (!gameState.prestigeUpgrades) gameState.prestigeUpgrades = {};
+    const lv = (gameState.prestigeUpgrades[id] && gameState.prestigeUpgrades[id].level) || 0;
+    if (lv >= up.max) return;
+    if ((gameState.resources.se||0) < up.cost) return;
+    gameState.resources.se -= up.cost;
+    gameState.prestigeUpgrades[id] = { level: lv+1 };
+    renderPrestigePanel();
+    updateUI();
+};
 
 window.buyPrestigeUpgrade = function(id) {
-    const upDef = PRESTIGE_UPGRADES.find(u => u.id === id);
-    if (!upDef) return;
-    if (!gameState.prestigeUpgrades) gameState.prestigeUpgrades = {};
-    if (!gameState.prestigeUpgrades[id]) gameState.prestigeUpgrades[id] = { level: 0 };
-    const currentLevel = gameState.prestigeUpgrades[id].level;
-    if (currentLevel >= upDef.maxLevel) return;
-    const cost = upDef.costPerLevel;
-    if (!gameState.resources.se || gameState.resources.se < cost) return;
-    gameState.resources.se -= cost;
-    gameState.prestigeUpgrades[id].level = currentLevel + 1;
-    addLog(`✨ Prestige upgrade: ${upDef.name} → Lv ${currentLevel + 1}`);
-    renderPrestigeUpgrades();
-    updateUI();
-    return; // legacy code below is skipped
+    const up = gameState.prestigeUpgrades[id];
+    if (!up) return;
+
+    // Cost scaling? Static for now based on definition
+    const cost = up.cost * (up.level + 1);
+
+    if (gameState.resources.symbolsOfEra >= cost && up.level < up.max) {
+        if (window.audioController) window.audioController.playBuy();
+        gameState.resources.symbolsOfEra -= cost;
+        up.level++;
+        updateUI();
+    }
 };
 
 window.performPrestige = function(challengeId = null) {
@@ -2145,7 +1992,6 @@ window.performPrestige = function(challengeId = null) {
     gameState.civilizationHistory = {}; // Reset civ choices
     gameState.activeResearch = [];
     gameState.researched = [];
-    // Note: buildingUpgrades persist through prestige (earned power)
     gameState.activeExpeditions = [];
     gameState.wonders = []; // Reset wonders
 
@@ -2153,7 +1999,6 @@ window.performPrestige = function(challengeId = null) {
     gameState.buildings = {
         "AutoClicker": { count: 0, baseCost: 15, priceRatio: 1.15, production: 0.5, icon: "👆", era: 0 },
         "Gatherer": { count: 0, baseCost: 50, priceRatio: 1.15, production: 1, icon: "🧺", era: 0 },
-        "LumberCamp": { count: 0, baseCost: 150, priceRatio: 1.15, production: 2, icon: "🪓", era: 0, produces: { wood: 1.5 } },
         "Farm": { count: 0, baseCost: 250, priceRatio: 1.15, production: 3, icon: "🌾", era: 1 },
         "Mine": { count: 0, baseCost: 1000, priceRatio: 1.20, production: 10, icon: "⛏️", era: 1, upkeep: { wood: 1 } },
         "Workshop": { count: 0, baseCost: 5000, priceRatio: 1.20, production: 25, icon: "🔨", era: 2, upkeep: { stone: 2 } },
@@ -2311,12 +2156,12 @@ function initBuildingsUI() {
                 <strong>Buy ${name}</strong><br>
                 <small>Cost: <span id="cost-${name}">0</span></small> | <small>Owned: <span id="count-${name}">0</span></small><br>
                 <small id="prod-text-${name}">Prod: ${b.production} Click</small>
-                <span id="upg-${name}"></span>
+                <span id="upg-${name}" style="display:inline-block"></span>
                 ${prodText ? `<br><small style="color:#2ecc71">Produces: ${prodText}</small>` : ''}
                 ${upkeepHtml}
             </div>
         `;
-        btn.onclick = () => window.buyBulkBuilding(name);
+        btn.onclick = () => window.buyBuilding(name);
 
         list.appendChild(btn);
     });
@@ -2333,39 +2178,58 @@ function renderBuildings(container) {
         let costMult = getGlobalMultiplier("cost", null);
         const finalCost = Math.floor(currentCost * costMult);
 
-        const costEl = document.getElementById(`cost-${name}`);
-        if (costEl) {
-            const bAmt = buyAmount === 0 ? getMaxBuyAmount(name) : buyAmount;
-            const bulkCost = bAmt <= 1 ? finalCost : getBulkCost(name, bAmt);
-            const label = bAmt > 1 ? `${formatNumber(bulkCost)} (×${bAmt})` : formatNumber(finalCost);
-            costEl.innerText = label;
-        }
-
         const countEl = document.getElementById(`count-${name}`);
         if (countEl) countEl.innerText = b.count;
 
-        // Update Production Text (Base vs Total)
-        const prodEl = document.getElementById(`prod-text-${name}`);
-        if (prodEl) {
-            const globalMult = getGlobalMultiplier("production", "clicks");
-            const milestoneMult = getBuildingMilestoneMult(name, b.count);
-            const effectiveProd = b.production * globalMult * milestoneMult;
-            const totalProd = effectiveProd * b.count;
-            const nextMilestone = getNextMilestone(b.count);
-            const milestoneHint = nextMilestone ? ` | Next x2 @ ${nextMilestone}` : "";
-            if (b.count > 0) {
-                prodEl.innerText = `Each: ${formatNumber(effectiveProd)}/s | Total: ${formatNumber(totalProd)}/s${milestoneHint}`;
+        // Cost display: shows bulk cost if buyAmount > 1
+        const costEl = document.getElementById(`cost-${name}`);
+        if (costEl) {
+            const bAmt = buyAmount === 0 ? calcMaxBuy(name) : buyAmount;
+            if (bAmt <= 1) {
+                costEl.innerText = formatNumber(finalCost);
             } else {
-                prodEl.innerText = `Base: ${b.production}/s each`;
+                const bulk = getBulkCost(name, bAmt);
+                costEl.innerText = `${formatNumber(bulk)} (×${bAmt})`;
             }
         }
 
-        // Inject/update upgrade button
-        const upgContainer = document.getElementById(`upg-${name}`);
-        if (upgContainer) upgContainer.innerHTML = renderBuildingUpgrade(name);
+        // Production text: real output with all multipliers
+        const prodEl = document.getElementById(`prod-text-${name}`);
+        if (prodEl) {
+            const gMult = getGlobalMultiplier("production", "clicks");
+            const msMult = getBuildingMilestoneMult(b.count);
+            const upMult = getBuildingUpgradeMult(name);
+            const effective = b.production * gMult * msMult * upMult;
+            const total = effective * b.count;
+            const next = getNextMilestone(b.count);
+            const milestoneHint = next ? ` [×2@${next}]` : '';
+            if (b.count > 0) {
+                prodEl.innerText = `${formatNumber(effective)}/s each · ${formatNumber(total)}/s total${milestoneHint}`;
+            } else {
+                prodEl.innerText = `${b.production}/s each`;
+            }
+        }
+
+        // Upgrade button
+        const upgEl = document.getElementById(`upg-${name}`);
+        if (upgEl) {
+            const tier = (gameState.buildingUpgrades && gameState.buildingUpgrades[name]) || 0;
+            const upgCost = getBuildingUpgradeCost(name, tier);
+            const canUpg = gameState.resources.clicks >= upgCost;
+            upgEl.innerHTML = `<button onclick="window.buyBuildingUpgrade('${name}')"
+                style="margin-left:4px;padding:1px 6px;font-size:10px;background:${canUpg?'#8e44ad':'#444'};color:#fff;border:none;border-radius:3px;cursor:pointer"
+                title="Doubles ${name} output (tier ${tier}→${tier+1}). Cost: ${formatNumber(upgCost)}"
+            >⬆️×${Math.pow(2,tier+1)} (${formatNumber(upgCost)})</button>`;
+        }
 
         const btn = document.getElementById(`btn-${name}`);
-        if (btn) btn.disabled = gameState.resources.clicks < finalCost;
+        if (btn) {
+            const bAmt2 = buyAmount === 0 ? calcMaxBuy(name) : buyAmount;
+            const chk = bAmt2 <= 1 ? finalCost : getBulkCost(name, bAmt2);
+            btn.disabled = gameState.resources.clicks < chk;
+            // Redirect onclick to bulk buy
+            btn.onclick = () => window.buyBulkBuilding(name);
+        }
     });
 }
 
@@ -2409,54 +2273,28 @@ function updateUI() {
 
     document.getElementById("res-clicks").innerText = formatNumber(gameState.resources.clicks);
 
-    // CpS display — the most important clicker stat
-    const totalCps = calculateProduction(gameState, 0, false);
-    const clickPower = (() => {
-        const totalB = Object.values(gameState.buildings).reduce((s,b) => s + b.count, 0);
-        const bBonus = Math.floor(totalB / 5);
-        return Math.floor((1 + bBonus) + totalCps * 0.15);
-    })();
+    // CpS + click power display
+    const _cps = calculateProduction(gameState, 0, false);
+    const _totalBs = Object.values(gameState.buildings).reduce((s,b)=>s+b.count,0);
+    const _cp = Math.floor((1 + Math.floor(_totalBs/5)) + _cps * 0.15);
     const cpsEl = document.getElementById("res-cps");
-    if (cpsEl) cpsEl.innerText = `${formatNumber(totalCps)}/s  |  ✋ ${formatNumber(clickPower)}/click`;
+    if (cpsEl) cpsEl.textContent = `${formatNumber(_cps)}/s  ·  ✋ ${formatNumber(_cp)}/click`;
 
-    renderPrestigeUpgrades();
-
-    // Show knowledge/culture with per-second rate
-    const knowEl = document.getElementById("res-knowledge");
-    if (knowEl) {
-        let kps = 0.1;
-        gameState.researched.forEach(id => {
-            const t = (window.allResearch||[]).find(x=>x.id===id);
-            if (t && t.effect.type === "knowledge_flat") kps += t.effect.value;
-        });
-        kps += (gameState.buildings["University"]?.count||0) * (gameState.buildings["University"]?.production||0);
-        kps += (gameState.buildings["Lab"]?.count||0) * (gameState.buildings["Lab"]?.production||0);
-        kps += (gameState.buildings["Supercomputer"]?.count||0) * (gameState.buildings["Supercomputer"]?.production||0);
-        kps *= getGlobalMultiplier("production_mult","knowledge");
-        knowEl.innerText = `${formatNumber(gameState.resources.knowledge)} (+${formatNumber(kps)}/s)`;
-    }
-
-    const cultEl = document.getElementById("res-culture");
-    if (cultEl) {
-        let cps = 0.05;
-        gameState.researched.forEach(id => {
-            const t = (window.allResearch||[]).find(x=>x.id===id);
-            if (t && t.effect.type === "culture_flat") cps += t.effect.value;
-        });
-        cps *= getGlobalMultiplier("production_mult","culture");
-        cultEl.innerText = `${formatNumber(gameState.resources.culture)} (+${formatNumber(cps)}/s)`;
-    }
+    // Prestige upgrades panel
+    if (typeof renderPrestigePanel === 'function') renderPrestigePanel();
+    document.getElementById("res-knowledge").innerText = formatNumber(gameState.resources.knowledge);
+    document.getElementById("res-culture").innerText = formatNumber(gameState.resources.culture);
     document.getElementById("res-shards").innerText = gameState.resources.relicShards;
 
     // Population UI
     const popEl = document.getElementById("res-population");
     if (popEl) {
-        let techHousingUI = 0;
-        gameState.researched.forEach(id => {
+        let _techHousingUI = 0;
+        (gameState.researched||[]).forEach(id => {
             const t = (window.allResearch||[]).find(x=>x.id===id);
-            if (t && t.effect.type === "housing_bonus") techHousingUI += t.effect.value;
+            if (t && t.effect && t.effect.type==="housing_bonus") _techHousingUI += t.effect.value;
         });
-        const housing = 10 + techHousingUI +
+        const housing = 10 + _techHousingUI +
             (gameState.buildings["Gatherer"].count * 2) +
             (gameState.buildings["Farm"].count * 5) +
             (gameState.buildings["Aqueduct"].count * 20);
@@ -2536,172 +2374,190 @@ window.renderResearchTree = function() {
     const container = document.getElementById("research-container");
     if (!container) return;
 
-    // Enable Pan/Drag
-    let isDragging = false;
-    let startX, startY, scrollLeft, scrollTop;
-
-    container.onmousedown = (e) => {
-        isDragging = true;
-        container.classList.add("active");
-        startX = e.pageX - container.offsetLeft;
-        startY = e.pageY - container.offsetTop;
-        scrollLeft = container.scrollLeft;
-        scrollTop = container.scrollTop;
-    };
-    container.onmouseleave = () => { isDragging = false; container.classList.remove("active"); };
-    container.onmouseup = () => { isDragging = false; container.classList.remove("active"); };
-    container.onmousemove = (e) => {
-        if (!isDragging) return;
-        e.preventDefault();
-        const x = e.pageX - container.offsetLeft;
-        const y = e.pageY - container.offsetTop;
-        const walkX = (x - startX) * 2; // Speed
-        const walkY = (y - startY) * 2;
-        container.scrollLeft = scrollLeft - walkX;
-        container.scrollTop = scrollTop - walkY;
-    };
-
-    let svg = document.getElementById("tech-tree-svg");
-    if (!svg) {
-        svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        svg.id = "tech-tree-svg";
-        svg.style.width = "100%";
-        svg.style.height = "100%";
-        svg.style.position = "absolute";
-        svg.style.pointerEvents = "none";
-        container.appendChild(svg);
-    }
-    svg.innerHTML = "";
-
-    const columns = {};
-    allResearch.forEach(t => {
-        const eraName = t.era || "Stone Age";
-        if (!columns[eraName]) columns[eraName] = [];
-        columns[eraName].push(t);
-    });
-
-    const ERA_WIDTH = 250;
-    const NODE_HEIGHT = 80;
-
-    Array.from(container.children).forEach(child => {
-        if (child.id !== "tech-tree-svg") container.removeChild(child);
-    });
-
-    const positions = {};
-    let maxX = 0;
-    let maxY = 0;
-
-    let colIdx = 0;
-    for (const era of ERA_DATA) {
-        const techs = columns[era.name] || [];
-        techs.forEach((tech, rowIdx) => {
-            const x = 50 + colIdx * ERA_WIDTH;
-            const y = 50 + rowIdx * (NODE_HEIGHT + 20);
-
-            if (x > maxX) maxX = x;
-            if (y > maxY) maxY = y;
-
-            positions[tech.id] = {x, y};
-
-            const reqMet = tech.requirements.every(req => gameState.researched.includes(req));
-            const isDone = gameState.researched.includes(tech.id);
-            // ROOT NODE LOGIC: If no requirements, it is available by default
-            const isAvailable = reqMet || tech.requirements.length === 0;
-            const isVisible = isDone || isAvailable || tech.requirements.some(r => gameState.researched.includes(r));
-
-            if (isVisible) {
-                const div = document.createElement("div");
-                div.id = `tech-node-${tech.id}`;
-                div.className = `tech-node ${isDone ? 'researched' : (isAvailable ? 'available' : 'locked')}`;
-                const costStr = tech.costType === "culture" ? `${formatNumber(tech.cost)} 🎭` : `${formatNumber(tech.cost)} 🧠`;
-                const effectLabel = tech.effectDesc ? `<div style="font-size:9px;color:${isDone?'#2ecc71':'#f1c40f'};margin-top:2px;">${tech.effectDesc}</div>` : '';
-                const lockIcon = !isDone && !isAvailable ? '<div style="font-size:18px">🔒</div>' : '';
-                div.innerHTML = `
-                    ${lockIcon}
-                    <span style="font-size:18px">${tech.icon || '🔬'}</span>
-                    <div style="font-size:11px;font-weight:bold;margin-top:2px;">${tech.name}</div>
-                    ${!isDone ? `<div style="font-size:9px;color:#aaa">${costStr}</div>` : '<div style="font-size:9px;color:#2ecc71">✅ Done</div>'}
-                    ${effectLabel}
-                `;
-                div.style.left = `${x}px`;
-                div.style.top = `${y}px`;
-                div.title = `${tech.name}\nCost: ${formatNumber(tech.cost)} ${tech.costType}\nEffect: ${tech.effectDesc || 'Unknown'}\n${tech.description || ''}`;
-                if (isAvailable && !isDone) {
-                    div.onclick = () => window.buyResearch(tech.id);
-                }
-                container.appendChild(div);
-            }
+    // ── PAN / DRAG ────────────────────────────────────────────────
+    if (!container._panWired) {
+        container._panWired = true;
+        let dragging = false, sx, sy, sl, st;
+        container.addEventListener("mousedown", e => {
+            // Don't hijack button clicks
+            if (e.target.tagName === "BUTTON") return;
+            dragging = true;
+            container.style.cursor = "grabbing";
+            sx = e.pageX; sy = e.pageY;
+            sl = container.scrollLeft; st = container.scrollTop;
         });
-        colIdx++;
+        window.addEventListener("mouseup",   () => { dragging = false; container.style.cursor = "grab"; });
+        container.addEventListener("mousemove", e => {
+            if (!dragging) return;
+            e.preventDefault();
+            container.scrollLeft = sl - (e.pageX - sx);
+            container.scrollTop  = st - (e.pageY - sy);
+        });
+        // Touch support
+        let tx, ty, tsl, tst;
+        container.addEventListener("touchstart", e => {
+            const t = e.touches[0];
+            tx = t.pageX; ty = t.pageY;
+            tsl = container.scrollLeft; tst = container.scrollTop;
+        }, { passive: true });
+        container.addEventListener("touchmove", e => {
+            const t = e.touches[0];
+            container.scrollLeft = tsl - (t.pageX - tx);
+            container.scrollTop  = tst - (t.pageY - ty);
+        }, { passive: true });
     }
 
-    // Resize SVG to fit content
-    svg.style.width = Math.max(container.clientWidth, maxX + 200) + "px";
-    svg.style.height = Math.max(container.clientHeight, maxY + 200) + "px";
+    // ── LAYOUT CONSTANTS ─────────────────────────────────────────
+    const COL_W    = 180;  // horizontal gap between eras
+    const NODE_W   = 140;  // matches CSS
+    const NODE_H   = 88;   // min-height
+    const ROW_H    = 108;  // vertical spacing between nodes
+    const TOP_PAD  = 36;   // room for era label
+    const LEFT_PAD = 20;
 
-    // Ensure pointer-events: none on SVG to prevent blocking clicks
-    svg.style.pointerEvents = "none";
-
-    // Ensure container is relative for absolute children
-    if (getComputedStyle(container).position === "static") {
-        container.style.position = "relative";
-    }
-
-    // CRITICAL FIX: Wrap geometry calculations in setTimeout to ensure DOM layout is complete
-    // and use try/catch to prevent blocking main thread if it fails.
-    setTimeout(() => {
-        try {
-            if (!container) return;
-            const containerRect = container.getBoundingClientRect();
-
-            allResearch.forEach(tech => {
-                if (!positions[tech.id]) return;
-
-                const reqMet = tech.requirements.every(r => gameState.researched.includes(r));
-                const isDone = gameState.researched.includes(tech.id);
-                const isVisible = isDone || reqMet || tech.requirements.some(r => gameState.researched.includes(r));
-
-                if (isVisible) {
-                    tech.requirements.forEach(reqId => {
-                        if (positions[reqId]) {
-                            const startNode = document.getElementById(`tech-node-${reqId}`);
-                            const endNode = document.getElementById(`tech-node-${tech.id}`);
-
-                            if (startNode && endNode) {
-                                const parentRect = startNode.getBoundingClientRect();
-                                const childRect = endNode.getBoundingClientRect();
-
-                                // Calculate relative to container with scroll adjustment
-                                const x1 = parentRect.left + parentRect.width / 2 - containerRect.left + container.scrollLeft;
-                                const y1 = parentRect.top + parentRect.height / 2 - containerRect.top + container.scrollTop;
-                                const x2 = childRect.left + childRect.width / 2 - containerRect.left + container.scrollLeft;
-                                const y2 = childRect.top + childRect.height / 2 - containerRect.top + container.scrollTop;
-
-                                // Curved Path Logic (Bezier)
-                                const cp1 = { x: x1 + 50, y: y1 };
-                                const cp2 = { x: x2 - 50, y: y2 };
-
-                                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-                                const d = `M ${x1} ${y1} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${x2} ${y2}`;
-                                path.setAttribute("d", d);
-                                path.setAttribute("fill", "none");
-                                path.setAttribute("stroke", isDone ? "#2ecc71" : "#555");
-                                path.setAttribute("stroke-width", "2");
-                                path.setAttribute("class", "tech-line");
-                                path.style.pointerEvents = "none";
-
-                                if (isDone) path.classList.add("active");
-                                svg.appendChild(path);
-                            }
-                        }
-                    });
-                }
-            });
-        } catch (e) {
-            console.error("Error drawing tech tree lines:", e);
+    // Group techs by era, preserving ERA_DATA order
+    const byEra = {};
+    ERA_DATA.forEach(e => byEra[e.name] = []);
+    (window.allResearch || []).forEach(t => {
+        if (byEra[t.era]) byEra[t.era].push(t);
+        else {
+            const last = ERA_DATA[ERA_DATA.length - 1].name;
+            byEra[last].push(t);
         }
-    }, 0);
-}
+    });
+
+    // ── COMPUTE POSITIONS ────────────────────────────────────────
+    const pos = {};  // techId → {x, y}
+    let colIdx = 0;
+    ERA_DATA.forEach(era => {
+        const techs = byEra[era.name] || [];
+        techs.forEach((tech, row) => {
+            pos[tech.id] = {
+                x: LEFT_PAD + colIdx * (COL_W + NODE_W),
+                y: TOP_PAD + row * ROW_H
+            };
+        });
+        if (techs.length > 0) colIdx++;
+    });
+
+    const totalW = colIdx * (COL_W + NODE_W) + LEFT_PAD + 40;
+    const totalH = Math.max(...Object.values(pos).map(p => p.y)) + NODE_H + 40;
+
+    // ── CLEAR & SET SIZE ─────────────────────────────────────────
+    container.innerHTML = "";
+    container.style.position = "relative";
+    // Inner canvas so container overflow:auto works
+    const canvas = document.createElement("div");
+    canvas.style.cssText = `position:relative;width:${totalW}px;height:${totalH}px;`;
+    container.appendChild(canvas);
+
+    // ── SVG FOR LINES ────────────────────────────────────────────
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.style.cssText = `position:absolute;top:0;left:0;width:${totalW}px;height:${totalH}px;pointer-events:none;z-index:1`;
+    canvas.appendChild(svg);
+
+    // ── ERA LABELS ───────────────────────────────────────────────
+    let eraColIdx = 0;
+    ERA_DATA.forEach(era => {
+        const techs = byEra[era.name] || [];
+        if (!techs.length) return;
+        const lbl = document.createElement("div");
+        lbl.className = "era-label";
+        lbl.textContent = era.name;
+        lbl.style.left = (LEFT_PAD + eraColIdx * (COL_W + NODE_W)) + "px";
+        canvas.appendChild(lbl);
+        eraColIdx++;
+    });
+
+    // ── RENDER NODES ─────────────────────────────────────────────
+    const isDoneMap   = new Set(gameState.researched);
+    const isReqMetMap = {};
+    (window.allResearch || []).forEach(t => {
+        isReqMetMap[t.id] = t.requirements.every(r => isDoneMap.has(r));
+    });
+
+    (window.allResearch || []).forEach(tech => {
+        const p = pos[tech.id];
+        if (!p) return;
+
+        const isDone  = isDoneMap.has(tech.id);
+        const reqMet  = isReqMetMap[tech.id];
+        const visible = isDone || reqMet || tech.requirements.some(r => isDoneMap.has(r));
+
+        if (!visible && tech.requirements.length > 0) return; // hide completely unknown
+
+        const isAvail = reqMet && !isDone;
+        const isLocked = !reqMet && !isDone;
+
+        const node = document.createElement("div");
+        node.id = `tech-node-${tech.id}`;
+        node.className = `tech-node ${isDone ? "researched" : isAvail ? "available" : "locked"}`;
+        node.style.cssText = `left:${p.x}px;top:${p.y}px;width:${NODE_W}px;`;
+
+        const cost = tech.costType === "culture"
+            ? `${formatNumber(tech.cost)} 🎭`
+            : `${formatNumber(tech.cost)} 🧠`;
+
+        node.innerHTML = `
+            <span style="font-size:18px">${tech.icon || "🔬"}</span>
+            <div style="font-weight:bold;margin:2px 0;font-size:11px">${tech.name}</div>
+            ${isDone
+                ? `<div style="color:#2ecc71;font-size:10px">✅ Done</div>`
+                : `<div style="color:#aaa;font-size:9px">${cost}</div>`
+            }
+            <div class="eff-desc">${tech.effectDesc || ""}</div>
+            ${isAvail ? `<button class="buy-btn" onclick="window.buyResearch('${tech.id}')">Research</button>` : ""}
+            ${isLocked ? `<div style="font-size:16px">🔒</div>` : ""}
+        `;
+
+        node.title = [
+            tech.name,
+            tech.description || "",
+            `Effect: ${tech.effectDesc || "?"}`,
+            `Cost: ${formatNumber(tech.cost)} ${tech.costType}`,
+            tech.requirements.length ? `Requires: ${tech.requirements.join(", ")}` : ""
+        ].filter(Boolean).join("\n");
+
+        canvas.appendChild(node);
+    });
+
+    // ── DRAW LINES (after DOM paint) ─────────────────────────────
+    requestAnimationFrame(() => {
+        svg.innerHTML = "";
+        (window.allResearch || []).forEach(tech => {
+            if (!pos[tech.id]) return;
+            const isDone = isDoneMap.has(tech.id);
+            const visible = isDoneMap.has(tech.id) || isReqMetMap[tech.id]
+                || tech.requirements.some(r => isDoneMap.has(r));
+            if (!visible && tech.requirements.length > 0) return;
+
+            tech.requirements.forEach(reqId => {
+                if (!pos[reqId]) return;
+                const fromP = pos[reqId];
+                const toP   = pos[tech.id];
+
+                // Line from right-center of parent to left-center of child
+                const x1 = fromP.x + NODE_W;
+                const y1 = fromP.y + NODE_H / 2;
+                const x2 = toP.x;
+                const y2 = toP.y + NODE_H / 2;
+                const mx = (x1 + x2) / 2;
+
+                const reqDone = isDoneMap.has(reqId);
+                const color   = (reqDone && isDone) ? "#2ecc71" : reqDone ? "#3498db" : "#444";
+
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                path.setAttribute("d", `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`);
+                path.setAttribute("fill", "none");
+                path.setAttribute("stroke", color);
+                path.setAttribute("stroke-width", "2");
+                path.style.pointerEvents = "none";
+                svg.appendChild(path);
+            });
+        });
+    });
+};
+
 
 // --- Victory & Endgame ---
 
@@ -2802,52 +2658,6 @@ window.scanNewPlanet = function() {
 
     updateUI();
     renderSpace(); // Refresh view
-};
-
-// FIX 3: renderSpace was called but never defined
-window.renderSpace = function() {
-    const spaceView = document.getElementById("space-view");
-    if (!spaceView || !window.gameState) return;
-
-    const planets = window.gameState.space?.planets || [];
-    spaceView.innerHTML = `
-        <h3>Space Exploration 🌌 <button class="help-btn" onclick="showHelp('space')">?</button></h3>
-        <button onclick="window.scanNewPlanet?.()">🔭 Scan New Sector</button>
-        <div id="planet-list" style="margin-top:10px;">
-            ${planets.map(p => `
-                <div style="border:1px solid #555;padding:10px;margin:6px 0;border-radius:8px;background:rgba(0,0,0,0.3)">
-                    <strong>${p.name || 'Unknown'}</strong> — <em>${p.type || '?'}</em><br>
-                    <small style="color:#aaa">💰 ${p.production?.money || 0}/s &nbsp; 🧠 ${p.production?.knowledge || 0}/s</small><br>
-                    ${p.colonized
-                        ? `<span style="color:#2ecc71">✅ Colonized</span>
-                           <button onclick="window.terraformPlanetBtn?.('${p.id}')" style="margin-left:8px;">⬆ Terraform (Lv${p.terraformLevel||0})</button>`
-                        : `<button onclick="window.colonizePlanetBtn?.('${p.id}')">🚀 Colonize</button>`
-                    }
-                </div>
-            `).join('')}
-        </div>
-    `;
-};
-
-// FIX 3b: colonizePlanetBtn and terraformPlanetBtn wrappers
-window.colonizePlanetBtn = function(planetId) {
-    const result = colonizePlanet(window.gameState, planetId);
-    if (result) {
-        if (window.audioController) window.audioController.playUnlock();
-        updateUI();
-        window.renderSpace();
-    } else {
-        alert("Not enough resources to colonize!");
-    }
-};
-
-window.terraformPlanetBtn = function(planetId) {
-    const result = terraformPlanet(window.gameState, planetId);
-    alert(result.msg);
-    if (result.success) {
-        updateUI();
-        window.renderSpace();
-    }
 };
 
 // Start
@@ -3001,10 +2811,9 @@ window.buyAscensionPerkWrapper = function(perkId) {
     const result = buyAscensionPerk(gameState, perkId);
     if (result.success) {
         alert(result.msg);
-        // FIX 7: use window.renderAscensionTree — local ref doesn't exist in ES module scope
-        const modal = document.getElementById("ascension-modal");
-        if (modal) document.body.removeChild(modal);
-        window.renderAscensionTree();
+        // Re-render
+        document.body.removeChild(document.getElementById("ascension-modal"));
+        renderAscensionTree();
         updateUI();
     } else {
         alert(result.msg);
@@ -3126,39 +2935,6 @@ window.renderActiveExpeditions = renderActiveExpeditions;
 window.completeExpedition = completeExpedition;
 
 // --- Global Event Bindings (Critical for DOM Access) ---
-
-// FIX 4: recruitHeroBtn was called from HTML but never defined
-window.recruitHeroBtn = function() {
-    const state = window.gameState;
-    if (!state) return;
-    if (state.heroes.gpp < state.heroes.threshold) {
-        alert(`Not enough Great People Points!\nNeed: ${state.heroes.threshold}\nHave: ${Math.floor(state.heroes.gpp)}`);
-        return;
-    }
-    const hero = recruitHero(state);
-    if (hero) {
-        if (window.audioController) window.audioController.playUnlock();
-        alert(`🦸 Hero Recruited: ${hero.name}\n${hero.description || ''}`);
-        updateUI();
-    }
-};
-
-// FIX 5: 15 game action functions imported but never exposed to window
-// UI tabs (War, Gov, Diplomacy, etc.) need these to work
-window.trainSpy = (id) => { if(window.gameState) { trainSpy(window.gameState, id); updateUI(); }};
-window.startMission = (spyId, missionId) => { if(window.gameState) { startMission(window.gameState, spyId, missionId); updateUI(); }};
-window.vote = (option) => { if(window.gameState) { vote(window.gameState, option); updateUI(); }};
-window.buyStock = (companyId, amount) => { if(window.gameState) { buyStock(window.gameState, companyId, amount); updateUI(); }};
-window.sellStock = (companyId, amount) => { if(window.gameState) { sellStock(window.gameState, companyId, amount); updateUI(); }};
-window.tradeResource = (action, resource, amount) => { if(window.gameState) { tradeResource(window.gameState, action, resource, amount); updateUI(); }};
-window.buildWonder = (wonderId) => { if(window.gameState) { const r = buildWonder(window.gameState, wonderId); alert(r?.msg || 'Done'); updateUI(); }};
-window.adoptGovernment = (govId) => { if(window.gameState) { adoptGovernment(window.gameState, govId); updateUI(); }};
-window.togglePolicy = (polId) => { if(window.gameState) { togglePolicy(window.gameState, polId); updateUI(); }};
-window.foundReligion = (name) => { if(window.gameState) { foundReligion(window.gameState, name); updateUI(); }};
-window.adoptDogma = (dogmaId) => { if(window.gameState) { adoptDogma(window.gameState, dogmaId); updateUI(); }};
-window.hireGovernor = (id) => { if(window.gameState) { hireGovernor(window.gameState, id); updateUI(); }};
-window.toggleGovernor = (id) => { if(window.gameState) { toggleGovernor(window.gameState, id); updateUI(); }};
-
 window.buyResearch = buyResearch;
 window.claimQuest = claimQuest;
 window.cloudLogin = cloudLogin;
@@ -3167,6 +2943,5 @@ window.startExpedition = startExpedition;
 window.manualClick = manualClick;
 window.buyBuilding = buyBuilding;
 window.saveGame = saveGame;
-window.buyAmount = buyAmount; // expose for debug
 window.performPrestige = performPrestige;
 // Other UI helpers already attached in their definitions or shims

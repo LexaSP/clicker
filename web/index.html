@@ -23,7 +23,7 @@
             <div class="resource">
                 <span>Clicks:</span>
                 <span id="res-clicks">0</span>
-            <div style="font-size:12px;color:#95a5a6;margin-top:2px" id="res-cps">0/s | ✋ 1/click</div>
+            <div id="res-cps" style="font-size:11px;color:#95a5a6;margin-top:1px">0/s · ✋ 1/click</div>
             </div>
             <div class="resource">
                 <span>Knowledge:</span>
@@ -54,6 +54,7 @@
 
             <h3>Inventory</h3>
             <div id="inventory-list">
+                <!-- Items go here -->
                 <p>No relics yet.</p>
             </div>
         </div>
@@ -62,45 +63,50 @@
         <div id="main-area">
             <h1>History Clicker</h1>
 
-            <!-- FIX 2: removed inline onclick — event listener added in JS below -->
-            <div id="bulk-toggle" style="display:flex;gap:4px;margin:6px 0;justify-content:center">
-                <span style="color:#aaa;font-size:12px;line-height:28px">Buy:</span>
-                <button id="buy-toggle-1"   onclick="window.setBuyAmount(1)"   style="padding:3px 10px;background:#f39c12;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">×1</button>
-                <button id="buy-toggle-10"  onclick="window.setBuyAmount(10)"  style="padding:3px 10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">×10</button>
-                <button id="buy-toggle-100" onclick="window.setBuyAmount(100)" style="padding:3px 10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">×100</button>
-                <button id="buy-toggle-0"   onclick="window.setBuyAmount(0)"   style="padding:3px 10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">Max</button>
-            </div>
-            <button id="click-btn">CLICK!</button>
+            <button id="click-btn">
+                CLICK!
+            </button>
 
+            <div id="bulk-buy-bar" style="display:flex;align-items:center;gap:4px;margin:4px 0 6px;font-size:12px">
+                <span style="color:#aaa">Buy:</span>
+                <button id="buy-toggle-1"   onclick="window.setBuyAmount(1)"   style="padding:2px 8px;background:#f39c12;color:#fff;border:none;border-radius:3px;cursor:pointer">×1</button>
+                <button id="buy-toggle-10"  onclick="window.setBuyAmount(10)"  style="padding:2px 8px;background:#555;color:#fff;border:none;border-radius:3px;cursor:pointer">×10</button>
+                <button id="buy-toggle-100" onclick="window.setBuyAmount(100)" style="padding:2px 8px;background:#555;color:#fff;border:none;border-radius:3px;cursor:pointer">×100</button>
+                <button id="buy-toggle-0"   onclick="window.setBuyAmount(0)"   style="padding:2px 8px;background:#555;color:#fff;border:none;border-radius:3px;cursor:pointer">Max</button>
+            </div>
             <div id="buildings-container">
                 <h3>Buildings</h3>
                 <div id="building-list"></div>
             </div>
 
             <div id="tabs">
-                <button id="tab-btn-research"      class="tab-btn active"                   data-tab="research">Research</button>
-                <button id="tab-btn-expeditions"   class="tab-btn" style="display:none"     data-tab="expeditions">Expeditions</button>
-                <button id="tab-btn-crafting"      class="tab-btn" style="display:none"     data-tab="crafting">Crafting</button>
-                <button id="tab-btn-war"           class="tab-btn" style="display:none"     data-tab="war">War ⚔️</button>
-                <button id="tab-btn-heroes"        class="tab-btn" style="display:none"     data-tab="heroes">Heroes 🦸</button>
-                <button id="tab-btn-government"    class="tab-btn" style="display:none"     data-tab="government">Gov ⚖️</button>
-                <button id="tab-btn-achievements"  class="tab-btn"                          data-tab="achievements">Achievements</button>
+                <button id="tab-btn-research" class="tab-btn active" onclick="showTab('research')">Research</button>
+                <button id="tab-btn-expeditions" class="tab-btn" onclick="showTab('expeditions')" style="display:none">Expeditions</button>
+                <button id="tab-btn-crafting" class="tab-btn" onclick="showTab('crafting')" style="display:none">Crafting</button>
+                <button id="tab-btn-war" class="tab-btn" onclick="showTab('war')" style="display:none">War ⚔️</button>
+                <button id="tab-btn-heroes" class="tab-btn" onclick="showTab('heroes')" style="display:none">Heroes 🦸</button>
+                <button id="tab-btn-government" class="tab-btn" onclick="showTab('government')" style="display:none">Gov ⚖️</button>
+                <button id="tab-btn-achievements" class="tab-btn" onclick="showTab('achievements')">Achievements</button>
             </div>
 
             <div id="tab-content">
                 <div id="research-view" class="tab-view active">
-                    <h3>Technology Tree <button class="help-btn" data-help="research">?</button></h3>
+                    <h3>Technology Tree <button class="help-btn" onclick="showHelp('research')">?</button></h3>
                     <div id="research-container" class="tree-container">
                         <svg id="tech-tree-svg" style="width: 100%; height: 600px; position: absolute; pointer-events: none;"></svg>
+                        <!-- Tech Nodes -->
                     </div>
                 </div>
 
                 <div id="expeditions-view" class="tab-view" style="display:none;">
-                    <h3>Available Expeditions <button class="help-btn" data-help="expeditions">?</button></h3>
+                    <h3>Available Expeditions <button class="help-btn" onclick="showHelp('expeditions')">?</button></h3>
                     <div id="expedition-list">
+                        <!-- Expeditions -->
                         <p>Unlock more techs to reveal expeditions.</p>
                     </div>
+
                     <hr>
+
                     <h3>Active Expeditions</h3>
                     <div id="active-expedition-list">
                         <p>No active expeditions.</p>
@@ -108,14 +114,15 @@
                 </div>
 
                 <div id="crafting-view" class="tab-view" style="display:none;">
-                    <h3>Crafting Bench <button class="help-btn" data-help="crafting">?</button></h3>
+                    <h3>Crafting Bench <button class="help-btn" onclick="showHelp('crafting')">?</button></h3>
                     <div id="recipe-list">
+                        <!-- Recipes -->
                         <p>No recipes known.</p>
                     </div>
                 </div>
 
                 <div id="war-view" class="tab-view" style="display:none;">
-                    <h3>Civilization Wars <button class="help-btn" data-help="war">?</button></h3>
+                    <h3>Civilization Wars <button class="help-btn" onclick="showHelp('war')">?</button></h3>
                     <p id="army-power">Army Power: 0</p>
                     <div style="display:flex; gap: 20px;">
                         <div style="flex:1">
@@ -130,15 +137,18 @@
                 </div>
 
                 <div id="heroes-view" class="tab-view" style="display:none;">
-                    <h3>Hall of Heroes <button class="help-btn" data-help="heroes">?</button></h3>
+                    <h3>Hall of Heroes <button class="help-btn" onclick="showHelp('heroes')">?</button></h3>
                     <p id="gpp-display">Great People Points: 0 / 1000</p>
-                    <button id="btn-recruit-hero">Recruit Hero</button>
-                    <div id="hero-list"></div>
+                    <button onclick="recruitHeroBtn()">Recruit Hero</button>
+                    <div id="hero-list">
+                        <!-- Heroes -->
+                    </div>
                 </div>
 
                 <div id="government-view" class="tab-view" style="display:none;">
-                    <h3>Government &amp; Policies <button class="help-btn" data-help="government">?</button></h3>
+                    <h3>Government & Policies <button class="help-btn" onclick="showHelp('government')">?</button></h3>
                     <div id="gov-current" style="margin-bottom: 20px; padding: 10px; background: rgba(255,255,255,0.1);"></div>
+
                     <div style="display:flex; gap: 20px;">
                         <div style="flex:1">
                             <h4>Forms of Government</h4>
@@ -153,7 +163,9 @@
 
                 <div id="achievements-view" class="tab-view" style="display:none;">
                     <h3>Achievements</h3>
-                    <div id="achievement-list"></div>
+                    <div id="achievement-list">
+                        <!-- Achievements -->
+                    </div>
                 </div>
             </div>
         </div>
@@ -167,38 +179,38 @@
 
             <hr>
 
-            <!-- FIX 4: Dev Tools only visible on localhost -->
-            <div id="dev-tools" style="display:none;">
-                <h3>Dev Tools</h3>
-                <button id="btn-dev-clicks">+1000 Clicks</button>
-                <button id="btn-dev-reset">Reset Save</button>
-                <hr>
-            </div>
+            <h3>Dev Tools</h3>
+            <button onclick="dev_addClicks()">+1000 Clicks</button>
+            <button onclick="dev_reset()">Reset Save</button>
 
+            <hr>
             <h3>Settings</h3>
-            <button id="btn-toggle-audio">Toggle Audio</button>
-            <button id="btn-toggle-accessibility">High Contrast Mode</button>
-            <button id="btn-leaderboard">Leaderboards 🏆</button>
-            <button id="btn-stats">View Statistics 📊</button>
-            <button id="btn-download-save">Save to File 💾</button>
-            <button id="btn-load-save">Load from File 📂</button>
-            <button id="btn-mods">Mods 🛠️</button>
-            <input type="file" id="save-file-input" style="display:none">
+            <button onclick="toggleAudio()">Toggle Audio</button>
+            <button onclick="toggleAccessibility()">High Contrast Mode</button>
+            <button onclick="renderLeaderboardModal(window.gameState)">Leaderboards 🏆</button>
+            <button onclick="showStats()">View Statistics 📊</button>
+            <button onclick="downloadSave()">Save to File 💾</button>
+            <button onclick="document.getElementById('save-file-input').click()">Load from File 📂</button>
+            <button onclick="renderModdingMenu(window.gameState)">Mods 🛠️</button>
+            <input type="file" id="save-file-input" style="display:none" onchange="uploadSave(this)">
 
             <hr>
 
             <h3>Prestige</h3>
-            <button id="btn-prestige">Prestige (+0 SE)</button>
+            <button id="btn-prestige" onclick="performPrestige()">Prestige (+0 SE)</button>
 
             <div id="prestige-upgrades" style="margin-top: 10px; border-top: 1px dashed #555; padding-top: 5px;">
-                <h4>Ascension Upgrades <button class="help-btn" data-help="prestige">?</button></h4>
-                <div id="ascension-list"></div>
+                <h4>Ascension Upgrades <button class="help-btn" onclick="showHelp('prestige')">?</button></h4>
+                <div id="ascension-list">
+                    <!-- Buttons will be injected here -->
+                </div>
             </div>
 
             <hr>
 
             <h3>Daily Quests</h3>
             <div id="quest-list">
+                <!-- Quests go here -->
                 <p>No quests available.</p>
             </div>
         </div>
@@ -206,111 +218,53 @@
 
     <!-- Mobile Navigation Bar -->
     <div id="mobile-nav">
-        <button data-section="sidebar">Resources</button>
-        <button data-section="main-area">Game</button>
-        <button data-section="right-panel">Menu</button>
+        <button onclick="showMobileSection('sidebar')">Resources</button>
+        <button onclick="showMobileSection('main-area')">Game</button>
+        <button onclick="showMobileSection('right-panel')">Menu</button>
     </div>
 
     <script>
-        // ─── FIX 1: showTab — надёжная активация по data-tab ───────────────────
         function showTab(tabName) {
-            // Скрыть все вкладки
-            document.querySelectorAll('.tab-view').forEach(el => {
-                el.style.display = 'none';
-                el.classList.remove('active');
-            });
+            document.querySelectorAll('.tab-view').forEach(el => el.style.display = 'none');
+            const view = document.getElementById(`${tabName}-view`);
+            if (view) view.style.display = 'block';
 
-            // Показать нужную вкладку
-            const target = document.getElementById(`${tabName}-view`);
-            if (target) {
-                target.style.display = 'block';
-                target.classList.add('active');
+            // Use data-tab attribute for reliable matching
+            const tabs = document.getElementById('tabs');
+            if (tabs) {
+                Array.from(tabs.children).forEach(btn => {
+                    if (btn.dataset.tab === tabName) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
             }
-
-            // FIX 1: Точное совпадение по data-tab вместо heuristic includes()
-            document.querySelectorAll('#tabs .tab-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.tab === tabName);
-            });
         }
 
-        // ─── FIX 3: showMobileSection — убрана дублирующая логика ──────────────
-        function showMobileSection(sectionId) {
-            if (window.innerWidth > 768) return;
-
-            const sections = ['sidebar', 'main-area', 'right-panel'];
-            sections.forEach(id => {
-                const el = document.getElementById(id);
-                const isTarget = id === sectionId;
-                // main-area — flex, остальные — block
-                el.style.display = isTarget ? (id === 'main-area' ? 'flex' : 'block') : 'none';
-            });
-        }
-
-        // ─── FIX 4: Dev Tools — только на localhost ─────────────────────────────
-        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-            document.getElementById('dev-tools').style.display = 'block';
-        }
-
-        // ─── FIX 2: Подключение кнопок через addEventListener ───────────────────
-        // (window.manualClick и другие функции должны быть экспортированы из script.js)
+        // Wire up click button (works with type="module" scripts)
         document.addEventListener('DOMContentLoaded', () => {
-            // Главная кнопка клика
             document.getElementById('click-btn')
-                ?.addEventListener('click', () => window.manualClick?.());
-
-            // Табы — делегирование через родителя
-            document.getElementById('tabs')
-                ?.addEventListener('click', e => {
-                    const tab = e.target.dataset.tab;
-                    if (tab) showTab(tab);
-                });
-
-            // Мобильная навигация — делегирование
-            document.getElementById('mobile-nav')
-                ?.addEventListener('click', e => {
-                    const section = e.target.dataset.section;
-                    if (section) showMobileSection(section);
-                });
-
-            // Help кнопки — делегирование
-            document.addEventListener('click', e => {
-                if (e.target.classList.contains('help-btn')) {
-                    window.showHelp?.(e.target.dataset.help);
-                }
-            });
-
-            // Dev tools
-            document.getElementById('btn-dev-clicks')
-                ?.addEventListener('click', () => window.dev_addClicks?.());
-            document.getElementById('btn-dev-reset')
-                ?.addEventListener('click', () => window.dev_reset?.());
-
-            // Settings
-            document.getElementById('btn-toggle-audio')
-                ?.addEventListener('click', () => window.toggleAudio?.());
-            document.getElementById('btn-toggle-accessibility')
-                ?.addEventListener('click', () => window.toggleAccessibility?.());
-            document.getElementById('btn-leaderboard')
-                ?.addEventListener('click', () => window.renderLeaderboardModal?.(window.gameState));
-            document.getElementById('btn-stats')
-                ?.addEventListener('click', () => window.showStats?.());
-            document.getElementById('btn-download-save')
-                ?.addEventListener('click', () => window.downloadSave?.());
-            document.getElementById('btn-load-save')
-                ?.addEventListener('click', () => document.getElementById('save-file-input').click());
-            document.getElementById('save-file-input')
-                ?.addEventListener('change', function() { window.uploadSave?.(this); });
-            document.getElementById('btn-mods')
-                ?.addEventListener('click', () => window.renderModdingMenu?.(window.gameState));
-
-            // Heroes & Prestige
-            document.getElementById('btn-recruit-hero')
-                ?.addEventListener('click', () => window.recruitHeroBtn?.());
+                ?.addEventListener('click', (e) => window.manualClick?.(e));
             document.getElementById('btn-prestige')
                 ?.addEventListener('click', () => window.performPrestige?.());
         });
 
-        // ─── Init mobile view ────────────────────────────────────────────────────
+        function showMobileSection(sectionId) {
+            if (window.innerWidth > 768) return; // Only for mobile
+
+            const sections = ['sidebar', 'main-area', 'right-panel'];
+            sections.forEach(id => {
+                document.getElementById(id).style.display = (id === sectionId) ? 'flex' : 'none';
+                // Note: sidebar/right-panel display might be block, main-area is flex.
+                if (id === sectionId) {
+                     if (id === 'main-area') document.getElementById(id).style.display = 'flex';
+                     else document.getElementById(id).style.display = 'block';
+                }
+            });
+        }
+
+        // Init mobile view
         if (window.innerWidth <= 768) {
             showMobileSection('main-area');
         }
