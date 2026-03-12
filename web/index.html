@@ -254,13 +254,11 @@
             if (renders[tabName]) renders[tabName]();
         }
 
-        // Wire up click button (works with type="module" scripts)
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('click-btn')
-                ?.addEventListener('click', (e) => window.manualClick?.(e));
-            document.getElementById('btn-prestige')
-                ?.addEventListener('click', () => window.performPrestige?.());
-        });
+        // Wire up buttons — plain script runs after DOM is parsed so no DOMContentLoaded needed
+        document.getElementById('click-btn')
+            ?.addEventListener('click', (e) => window.manualClick?.(e));
+        document.getElementById('btn-prestige')
+            ?.addEventListener('click', () => window.performPrestige?.());
 
         function showMobileSection(sectionId) {
             if (window.innerWidth > 768) return; // Only for mobile

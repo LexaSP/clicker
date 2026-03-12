@@ -445,14 +445,12 @@ button:not(.tab-btn):not(#click-btn):active {
 .tree-container {
     width: 100%;
     height: 600px;
-    overflow: auto;           /* SCROLLABLE */
+    overflow: auto;
     position: relative;
     background: rgba(0,0,0,0.2);
     border-radius: var(--radius-lg);
     border: 1px solid rgba(255,255,255,0.05);
     cursor: grab;
-    position: relative;
-    overflow: hidden; /* For panning */
 }
 
 #tech-tree-svg {
