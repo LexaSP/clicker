@@ -735,6 +735,35 @@ function tick(dt) {
     }
 }
 
+
+// ─── MODAL ESC + BACKDROP CLOSE ──────────────────────────────────────────────
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        // Close topmost closeable modal
+        const closeable = ['story-modal', 'challenge-modal', 'ascension-modal'];
+        for (const id of closeable) {
+            const el = document.getElementById(id);
+            if (el) { document.body.removeChild(el); return; }
+        }
+    }
+});
+
+// Backdrop click on event-modal should NOT auto-close (player must pick an option)
+// But story/challenge/ascension modals can close on backdrop click
+['story-modal', 'challenge-modal', 'ascension-modal'].forEach(id => {
+    // Wired dynamically when modal is opened — see patchModalBackdrop()
+});
+
+function patchModalBackdrop(modalId) {
+    const el = document.getElementById(modalId);
+    if (!el) return;
+    el.addEventListener('click', function(e) {
+        if (e.target === el) {  // clicked backdrop, not content
+            document.body.removeChild(el);
+        }
+    });
+}
+
 window.renderStoryModal = function() {
     if (document.getElementById("story-modal")) return;
 
@@ -802,8 +831,24 @@ function renderEventModal(event) {
             <div class="event-options">
                 ${optionsHtml}
             </div>
+            <div style="margin-top:8px;text-align:right">
+                <small style="color:#555;font-size:10px">Press ESC or click outside to dismiss</small>
+            </div>
         </div>
     `;
+
+    // Allow backdrop click to dismiss event modal if ALL options are disabled
+    setTimeout(() => {
+        const m = document.getElementById('event-modal');
+        if (!m) return;
+        const allDisabled = Array.from(m.querySelectorAll('.event-option-btn')).every(b => b.disabled);
+        if (allDisabled) {
+            m.addEventListener('click', e => { if (e.target === m && document.getElementById('event-modal')) document.body.removeChild(m); });
+        }
+        // Also wire ESC
+        m._escHandler = (e) => { if (e.key === 'Escape' && allDisabled && document.getElementById('event-modal')) { document.body.removeChild(m); document.removeEventListener('keydown', m._escHandler); }};
+        document.addEventListener('keydown', m._escHandler);
+    }, 100);
 
     document.body.appendChild(modal);
 }
@@ -3376,6 +3421,7 @@ window.completeExpedition = completeExpedition;
 window.renderExpeditions  = renderExpeditions;
 window.renderCrafting     = renderCrafting;
 window.renderWar          = renderWar;
+window.retreatBattle      = retreatBattle;
 window.renderHeroes       = renderHeroes;
 window.renderGovernment   = renderGovernment;
 window.renderAchievements = renderAchievements;

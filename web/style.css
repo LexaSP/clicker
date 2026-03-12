@@ -517,7 +517,7 @@ button:not(.tab-btn):not(#click-btn):active {
 /* =========================================
    7. MODALS & OVERLAYS
    ========================================= */
-.modal-overlay { /* Assuming JS creates this class */
+.modal-overlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -525,10 +525,17 @@ button:not(.tab-btn):not(#click-btn):active {
     height: 100%;
     background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(8px);
-    z-index: 1000;
+    z-index: 9000;          /* high enough to cover everything */
     display: flex;
     justify-content: center;
     align-items: center;
+    pointer-events: all;    /* ensure clicks captured */
+    cursor: default;
+}
+.modal-overlay .modal-content {
+    pointer-events: all;
+    position: relative;
+    z-index: 9001;
 }
 
 .modal-content {
