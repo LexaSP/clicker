@@ -540,7 +540,8 @@ function calculateProduction(state, dt = 0, applyCosts = false) {
                 for (let res in b.produces) {
                     const amount = b.produces[res] * b.count * dt * efficiency;
                     if (state.resources[res] !== undefined) {
-                        const max = state.maxStorage || 10000;
+                        const _sm = {"Stone Age":10000,"Bronze Age":50000,"Iron Age":200000,"Middle Ages":500000,"Renaissance":1000000,"Industrial Age":5000000,"Modern Age":20000000,"Information Age":100000000,"Future Age":1000000000};
+                        const max = _sm[state.era] || 10000;
                         state.resources[res] = Math.min(max, state.resources[res] + amount);
                     }
                 }
@@ -562,12 +563,25 @@ function tick(dt) {
     // Production
     const currentProduction = calculateProduction(gameState, dt, true);
 
-    // Knowledge
-    let knowledgeProd = 0;
-    if (gameState.buildings["University"]) knowledgeProd += gameState.buildings["University"].count * gameState.buildings["University"].production;
-    if (gameState.buildings["Lab"]) knowledgeProd += gameState.buildings["Lab"].count * gameState.buildings["Lab"].production;
+    // Knowledge — base 0.1/s + tech flat bonuses + buildings
+    let knowledgeProd = 0.1;
+    (gameState.researched||[]).forEach(id => {
+        const t = (window.allResearch||[]).find(x=>x.id===id);
+        if (t && t.effect && t.effect.type === "knowledge_flat") knowledgeProd += t.effect.value;
+    });
+    if (gameState.buildings["University"])    knowledgeProd += gameState.buildings["University"].count    * gameState.buildings["University"].production;
+    if (gameState.buildings["Lab"])           knowledgeProd += gameState.buildings["Lab"].count           * gameState.buildings["Lab"].production;
     if (gameState.buildings["Supercomputer"]) knowledgeProd += gameState.buildings["Supercomputer"].count * gameState.buildings["Supercomputer"].production;
     knowledgeProd *= getGlobalMultiplier("production_mult", "knowledge");
+
+    // Culture — base 0.05/s + tech flat bonuses
+    let cultureProd = 0.05;
+    (gameState.researched||[]).forEach(id => {
+        const t = (window.allResearch||[]).find(x=>x.id===id);
+        if (t && t.effect && t.effect.type === "culture_flat") cultureProd += t.effect.value;
+    });
+    cultureProd *= getGlobalMultiplier("production_mult", "culture");
+    gameState.resources.culture = (gameState.resources.culture||0) + cultureProd * dt;
 
     // Money
     let moneyProd = 0;
@@ -617,7 +631,8 @@ function tick(dt) {
             if (["money", "knowledge", "clicks", "culture"].includes(res)) {
                 gameState.resources[res] += val;
             } else {
-                const max = gameState.maxStorage || 10000;
+                const _eraStorageMap = {"Stone Age":10000,"Bronze Age":50000,"Iron Age":200000,"Middle Ages":500000,"Renaissance":1000000,"Industrial Age":5000000,"Modern Age":20000000,"Information Age":100000000,"Future Age":1000000000};
+    const max = _eraStorageMap[gameState.era] || 10000;
                 gameState.resources[res] = Math.min(max, gameState.resources[res] + val);
             }
         }
@@ -962,6 +977,17 @@ window.claimQuest = function(questId) {
 };
 
 // --- Mechanics ---
+
+function addGameLog(msg) {
+    const log = document.getElementById("game-log");
+    if (!log) return;
+    const p = document.createElement("p");
+    p.style.cssText = "margin:2px 0;font-size:11px;border-bottom:1px solid #2a2a2a;padding:2px 0";
+    p.textContent = new Date().toLocaleTimeString("en",{hour12:false,hour:"2-digit",minute:"2-digit"}) + " " + msg;
+    log.prepend(p);
+    while (log.children.length > 60) log.removeChild(log.lastChild);
+}
+
 function getGlobalMultiplier(type, resource = null) {
     let mult = 1.0;
     // Relics & Crafted Items
@@ -987,12 +1013,27 @@ function getGlobalMultiplier(type, resource = null) {
         });
     }
 
-    // Techs
+    // Techs — handle all effect types
     gameState.researched.forEach(techId => {
         const tech = allResearch.find(t => t.id === techId);
-        if (tech && tech.effect.type === "production_multiplier" && type === "production") {
-            mult *= tech.effect.value;
-        }
+        if (!tech || !tech.effect) return;
+        const e = tech.effect;
+        // production multipliers
+        if (e.type === "production_multiplier" && type === "production") mult *= e.value;
+        if (e.type === "production_mult" && type === "production") mult *= e.value;
+        if (e.type === "production_mult" && type === "production_mult" && (!resource || e.resource === resource || e.resource === "clicks")) mult *= e.value;
+        // resource-specific multipliers
+        if (e.type === "knowledge_mult" && type === "production_mult" && resource === "knowledge") mult *= e.value;
+        if (e.type === "money_mult"     && type === "production_mult" && resource === "money")     mult *= e.value;
+        if (e.type === "culture_mult"   && type === "production_mult" && resource === "culture")   mult *= e.value;
+        // click multiplier
+        if (e.type === "click_mult" && type === "click") mult *= e.value;
+        // cost reduction
+        if (e.type === "building_cost_reduction" && type === "cost") mult *= e.value;
+        // army
+        if (e.type === "army_mult" && type === "army") mult *= e.value;
+        // upkeep reduction
+        if (e.type === "upkeep_reduction" && type === "upkeep") mult *= e.value;
     });
 
     // Cap cost reduction
@@ -1210,11 +1251,27 @@ window.buyResearch = function(techId) {
             if (!gameState.stats.techsResearched) gameState.stats.techsResearched = 0;
             gameState.stats.techsResearched++;
 
-            updateUI();
+            // Apply one-time effects
+            const ef = tech.effect;
+            if (ef) {
+                if (ef.type === "unlock_tab") {
+                    const tabEl = document.getElementById(ef.tab);
+                    if (tabEl) { tabEl.style.removeProperty("display"); tabEl.style.display = "inline-block"; }
+                    addGameLog("🔓 Unlocked: " + ef.tab.replace("tab-btn-","").toUpperCase());
+                }
+                if (ef.type === "unlock_space_tab") {
+                    const spEl = document.getElementById("tab-btn-space");
+                    if (spEl) { spEl.style.removeProperty("display"); spEl.style.display = "inline-block"; }
+                    addGameLog("🚀 Space Exploration unlocked!");
+                }
+                if (ef.type === "building_unlock") addGameLog("🏗️ Building unlocked: " + ef.building);
+                if (ef.type === "trigger_victory") setTimeout(() => { if (typeof renderVictoryModal === "function") renderVictoryModal(); }, 500);
+            }
+            addGameLog("🔬 Researched: " + tech.name + (tech.effectDesc ? " — " + tech.effectDesc : ""));
 
-            // Force Reactivity
+            updateUI();
             renderResearchTree();
-            updateVisibility(); // Show unlocked stuff
+            updateVisibility();
         }
     }
 };
@@ -1391,7 +1448,8 @@ function calculateOfflineProgress(seconds) {
             }
         } else {
             // Physical: Clamp [0, maxStorage]
-            const max = gameState.maxStorage || 10000;
+            const _eraStorageMap = {"Stone Age":10000,"Bronze Age":50000,"Iron Age":200000,"Middle Ages":500000,"Renaissance":1000000,"Industrial Age":5000000,"Modern Age":20000000,"Information Age":100000000,"Future Age":1000000000};
+    const max = _eraStorageMap[gameState.era] || 10000;
             gameState.resources[res] = Math.max(0, Math.min(max, gameState.resources[res]));
         }
     }
@@ -1551,40 +1609,50 @@ function checkEraProgress() {
 function updateVisibility() {
     const currentEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
 
-    // Feature unlocks
+    // Feature unlocks — tabs open via ERA or specific TECH research
+    const techUnlockedTabs = new Set();
+    (gameState.researched || []).forEach(techId => {
+        const tech = (window.allResearch || []).find(t => t.id === techId);
+        if (!tech || !tech.effect) return;
+        if (tech.effect.type === "unlock_tab") techUnlockedTabs.add(tech.effect.tab);
+        if (tech.effect.type === "unlock_space_tab") techUnlockedTabs.add("tab-btn-space");
+    });
+
     for (let id in FEATURE_UNLOCKS) {
         const req = FEATURE_UNLOCKS[id];
         const reqEraIdx = ERA_DATA.findIndex(e => e.name === req.era);
+        const byEra  = currentEraIdx >= reqEraIdx;
+        const byTech = techUnlockedTabs.has(id);
+        const show   = byEra || byTech;
 
         const el = document.getElementById(id);
         if (el) {
-            // Retroactive Locking: Even if it was visible before, if currentEra < reqEra, FORCE HIDE
-            if (currentEraIdx >= reqEraIdx) {
-                // Show only if hidden, to avoid flicker or style resets
-                if (el.style.display === "none") {
+            if (show) {
+                if (el.style.display === "none" || el.style.display === "") {
+                    el.style.removeProperty("display");
                     el.style.display = "inline-block";
                 }
             } else {
-                // STRICT HIDING / RETROACTIVE LOCK
                 el.style.display = "none";
-                el.style.setProperty("display", "none", "important"); // Force override
-
-                // ALSO Hide the view content if it's currently active to prevent ghost views
-                // Derive view ID from btn ID (heuristic: tab-btn-X -> X-view)
+                el.style.setProperty("display", "none", "important");
                 const viewId = id.replace("tab-btn-", "") + "-view";
                 const viewEl = document.getElementById(viewId);
                 if (viewEl) {
                     viewEl.style.display = "none";
                     viewEl.style.setProperty("display", "none", "important");
                 }
-
-                // If this tab was active, switch to Research
-                if (el.classList.contains("active")) {
-                    showTab("research");
-                }
+                if (el.classList.contains("active")) showTab("research");
             }
         }
     }
+    // Also check any extra tabs added dynamically
+    techUnlockedTabs.forEach(tabId => {
+        const el = document.getElementById(tabId);
+        if (el && (el.style.display === "none" || el.style.display === "")) {
+            el.style.removeProperty("display");
+            el.style.display = "inline-block";
+        }
+    });
 
     // STRICT ERA GATING FOR BUILDINGS
     Object.keys(gameState.buildings).forEach(key => {
@@ -2368,6 +2436,16 @@ function updateUI() {
             starBtn.style.display = "none";
         }
     }
+
+    // ── Re-render active tab panels ──────────────────────────────────────
+    const activeView = document.querySelector(".tab-view[style*='block'], .tab-view.active");
+    const activeId = activeView ? activeView.id : "";
+    if (activeId === "expeditions-view")  renderExpeditions();
+    if (activeId === "crafting-view")     renderCrafting();
+    if (activeId === "war-view")          renderWar();
+    if (activeId === "heroes-view")       renderHeroes();
+    if (activeId === "government-view")   renderGovernment();
+    if (activeId === "achievements-view") renderAchievements();
 }
 
 window.renderResearchTree = function() {
@@ -2560,6 +2638,359 @@ window.renderResearchTree = function() {
 
 
 // --- Victory & Endgame ---
+
+
+// ─── CRAFTING ──────────────────────────────────────────────────────────────
+function renderCrafting() {
+    const list = document.getElementById("recipe-list");
+    if (!list) return;
+
+    const recipes = window.allRecipes || [];
+    if (recipes.length === 0) {
+        list.innerHTML = "<p style='color:#888'>No recipes yet. Research crafting technologies.</p>";
+        return;
+    }
+
+    // Filter by era
+    const curEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
+    const available = recipes.filter(r => {
+        const reqIdx = ERA_DATA.findIndex(e => e.name === (r.era || "Stone Age"));
+        return curEraIdx >= reqIdx;
+    });
+
+    list.innerHTML = "";
+    available.forEach(recipe => {
+        const owned = (gameState.craftedItems || []).filter(i => i.id === recipe.id).length;
+        const costStr = Object.entries(recipe.cost || {}).map(([k,v]) => `${formatNumber(v)} ${k}`).join(", ");
+        const canAfford = Object.entries(recipe.cost || {}).every(([k,v]) => (gameState.resources[k]||0) >= v);
+
+        const div = document.createElement("div");
+        div.style.cssText = "border:1px solid #555;padding:10px;margin-bottom:8px;background:rgba(0,0,0,0.3);border-radius:6px;display:flex;justify-content:space-between;align-items:center";
+        div.innerHTML = `
+            <div>
+                <div style="font-weight:bold">${recipe.icon||"⚒️"} ${recipe.name} ${owned>0?`<span style='color:#2ecc71;font-size:10px'>(×${owned})</span>`:""}</div>
+                <div style="font-size:11px;color:#aaa">${recipe.description||recipe.effectDesc||""}</div>
+                <div style="font-size:11px">Cost: ${costStr}</div>
+            </div>
+            <button onclick="window.craftItem('${recipe.id}')"
+                style="padding:4px 12px;background:${canAfford?'#8e44ad':'#444'};color:#fff;border:none;border-radius:4px;cursor:${canAfford?'pointer':'default'};white-space:nowrap"
+                ${canAfford?'':'disabled'}>
+                ${canAfford ? "Craft" : "Need resources"}
+            </button>
+        `;
+        list.appendChild(div);
+    });
+}
+
+window.craftItem = function(recipeId) {
+    const recipe = (window.allRecipes || []).find(r => r.id === recipeId);
+    if (!recipe) return;
+    for (let res in (recipe.cost||{})) {
+        if ((gameState.resources[res]||0) < recipe.cost[res]) {
+            addGameLog("❌ Not enough " + res + " to craft " + recipe.name); return;
+        }
+    }
+    for (let res in (recipe.cost||{})) gameState.resources[res] -= recipe.cost[res];
+    if (!gameState.craftedItems) gameState.craftedItems = [];
+    gameState.craftedItems.push({ ...recipe, id: recipe.id });
+    if (!gameState.stats) gameState.stats = {};
+    gameState.stats.itemsCrafted = (gameState.stats.itemsCrafted || 0) + 1;
+    addGameLog("⚒️ Crafted: " + recipe.name + " — " + (recipe.effectDesc||""));
+    renderCrafting();
+    updateUI();
+};
+
+
+// ─── WAR ───────────────────────────────────────────────────────────────────
+function renderWar() {
+    const unitList = document.getElementById("unit-list");
+    const rivalList = document.getElementById("rival-list");
+    const armyPow = document.getElementById("army-power");
+    if (!gameState.army) gameState.army = {};
+
+    const curEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
+
+    // Army power
+    const power = calculateArmyPower(gameState.army);
+    if (armyPow) armyPow.textContent = "⚔️ Army Power: " + formatNumber(power);
+
+    // Units
+    if (unitList) {
+        unitList.innerHTML = "";
+        Object.entries(UNITS).forEach(([key, unit]) => {
+            const unitEraIdx = ERA_DATA.findIndex(e => e.name === (unit.era||"Stone Age"));
+            if (curEraIdx < unitEraIdx) return;
+            const owned = gameState.army[key] || 0;
+            const costStr = Object.entries(unit.cost||{}).map(([k,v])=>`${formatNumber(v)} ${k}`).join(", ");
+            const canAfford = Object.entries(unit.cost||{}).every(([k,v])=>(gameState.resources[k]||0)>=v);
+            const div = document.createElement("div");
+            div.style.cssText = "border:1px solid #555;padding:8px;margin-bottom:6px;background:rgba(0,0,0,0.3);border-radius:5px;display:flex;justify-content:space-between;align-items:center";
+            div.innerHTML = `
+                <div>
+                    <span style="font-size:18px">${unit.icon}</span>
+                    <strong> ${unit.name}</strong>
+                    <span style="font-size:10px;color:#888"> (owned: ${owned})</span><br>
+                    <span style="font-size:11px">ATK:${unit.attack} HP:${unit.health} · ${costStr}</span>
+                </div>
+                <button onclick="window.trainUnit('${key}')"
+                    style="padding:3px 10px;background:${canAfford?'#c0392b':'#444'};color:#fff;border:none;border-radius:3px;cursor:${canAfford?'pointer':'default'}"
+                    ${canAfford?'':'disabled'}>Train</button>
+            `;
+            unitList.appendChild(div);
+        });
+    }
+
+    // Rivals
+    if (rivalList) {
+        rivalList.innerHTML = "";
+        RIVALS.forEach((rival, idx) => {
+            const lootStr = Object.entries(rival.loot||{}).map(([k,v])=>`${formatNumber(v)} ${k}`).join(", ");
+            const canFight = power > 0 && !gameState.battle?.active;
+            const div = document.createElement("div");
+            div.style.cssText = "border:1px solid #7f8c8d;padding:8px;margin-bottom:6px;background:rgba(0,0,0,0.3);border-radius:5px";
+            div.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <strong>⚔️ ${rival.name}</strong><br>
+                        <span style="font-size:11px">Power: ${formatNumber(rival.power)} · Loot: ${lootStr}</span>
+                    </div>
+                    <button onclick="window.attackRival(${idx})"
+                        style="padding:3px 10px;background:${canFight?'#c0392b':'#555'};color:#fff;border:none;border-radius:3px;cursor:${canFight?'pointer':'default'}"
+                        ${canFight?'':'disabled'}>Attack</button>
+                </div>
+            `;
+            rivalList.appendChild(div);
+        });
+        // Battle status
+        if (gameState.battle?.active) {
+            const b = gameState.battle;
+            const pct = Math.round((b.playerPower / (b.playerPower + b.rivalPower + 0.001)) * 100);
+            const bDiv = document.createElement("div");
+            bDiv.style.cssText = "border:2px solid #e74c3c;padding:10px;margin-top:10px;border-radius:6px;background:rgba(231,76,60,0.1)";
+            bDiv.innerHTML = `
+                <strong>🔥 BATTLE IN PROGRESS: ${b.rivalName}</strong><br>
+                <div style="background:#333;border-radius:3px;height:8px;margin:5px 0">
+                    <div style="background:#2ecc71;width:${pct}%;height:100%;border-radius:3px;transition:width 0.3s"></div>
+                </div>
+                <span style="font-size:11px">Your power: ${formatNumber(b.playerPower)} vs ${formatNumber(b.rivalPower)}</span><br>
+                <button onclick="window.retreatBattle(gameState);renderWar();" style="margin-top:5px;padding:3px 10px;background:#e67e22;color:#fff;border:none;border-radius:3px;cursor:pointer">Retreat</button>
+            `;
+            rivalList.appendChild(bDiv);
+        }
+    }
+}
+
+window.trainUnit = function(key) {
+    const unit = UNITS[key];
+    if (!unit) return;
+    for (let res in (unit.cost||{})) {
+        if ((gameState.resources[res]||0) < unit.cost[res]) {
+            addGameLog("❌ Not enough " + res + " to train " + unit.name); return;
+        }
+    }
+    for (let res in (unit.cost||{})) gameState.resources[res] -= unit.cost[res];
+    if (!gameState.army) gameState.army = {};
+    gameState.army[key] = (gameState.army[key]||0) + 1;
+    addGameLog("⚔️ Trained: " + unit.icon + " " + unit.name);
+    renderWar();
+    updateUI();
+};
+
+window.attackRival = function(rivalIdx) {
+    const result = startBattle(gameState, rivalIdx, "default", getGlobalMultiplier("army", null));
+    if (!result.success) { addGameLog("❌ " + result.msg); }
+    else { addGameLog("⚔️ Battle started vs " + RIVALS[rivalIdx].name + "!"); }
+    renderWar();
+};
+
+
+// ─── HEROES ────────────────────────────────────────────────────────────────
+function renderHeroes() {
+    const gppEl = document.getElementById("gpp-display");
+    const heroList = document.getElementById("hero-list");
+    if (!gameState.heroes) gameState.heroes = { owned: [], gpp: 0, threshold: 1000 };
+
+    if (gppEl) {
+        const pct = Math.round((gameState.heroes.gpp / gameState.heroes.threshold) * 100);
+        gppEl.innerHTML = `
+            <span>Great People Points: ${formatNumber(Math.floor(gameState.heroes.gpp))} / ${formatNumber(gameState.heroes.threshold)}</span>
+            <div style="background:#333;border-radius:3px;height:6px;margin:4px 0;width:200px">
+                <div style="background:#f39c12;width:${Math.min(100,pct)}%;height:100%;border-radius:3px;transition:width 0.5s"></div>
+            </div>
+        `;
+    }
+
+    if (heroList) {
+        heroList.innerHTML = "";
+        if (gameState.heroes.owned.length === 0) {
+            heroList.innerHTML = "<p style='color:#888'>No great people yet. Gain GPP to recruit.</p>";
+        } else {
+            gameState.heroes.owned.forEach(hero => {
+                const div = document.createElement("div");
+                div.style.cssText = "border:1px solid #f39c12;padding:10px;margin-bottom:8px;background:rgba(243,156,18,0.1);border-radius:6px;display:flex;align-items:center;gap:12px";
+                div.innerHTML = `
+                    <span style="font-size:32px">${hero.icon||"👑"}</span>
+                    <div>
+                        <div style="font-weight:bold;font-size:14px">${hero.name}</div>
+                        <div style="font-size:11px;color:#f39c12">${hero.title||""}</div>
+                        <div style="font-size:11px;color:#2ecc71">${hero.desc||""}</div>
+                    </div>
+                `;
+                heroList.appendChild(div);
+            });
+        }
+
+        // All available heroes grid
+        const allHeroDiv = document.createElement("div");
+        allHeroDiv.innerHTML = "<h4 style='color:#888;font-size:12px;margin:10px 0 6px'>Available to Recruit:</h4>";
+        const grid = document.createElement("div");
+        grid.style.cssText = "display:flex;flex-wrap:wrap;gap:6px";
+        HEROES.forEach(hero => {
+            const owned = gameState.heroes.owned.some(h => h.id === hero.id);
+            if (owned) return;
+            const span = document.createElement("div");
+            span.style.cssText = `padding:6px;background:#222;border:1px solid #444;border-radius:5px;font-size:11px;text-align:center;min-width:80px;opacity:${gameState.heroes.gpp >= gameState.heroes.threshold ? 1 : 0.5}`;
+            span.title = hero.desc || "";
+            span.innerHTML = `${hero.icon||"👤"}<br>${hero.name}<br><span style='color:#888'>${hero.type}</span>`;
+            grid.appendChild(span);
+        });
+        allHeroDiv.appendChild(grid);
+        heroList.appendChild(allHeroDiv);
+    }
+}
+
+window.recruitHeroBtn = function() {
+    if (!gameState.heroes) gameState.heroes = { owned: [], gpp: 0, threshold: 1000 };
+    if (gameState.heroes.gpp < gameState.heroes.threshold) {
+        addGameLog("❌ Need " + formatNumber(gameState.heroes.threshold) + " GPP to recruit");
+        return;
+    }
+    const hero = recruitHero(gameState);
+    if (hero) {
+        addGameLog("👑 Great Person recruited: " + hero.icon + " " + hero.name + " — " + (hero.desc||""));
+        renderHeroes();
+        updateUI();
+    } else {
+        addGameLog("All great people already recruited!");
+    }
+};
+
+
+// ─── GOVERNMENT ────────────────────────────────────────────────────────────
+function renderGovernment() {
+    const curGovEl = document.getElementById("gov-current");
+    const govList  = document.getElementById("gov-list");
+    const polList  = document.getElementById("policy-list");
+    if (!gameState.government) gameState.government = { active: "gov_tribal", policies: [] };
+
+    const curGovId = gameState.government.active || "gov_tribal";
+    const curGov   = GOVERNMENTS.find(g => g.id === curGovId);
+
+    if (curGovEl && curGov) {
+        curGovEl.innerHTML = `
+            <div style="font-size:18px">${curGov.icon||"⚖️"}</div>
+            <div style="font-weight:bold">${curGov.name}</div>
+            <div style="font-size:11px;color:#aaa;margin-top:4px">${curGov.description||""}</div>
+            <div style="font-size:11px;color:#2ecc71;margin-top:4px">${
+                Object.entries(curGov.effect||{}).map(([k,v])=>`${k}: ×${v}`).join(" · ")
+            }</div>
+        `;
+    }
+
+    if (govList) {
+        govList.innerHTML = "";
+        const curEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
+        GOVERNMENTS.forEach(gov => {
+            const reqIdx = ERA_DATA.findIndex(e => e.name === (gov.era||"Stone Age"));
+            if (curEraIdx < reqIdx) return;
+            const isActive = gov.id === curGovId;
+            const div = document.createElement("div");
+            div.style.cssText = `border:1px solid ${isActive?'#f39c12':'#555'};padding:8px;margin-bottom:6px;background:${isActive?'rgba(243,156,18,0.1)':'rgba(0,0,0,0.3)'};border-radius:5px;display:flex;justify-content:space-between;align-items:center`;
+            div.innerHTML = `
+                <div>
+                    <div style="font-weight:bold">${gov.icon||"⚖️"} ${gov.name} ${isActive?'<span style="color:#f39c12">(Active)</span>':''}</div>
+                    <div style="font-size:11px;color:#aaa">${gov.description||""}</div>
+                    <div style="font-size:11px;color:#2ecc71">${
+                        Object.entries(gov.effect||{}).map(([k,v])=>`${k}: ×${v}`).join(" · ")
+                    }</div>
+                </div>
+                ${!isActive ? `<button onclick="window.adoptGovBtn('${gov.id}')"
+                    style="padding:3px 10px;background:#2980b9;color:#fff;border:none;border-radius:3px;cursor:pointer">Adopt</button>` : ''}
+            `;
+            govList.appendChild(div);
+        });
+    }
+
+    if (polList) {
+        polList.innerHTML = "";
+        POLICIES.forEach(pol => {
+            const isActive = (gameState.government.policies||[]).includes(pol.id);
+            const reqGov = pol.requires ? GOVERNMENTS.find(g => g.id === pol.requires) : null;
+            const govOK  = !pol.requires || gameState.government.active === pol.requires;
+            const div = document.createElement("div");
+            div.style.cssText = `border:1px solid ${isActive?'#2ecc71':'#555'};padding:8px;margin-bottom:5px;background:${isActive?'rgba(46,204,113,0.1)':'rgba(0,0,0,0.2)'};border-radius:4px;display:flex;justify-content:space-between;align-items:center;opacity:${govOK?1:0.5}`;
+            div.innerHTML = `
+                <div>
+                    <div style="font-weight:bold;font-size:12px">${pol.name} ${isActive?'✅':''}</div>
+                    <div style="font-size:10px;color:#aaa">${pol.description||""}</div>
+                    ${reqGov ? `<div style="font-size:10px;color:#f39c12">Requires: ${reqGov.name}</div>` : ''}
+                </div>
+                <button onclick="window.togglePolicyBtn('${pol.id}')"
+                    style="padding:2px 8px;background:${isActive?'#c0392b':govOK?'#27ae60':'#444'};color:#fff;border:none;border-radius:3px;cursor:${govOK?'pointer':'default'}"
+                    ${govOK?'':'disabled'}>${isActive?'Repeal':'Enact'}</button>
+            `;
+            polList.appendChild(div);
+        });
+    }
+}
+
+window.adoptGovBtn = function(govId) {
+    const result = adoptGovernment(gameState, govId);
+    if (result && result.success === false) { addGameLog("❌ " + result.msg); return; }
+    addGameLog("⚖️ Government changed to: " + (GOVERNMENTS.find(g=>g.id===govId)?.name||govId));
+    renderGovernment();
+    updateUI();
+};
+window.togglePolicyBtn = function(polId) {
+    togglePolicy(gameState, polId);
+    const pol = POLICIES.find(p=>p.id===polId);
+    const active = (gameState.government.policies||[]).includes(polId);
+    addGameLog((active?"✅ Enacted":"🚫 Repealed") + ": " + (pol?.name||polId));
+    renderGovernment();
+    updateUI();
+};
+
+
+// ─── ACHIEVEMENTS ──────────────────────────────────────────────────────────
+function renderAchievements() {
+    const container = document.getElementById("achievements-list");
+    if (!container) return;
+    if (!gameState.achievements) gameState.achievements = [];
+
+    const unlocked = ACHIEVEMENTS.filter(a => gameState.achievements.includes(a.id));
+    const locked   = ACHIEVEMENTS.filter(a => !gameState.achievements.includes(a.id));
+
+    container.innerHTML = `
+        <div style="color:#f39c12;margin-bottom:8px;font-weight:bold">
+            🏆 ${unlocked.length} / ${ACHIEVEMENTS.length} Achievements Unlocked
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+            ${unlocked.map(a => `
+                <div style="border:1px solid #f39c12;background:rgba(243,156,18,0.1);border-radius:6px;padding:8px;min-width:120px;max-width:160px;text-align:center" title="${a.desc||''}">
+                    <div style="font-size:22px">${a.icon||"🏅"}</div>
+                    <div style="font-weight:bold;font-size:11px">${a.name}</div>
+                    <div style="font-size:10px;color:#aaa">${a.desc||""}</div>
+                </div>
+            `).join("")}
+            ${locked.map(a => `
+                <div style="border:1px solid #333;background:rgba(0,0,0,0.3);border-radius:6px;padding:8px;min-width:120px;max-width:160px;text-align:center;opacity:0.4" title="Locked">
+                    <div style="font-size:22px">🔒</div>
+                    <div style="font-weight:bold;font-size:11px;color:#555">${a.name}</div>
+                </div>
+            `).join("")}
+        </div>
+    `;
+}
 
 function renderVictoryModal() {
     if (document.getElementById("victory-modal")) return;
@@ -2825,32 +3256,37 @@ function renderExpeditions() {
     const list = document.getElementById("expedition-list");
     if (!list) return;
 
-    if (!gameState.expeditions || gameState.expeditions.length === 0) {
-        // Fallback or init
-        // For MVP, hardcode some available expeditions if none exist
-        gameState.expeditions = [
-            { id: "exp_scout", name: "Scout Wilderness", cost: { food: 50 }, duration: 5, rewardDesc: "Random Resources" },
-            { id: "exp_ruins", name: "Explore Ruins", cost: { food: 200, money: 50 }, duration: 15, rewardDesc: "Relic Chance" }
-        ];
-    }
-
-    list.innerHTML = "";
-    gameState.expeditions.forEach(exp => {
-        const div = document.createElement("div");
-        div.className = "expedition-card";
-        div.style.border = "1px solid #7f8c8d";
-        div.style.padding = "10px";
-        div.style.marginBottom = "10px";
-        div.style.background = "rgba(0,0,0,0.3)";
-        div.innerHTML = `
-            <strong>${exp.name}</strong><br>
-            <small>Cost: ${Object.entries(exp.cost).map(([k,v]) => `${v} ${k}`).join(", ")}</small><br>
-            <small>Duration: ${exp.duration}s</small><br>
-            <button onclick="startExpedition('${exp.id}')" style="margin-top:5px;">Send Expedition</button>
-        `;
-        list.appendChild(div);
+    // Use generated expeditions from content-gen, filtered by era
+    const available = (window.allExpeditions || []).filter(exp => {
+        const expEraIdx = ERA_DATA.findIndex(e => e.name === (exp.era || "Stone Age"));
+        const curEraIdx = ERA_DATA.findIndex(e => e.name === gameState.era);
+        return curEraIdx >= expEraIdx;
     });
 
+    if (available.length === 0) {
+        list.innerHTML = "<p style='color:#888'>No expeditions available yet. Advance your era.</p>";
+    } else {
+        list.innerHTML = "";
+        available.forEach(exp => {
+            const alreadyActive = (gameState.activeExpeditions || []).some(a => a.id === exp.id);
+            const costStr = Object.entries(exp.cost || {}).map(([k,v]) => `${formatNumber(v)} ${k}`).join(", ") || "Free";
+            const canAfford = Object.entries(exp.cost || {}).every(([k,v]) => (gameState.resources[k]||0) >= v);
+            const div = document.createElement("div");
+            div.style.cssText = "border:1px solid #555;padding:10px;margin-bottom:8px;background:rgba(0,0,0,0.3);border-radius:6px";
+            div.innerHTML = `
+                <div style="font-weight:bold">${exp.icon||"🗺️"} ${exp.name}</div>
+                <div style="font-size:11px;color:#aaa;margin:3px 0">${exp.description||""}</div>
+                <div style="font-size:11px">Cost: ${costStr} · Duration: ${exp.duration}s</div>
+                <div style="font-size:11px;color:#f1c40f">Reward: ${exp.rewardDesc||"Resources"}</div>
+                <button onclick="window.startExpedition('${exp.id}')"
+                    style="margin-top:5px;padding:3px 10px;background:${alreadyActive?'#555':canAfford?'#2980b9':'#444'};color:#fff;border:none;border-radius:3px;cursor:${canAfford&&!alreadyActive?'pointer':'default'}"
+                    ${alreadyActive||!canAfford?'disabled':''}>
+                    ${alreadyActive ? "Active" : canAfford ? "Send" : "Need resources"}
+                </button>
+            `;
+            list.appendChild(div);
+        });
+    }
     renderActiveExpeditions();
 }
 
@@ -2907,26 +3343,28 @@ window.startExpedition = function(expId) {
 };
 
 function completeExpedition(exp) {
-    // Remove from active
-    gameState.activeExpeditions = gameState.activeExpeditions.filter(e => e !== exp);
+    gameState.activeExpeditions = (gameState.activeExpeditions || []).filter(e => e.id !== exp.id);
 
-    // Grant Reward
-    const roll = Math.random();
-    let msg = `Expedition '${exp.name}' returned!\n`;
-
-    if (exp.id === "exp_scout") {
-        const amount = Math.floor(50 + Math.random() * 50);
-        gameState.resources.wood += amount;
-        msg += `Found ${amount} Wood.`;
-    } else {
-        const amount = Math.floor(10 + Math.random() * 20);
-        gameState.resources.relicShards += amount;
-        msg += `Found ${amount} Relic Shards.`;
-    }
-
-    alert(msg);
+    // Grant rewards from exp.rewards array or fallback
+    let msg = `🗺️ "${exp.name}" returned!`;
+    const rewards = exp.rewards || [{ resource: "wood", amount: [50, 150] }];
+    rewards.forEach(r => {
+        const amt = Math.floor(r.amount[0] + Math.random() * (r.amount[1] - r.amount[0]));
+        if (gameState.resources[r.resource] !== undefined) {
+            gameState.resources[r.resource] += amt;
+        } else if (r.resource === "relic") {
+            // Generate a relic
+            if (window.allRelics && allRelics.length > 0) {
+                const relic = allRelics[Math.floor(Math.random() * allRelics.length)];
+                if (!gameState.inventory) gameState.inventory = [];
+                gameState.inventory.push({...relic});
+            }
+        }
+        msg += ` +${formatNumber(amt)} ${r.resource}`;
+    });
+    addGameLog(msg);
     updateUI();
-    renderActiveExpeditions();
+    renderExpeditions();
 }
 
 // Attach to global for safety
@@ -2934,12 +3372,37 @@ window.renderExpeditions = renderExpeditions;
 window.renderActiveExpeditions = renderActiveExpeditions;
 window.completeExpedition = completeExpedition;
 
+// ── Expose tab renderers to window for showTab() ──────────────────────────
+window.renderExpeditions  = renderExpeditions;
+window.renderCrafting     = renderCrafting;
+window.renderWar          = renderWar;
+window.renderHeroes       = renderHeroes;
+window.renderGovernment   = renderGovernment;
+window.renderAchievements = renderAchievements;
+
+
 // --- Global Event Bindings (Critical for DOM Access) ---
 window.buyResearch = buyResearch;
 window.claimQuest = claimQuest;
 window.cloudLogin = cloudLogin;
 window.renderStoryModal = renderStoryModal;
-window.startExpedition = startExpedition;
+window.startExpedition = function(expId) {
+    const exp = (window.allExpeditions || []).find(e => e.id === expId);
+    if (!exp) return;
+    if (!gameState.activeExpeditions) gameState.activeExpeditions = [];
+    if (gameState.activeExpeditions.some(a => a.id === expId)) return;
+    // Deduct cost
+    for (let res in (exp.cost||{})) {
+        if ((gameState.resources[res]||0) < exp.cost[res]) {
+            addGameLog("❌ Not enough " + res + " for expedition"); return;
+        }
+    }
+    for (let res in (exp.cost||{})) gameState.resources[res] -= exp.cost[res];
+    gameState.activeExpeditions.push({ ...exp, progress: 0 });
+    addGameLog("🗺️ Expedition started: " + exp.name);
+    renderExpeditions();
+    updateUI();
+};
 window.manualClick = manualClick;
 window.buyBuilding = buyBuilding;
 window.saveGame = saveGame;
